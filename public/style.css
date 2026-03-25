@@ -736,3 +736,200 @@ body {
     font-size: 1rem;
     line-height: 1.8;
 }
+
+/* ==========================================
+   UC3 구조화 콜 로그 개선 스타일
+   ========================================== */
+
+/* index.html의 pre 태그를 일반 div처럼 동작하게 하여 카드 UI가 깨지지 않게 보완 */
+#uc3-logContent.log-content {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    white-space: normal;
+    overflow-y: visible;
+}
+
+/* Base Card & Layout Styles */
+.log-card {
+    background: white;
+    padding: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    border: 1px solid #e2e8f0;
+}
+
+.log-card-header {
+    background: #f8fafc;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.log-card-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.status-badge.success { background: #d1fae5; color: #065f46; }
+.status-badge.info { background: #dbeafe; color: #1e40af; }
+.status-badge.warning { background: #fef3c7; color: #92400e; }
+
+.log-card-body {
+    padding: 20px;
+}
+
+.log-section {
+    margin-bottom: 20px;
+}
+
+.log-section:last-child {
+    margin-bottom: 0;
+}
+
+.log-label {
+    display: block;
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 600;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.log-value {
+    color: #334155;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.raw-json-area {
+    margin-top: 16px;
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 12px;
+}
+
+.raw-json-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: #6366f1;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+    font-weight: 500;
+}
+
+/* 프리미엄 리포트 전용 스타일 추가 */
+.calllog-card .summary-highlight {
+    background: linear-gradient(180deg, #f0fdf4 0%, #ecfeff 100%);
+    border-left: 4px solid #10b981;
+    padding: 14px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    color: #064e3b;
+    line-height: 1.7;
+    box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.08);
+}
+
+.conversation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.conversation-item {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: var(--shadow-sm);
+}
+
+.conversation-item.agent-turn {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+.conversation-item.user-turn {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.conversation-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.conversation-index {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.conversation-role {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.agent-role {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.user-role {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.conversation-text {
+    color: #1e293b;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    word-break: keep-all;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 960px) {
+    .conversation-text {
+        font-size: 0.92rem;
+    }
+
+    .conversation-meta {
+        flex-wrap: wrap;
+    }
+}

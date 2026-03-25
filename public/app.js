@@ -671,6 +671,157 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
     }
   }
 
+  function createCallLogCard(data) {
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function extractSummary(value) {
+      if (!value) return '요약 정보가 없습니다.';
+
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed || '요약 정보가 없습니다.';
+      }
+
+      if (typeof value === 'object') {
+        return (
+          value.text ||
+          value.summary ||
+          value.oneLine ||
+          value.one_line ||
+          value.result ||
+          value.output ||
+          '요약 정보가 없습니다.'
+        );
+      }
+
+      return String(value).trim() || '요약 정보가 없습니다.';
+    }
+
+    function extractConversation(value) {
+      if (!value) return [];
+
+      // ["1) Agent: ...", "2) User: ..."]
+      if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
+        return value
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const matched = line.match(/^\s*(\d+)\)\s*(Agent|User)\s*:\s*(.*)$/i);
+            if (matched) {
+              return {
+                index: Number(matched[1]),
+                role: matched[2],
+                text: matched[3] || ''
+              };
+            }
+            return {
+              index: null,
+              role: 'Agent',
+              text: line
+            };
+          });
+      }
+
+      // [{ role: "Agent", text: "..." }, ...]
+      if (Array.isArray(value) && value.every(item => typeof item === 'object')) {
+        return value
+          .map((item, idx) => ({
+            index: idx + 1,
+            role: String(item.role || '').trim() || 'Agent',
+            text: String(item.text || '').trim()
+          }))
+          .filter(item => item.text);
+      }
+
+      return [];
+    }
+
+    const summary = extractSummary(
+      data.summary ||
+      data.ai_summary ||
+      data.calls_summary ||
+      data.data?.summary
+    );
+
+    const conversation = extractConversation(
+      data.conversation ||
+      data.data?.conversation
+    );
+
+    const status = String(
+      data.status ||
+      data.intent ||
+      data.call_status ||
+      data.data?.status ||
+      'success'
+    );
+
+    let badgeClass = 'info';
+    const s = status.toLowerCase();
+    if (s.includes('성공') || s.includes('success') || s.includes('완료') || s.includes('complete')) badgeClass = 'success';
+    if (s.includes('대기') || s.includes('중단') || s.includes('pending') || s.includes('cancel')) badgeClass = 'warning';
+
+    const conversationHtml = conversation.length > 0
+      ? `
+        <div class="log-section">
+          <span class="log-label">대화 내용</span>
+          <div class="conversation-list">
+            ${conversation.map(item => {
+              const role = String(item.role || 'Agent');
+              const isUser = role.toLowerCase() === 'user';
+              return `
+                <div class="conversation-item ${isUser ? 'user-turn' : 'agent-turn'}">
+                  <div class="conversation-meta">
+                    <span class="conversation-index">${item.index ?? '-'}</span>
+                    <span class="conversation-role ${isUser ? 'user-role' : 'agent-role'}">${escapeHtml(role)}</span>
+                  </div>
+                  <div class="conversation-text">${escapeHtml(item.text || '')}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `
+      : `
+        <div class="log-section">
+          <span class="log-label">대화 내용</span>
+          <div class="log-value">표시할 대화 내용이 없습니다.</div>
+        </div>
+      `;
+
+    return `
+      <div class="log-card calllog-card">
+        <div class="log-card-header">
+          <h4>🎤 AI 통화 분석 리포트</h4>
+          <span class="status-badge ${badgeClass}">${escapeHtml(status)}</span>
+        </div>
+
+        <div class="log-card-body">
+          <div class="log-section">
+            <span class="log-label">대화 요약</span>
+            <div class="log-value summary-highlight">${escapeHtml(summary)}</div>
+          </div>
+
+          ${conversationHtml}
+
+          <div class="raw-json-area">
+            <details>
+              <summary class="raw-json-toggle">🔍 원본 JSON 데이터 보기</summary>
+              <pre style="font-size: 0.7rem; background: #f1f5f9; padding: 10px; margin-top: 8px; border-radius: 6px; overflow-x: auto; border: 1px solid #e2e8f0;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+            </details>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   async function finalizeUC3Call({ autoTriggered = false } = {}) {
     if (isUC3Ending) return;
     isUC3Ending = true;
@@ -706,13 +857,18 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
 
       uc3Loading.style.display = 'none';
       uc3StatusText.innerText = '대기 중';
-      uc3LogContent.innerText = JSON.stringify(logData, null, 2);
+      uc3LogContent.innerHTML = createCallLogCard(logData);
       uc3LogArea.style.display = 'flex';
     } catch (error) {
       console.error('UC3 finalize error:', error);
       uc3Loading.style.display = 'none';
       uc3StatusText.innerText = '대기 중';
-      uc3LogContent.innerText = '콜 로그를 불러오는 중 오류가 발생했습니다: ' + error.message;
+      uc3LogContent.innerHTML = `
+        <div style="color: var(--danger); padding: 16px; background: #fee2e2; border-radius: 8px; border: 1px solid #fecaca;">
+          <strong>⚠️ 데이터 로드 실패</strong><br>
+          <span style="font-size: 0.85rem;">${error.message}</span>
+        </div>
+      `;
       uc3LogArea.style.display = 'flex';
     } finally {
       currentCallId = null;
