@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LGE DEMO AI Workspace</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="app-container">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span class="brand-logo">⚡ LGE DEMO</span>
+      </div>
+      <nav class="sidebar-menu">
+        <button class="menu-item active" data-target="view-home">🏠 대시보드 홈</button>
+        <button class="menu-item" data-target="view-uc1">📄 1. PDF 추출 자동화</button>
+        <button class="menu-item" data-target="view-uc2">📊 2. 제안서 초안 생성</button>
+        <button class="menu-item" data-target="view-uc3">🎙️ 3. Voice Agent Callbot</button>
+      </nav>
+    </aside>
+
+    <main id="main-content">
+
+      <section id="view-home" class="view-section active">
+        <div class="page-header text-center">
+          <img src="architecture.png" alt="Azure, n8n, Salesforce Integration" class="img-fluid header-banana-image"
+            id="header-banana-image">
+          <h1>Demo Use Cases</h1>
+          <p>Azure 인프라와 n8n 자동화를 통해 세일즈포스 사용자가 활용할 수 있는 데모입니다.</p>
+        </div>
+        <div class="card-grid">
+          <div class="demo-card" data-target="view-uc1">
+            <div class="card-icon">📄</div>
+            <div class="card-title">지자체 PDF 추출 자동화</div>
+            <div class="card-desc">세출예산 사업명세서 추출 및 AI 기반 클러스터링을 통한 DB화 데모입니다.</div>
+          </div>
+          <div class="demo-card" data-target="view-uc2">
+            <div class="card-icon">📊</div>
+            <div class="card-title">CRM 기반 제안서 초안 생성</div>
+            <div class="card-desc">CRM 데이터와 Web Search 결과를 활용하여 기업 템플릿 제안서를 생성합니다.</div>
+          </div>
+          <div class="demo-card" data-target="view-uc3">
+            <div class="card-icon">🎙️</div>
+            <div class="card-title">음성 에이전트 Callbot</div>
+            <div class="card-desc">자연스러운 대화와 가벼운 지식 문서를 기반으로 음성 답변을 제공합니다.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-uc1" class="view-section">
+        <div class="page-header">
+          <h1>📄 지자체/기관별 PDF의 세출예산 사업명세서 추출</h1>
+          <p>로컬 PDF를 n8n으로 전송하고 AI 기반 필터링 및 클러스터링을 통해 DB화 합니다.</p>
+        </div>
+        <div class="content-card max-w-md mx-auto">
+          <div id="uc1-form">
+            <label class="file-upload-wrapper" for="pdfInput">
+              <span class="upload-icon">📄</span>
+              <div id="uploadPrompt">분석할 지자체 PDF 선택</div>
+              <div id="fileNameDisplay" class="file-name"></div>
+            </label>
+            <input type="file" id="pdfInput" accept="application/pdf" hidden>
+            <button id="uc1-submitBtn" class="btn btn-primary w-full" disabled>추출 시작하기</button>
+          </div>
+
+          <div id="uc1-loading" class="loading-area" style="display: none;">
+            <div class="hourglass">⏳</div>
+            <p class="status-msg">PDF 전송 및 AI 추출/분석 중입니다... (약 10초)</p>
+          </div>
+
+          <div id="uc1-result" class="result-area" style="display: none;">
+            <p class="success-text">✅ 추출 완료!</p>
+            <a id="uc1-downloadLink" href="#" target="_blank" class="btn btn-success">📥 결과 파일 다운로드</a>
+            <button class="btn btn-outline w-full mt-2" onclick="resetUC1()">새로운 PDF 분석</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-uc2" class="view-section">
+        <div class="page-header">
+          <h1>📊 CRM 데이터 및 Web Search 기반 제안서 초안 생성</h1>
+          <p>업체명을 입력하면 맞춤형 PPTX와 16:9 PDF 뷰어를 제공합니다.</p>
+        </div>
+        <div class="content-card">
+          <div class="control-panel">
+            <input type="text" id="uc2-companyName" class="input-field" placeholder="고객 업체명 (예: 세일즈포스 코리아)">
+            <select id="uc2-templateType" class="select-field">
+              <option value="standard">표준 템플릿</option>
+              <option value="premium">프리미엄 템플릿</option>
+            </select>
+            <button id="uc2-runBtn" class="btn btn-primary">▶ 초안 생성</button>
+          </div>
+
+          <div id="uc2-loading" class="loading-area" style="display: none;">
+            <div class="hourglass">⏳</div>
+            <p class="status-msg">n8n 및 FastAPI 문서 생성 중...</p>
+          </div>
+
+          <div id="uc2-downloadArea" class="download-bar" style="display: none;">
+            <a id="uc2-pptxLink" href="#" target="_blank" class="btn btn-warning">📊 PPTX 다운로드</a>
+            <a id="uc2-pdfLink" href="#" target="_blank" class="btn btn-success">📄 PDF 다운로드</a>
+          </div>
+
+          <div class="viewer-wrapper">
+            <div id="uc2-placeholder" class="viewer-placeholder">
+              <div class="icon">✨</div>
+              <h3>생성된 16:9 PDF가 여기에 표시됩니다</h3>
+            </div>
+            <iframe id="uc2-pdfFrame" title="PDF Viewer"></iframe>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-uc3" class="view-section h-full-calc">
+        <div class="split-container">
+          <div class="split-left">
+            <h2>🎙️ 실시간 Voice Agent 통화</h2>
+            <p class="subtitle mb-4">WebRTC 마이크 연결 및 콜 로그 구조화</p>
+
+            <div class="call-controls">
+              <p id="uc3-statusText" style="text-align: center; font-weight: 600; color: #4f46e5; margin-bottom: 10px;">
+                대기 중</p>
+
+              <button id="uc3-startBtn" class="btn btn-success flex-1">📞 통화 시작</button>
+              <button id="uc3-endBtn" class="btn btn-danger flex-1" style="display: none;">🛑 통화 종료</button>
+
+              <div id="uc3-visualizer" class="call-visualizer" style="display: none;">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <span class="ml-2 text-primary">통화 중...</span>
+              </div>
+            </div>
+
+            <div id="uc3-loading" class="loading-area mt-4" style="display: none;">
+              <div class="hourglass">⏳</div>
+              <p class="status-msg">콜 로그 수집 및 AI 요약 중...</p>
+            </div>
+
+            <div id="uc3-logArea" class="log-area" style="display: none;">
+              <h3 class="log-title">📋 구조화된 콜 로그</h3>
+              <pre id="uc3-logContent" class="log-content"></pre>
+            </div>
+          </div>
+
+          <div class="split-right flex-center">
+            <div class="notepad">
+              <div class="note-header">
+                <span>참고 대화 스크립트</span>
+                <div class="script-nav">
+                  <button id="uc3-prevBtn" class="nav-btn">&lt;</button>
+                  <span id="uc3-pageIndicator">1 / 3</span>
+                  <button id="uc3-nextBtn" class="nav-btn">&gt;</button>
+                </div>
+              </div>
+              <div id="uc3-scriptContent" class="note-body"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+
+</html>

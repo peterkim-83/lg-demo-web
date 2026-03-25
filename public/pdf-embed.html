@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>PDF Embed Viewer</title>
+
+  <style>
+    :root {
+      --bg: #e2e8f0;
+      --page-bg: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --danger-bg: #fff1f2;
+      --danger-border: #fecdd3;
+      --danger-text: #be123c;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+      --radius: 12px;
+      --pad: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, "Noto Sans KR", sans-serif;
+      overflow: hidden;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      background: var(--bg);
+    }
+
+    #viewer {
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      padding: var(--pad);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+
+    .page-shell {
+      width: fit-content;
+      max-width: 100%;
+      background: var(--page-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+
+    .page-canvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      background: var(--page-bg);
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .overlay.show {
+      display: flex;
+    }
+
+    .panel {
+      max-width: 720px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.96);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 20px 22px;
+    }
+
+    .loading-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .loading-desc {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .error-panel {
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+    }
+
+    .error-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .error-desc {
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <div id="viewer" aria-label="PDF viewer"></div>
+
+    <div id="loading" class="overlay show">
+      <div class="panel">
+        <div class="loading-title">PDF 로딩 중...</div>
+        <div class="loading-desc">
+          제안서를 16:9 영역에 맞춰 렌더링하고 있습니다.
+        </div>
+      </div>
+    </div>
+
+    <div id="error" class="overlay">
+      <div class="panel error-panel">
+        <div class="error-title">PDF 미리보기를 불러오지 못했습니다.</div>
+        <div id="errorMessage" class="error-desc"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const qs = new URLSearchParams(window.location.search);
+    const fileUrl = qs.get('file');
+
+    const viewerEl = document.getElementById('viewer');
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+    const errorMessageEl = document.getElementById('errorMessage');
+
+    const state = {
+      pdf: null,
+      renderToken: 0,
+      resizeTimer: null
+    };
+
+    function showLoading(message) {
+      loadingEl.classList.add('show');
+      errorEl.classList.remove('show');
+      if (message) {
+        loadingEl.querySelector('.loading-desc').textContent = message;
+      }
+    }
+
+    function hideLoading() {
+      loadingEl.classList.remove('show');
+    }
+
+    function showError(message) {
+      hideLoading();
+      errorMessageEl.textContent = message;
+      errorEl.classList.add('show');
+    }
+
+    function clearViewer() {
+      viewerEl.innerHTML = '';
+    }
+
+    function getFitScale(page, containerWidth, containerHeight) {
+      const baseViewport = page.getViewport({ scale: 1 });
+      const paddingX = 32; // 좌우 16 * 2
+      const paddingY = 32; // 상하 16 * 2
+
+      const usableWidth = Math.max(100, containerWidth - paddingX);
+      const usableHeight = Math.max(100, containerHeight - paddingY);
+
+      const scaleX = usableWidth / baseViewport.width;
+      const scaleY = usableHeight / baseViewport.height;
+
+      return Math.min(scaleX, scaleY);
+    }
+
+    async function renderAllPages() {
+      if (!state.pdf) return;
+
+      const token = ++state.renderToken;
+      clearViewer();
+
+      const containerWidth = viewerEl.clientWidth || window.innerWidth || 1200;
+      const containerHeight = viewerEl.clientHeight || window.innerHeight || 800;
+      const outputScale = Math.max(1, window.devicePixelRatio || 1);
+
+      for (let pageNum = 1; pageNum <= state.pdf.numPages; pageNum++) {
+        if (token !== state.renderToken) return;
+
+        const page = await state.pdf.getPage(pageNum);
+        const fitScale = getFitScale(page, containerWidth, containerHeight);
+        const viewport = page.getViewport({ scale: fitScale });
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+
+        canvas.className = 'page-canvas';
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+
+        const shell = document.createElement('div');
+        shell.className = 'page-shell';
+        shell.appendChild(canvas);
+        viewerEl.appendChild(shell);
+
+        const renderContext = {
+          canvasContext: ctx,
+          viewport,
+          transform: outputScale !== 1
+            ? [outputScale, 0, 0, outputScale, 0, 0]
+            : null
+        };
+
+        await page.render(renderContext).promise;
+      }
+
+      hideLoading();
+    }
+
+    async function loadPdf() {
+      if (!fileUrl) {
+        showError('file 쿼리 파라미터가 없습니다.');
+        return;
+      }
+
+      try {
+        showLoading('제안서를 불러오는 중입니다...');
+
+        const loadingTask = pdfjsLib.getDocument({
+          url: fileUrl,
+          withCredentials: false
+        });
+
+        state.pdf = await loadingTask.promise;
+
+        showLoading(`총 ${state.pdf.numPages}페이지를 렌더링하는 중입니다...`);
+        await renderAllPages();
+      } catch (err) {
+        console.error('pdf-embed load error:', err);
+
+        let msg = '알 수 없는 오류가 발생했습니다.';
+        if (err && err.message) {
+          msg = err.message;
+        }
+
+        showError(
+          [
+            msg,
+            '',
+            '가능성 높은 원인:',
+            '1) PDF URL이 만료되었거나 잘못되었습니다.',
+            '2) PDF 응답에 CORS 허용 헤더가 없습니다.',
+            '3) PDF 서버가 iframe/외부 fetch를 막고 있습니다.'
+          ].join('\n')
+        );
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      clearTimeout(state.resizeTimer);
+      state.resizeTimer = setTimeout(() => {
+        if (state.pdf) {
+          renderAllPages().catch((err) => {
+            console.error('pdf-embed rerender error:', err);
+          });
+        }
+      }, 180);
+    });
+
+    loadPdf();
+  </script>
+</body>
+
+</html>
