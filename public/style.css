@@ -487,37 +487,74 @@ body {
     background: white;
 }
 
-/* --- UC3 전용 (Split & WebRTC) --- */
-.split-container {
+/* ==========================================
+   UC3 좌우 독립 스크롤 / 풀 높이 개선
+   ========================================== */
+
+#main-content {
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+.view-section {
+    height: calc(100vh - 32px);
+    overflow: hidden;
+}
+
+#view-uc3 {
+    height: calc(100vh - 32px);
+    overflow: hidden;
+}
+
+#view-uc3 .split-container {
     display: flex;
     gap: 24px;
     height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    align-items: stretch;
 }
 
-.split-left {
-    flex: 1;
+#view-uc3 .split-left,
+#view-uc3 .split-right {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+}
+
+#view-uc3 .split-left {
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
-.split-right {
-    flex: 1;
+#view-uc3 .split-right {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background: #f1f5f9;
     border-radius: 16px;
     border: 1px solid var(--border);
 }
 
 .call-controls {
-    display: flex;
+    flex-shrink: 0;
+    gap: 20px;
+    justify-content: space-between;
     align-items: center;
-    gap: 166px;
-    padding: 20px;
+    flex-wrap: wrap;
+    display: flex;
     background: #f8fafc;
     border-radius: 12px;
     border: 1px solid var(--border);
+    padding: 20px;
 }
 
-/* 파동 애니메이션 */
+#uc3-loading {
+    flex-shrink: 0;
+}
+
 .call-visualizer {
     display: none;
     align-items: center;
@@ -560,30 +597,31 @@ body {
 
 /* 콜 로그 & 노트 */
 .log-area {
-    display: none;
     margin-top: 20px;
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    overflow: hidden;
 }
 
 .log-title {
+    flex-shrink: 0;
+    margin-bottom: 12px;
     font-size: 1rem;
     font-weight: 700;
-    margin-bottom: 12px;
 }
 
 .log-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
     background: white;
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px;
-    flex: 1;
-    overflow-y: auto;
-    font-size: 0.9rem;
-    white-space: pre-wrap;
-    line-height: 1.6;
+    white-space: normal;
 }
 
 /* ==========================================
@@ -591,14 +629,22 @@ body {
    ========================================== */
 .notepad {
     width: 100%;
-    max-height: 90vh;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     background: #fef9c3;
     border-radius: 8px;
     box-shadow: var(--shadow-md);
     padding: 40px 30px 30px 50px;
     position: relative;
-    background-image: repeating-linear-gradient(transparent, transparent 31px, #e5e7eb 31px, #e5e7eb 32px);
+    background-image: repeating-linear-gradient(
+        transparent,
+        transparent 31px,
+        #e5e7eb 31px,
+        #e5e7eb 32px
+    );
     background-attachment: local;
 }
 
@@ -622,6 +668,12 @@ body {
 }
 
 .note-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: rgba(254, 249, 195, 0.96);
+    backdrop-filter: blur(4px);
+    padding-bottom: 8px;
     display: flex;
     justify-content: space-between;
     font-weight: 700;
@@ -650,6 +702,7 @@ body {
 
 /* 기존 note-body는 유지하되 스크립트 렌더링용 세부 스타일만 보강 */
 .note-body {
+    min-height: 0;
     font-size: 1.05rem;
     line-height: 1.9;
     color: #334155;
@@ -735,6 +788,17 @@ body {
     color: #334155;
     font-size: 1rem;
     line-height: 1.8;
+}
+
+@media (max-width: 1100px) {
+    #view-uc3 .split-container {
+        flex-direction: column;
+    }
+
+    #view-uc3 .split-left,
+    #view-uc3 .split-right {
+        height: 50%;
+    }
 }
 
 /* ==========================================

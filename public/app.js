@@ -645,9 +645,10 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
   const uc3LogContent = document.getElementById('uc3-logContent');
   const uc3StatusText = document.getElementById('uc3-statusText');
 
-  window.uvSession = null;
   let currentCallId = null;
   let isUC3Ending = false;
+  let uc3SessionSeq = 0;
+  let activeUc3SessionSeq = 0;
 
   function resetUC3ToIdle(startLabel = '&#128222; 통화 시작') {
     uc3StatusText.innerText = '대기 중';
@@ -659,15 +660,21 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
     uc3Start.innerHTML = startLabel;
   }
 
+  function clearUC3LogView() {
+    uc3LogArea.style.display = 'none';
+    uc3LogContent.innerHTML = '';
+  }
+
   async function safeLeaveCurrentSession() {
     if (!window.uvSession) return;
 
+    const sessionToClose = window.uvSession;
+    window.uvSession = null;
+
     try {
-      await window.uvSession.leaveCall();
+      await sessionToClose.leaveCall();
     } catch (leaveError) {
       console.warn('Ultravox leaveCall warning:', leaveError);
-    } finally {
-      window.uvSession = null;
     }
   }
 
@@ -822,31 +829,47 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
     `;
   }
 
-  async function finalizeUC3Call({ autoTriggered = false } = {}) {
+  async function finalizeUC3Call({
+    autoTriggered = false,
+    sessionSeq = activeUc3SessionSeq,
+    forceCallId = null,
+  } = {}) {
     if (isUC3Ending) return;
+
+    const targetCallId = forceCallId || currentCallId;
+
+    // 이미 다른 새 세션이 시작된 뒤 예전 세션이 늦게 finalize를 시도하는 것 방지
+    if (sessionSeq !== activeUc3SessionSeq) {
+      console.warn('Skip stale finalize request:', { sessionSeq, activeUc3SessionSeq, targetCallId });
+      return;
+    }
+
+    if (!targetCallId) {
+      console.warn('Skip finalize because callId is empty:', { sessionSeq, activeUc3SessionSeq });
+      return;
+    }
+
     isUC3Ending = true;
 
     try {
       uc3StatusText.innerText = autoTriggered ? '통화 종료됨. 콜 로그 처리 중...' : '콜 로그 처리 중...';
       uc3End.style.display = 'none';
       uc3Visualizer.style.display = 'none';
-      uc3LogArea.style.display = 'none';
+      clearUC3LogView();
       uc3Loading.style.display = 'block';
 
       await safeLeaveCurrentSession();
-
-      if (!currentCallId) {
-        throw new Error('callId가 없어 콜 로그를 조회할 수 없습니다.');
-      }
 
       const res = await fetch(CONFIG.UC3_END_CALL, {
         method: 'POST',
         cache: 'no-store',
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
         },
-        body: JSON.stringify({ callId: currentCallId })
+        body: JSON.stringify({ callId: targetCallId })
       });
 
       if (!res.ok) {
@@ -855,11 +878,22 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
 
       const logData = await res.json();
 
+      // 응답이 돌아오는 동안 사용자가 새 통화를 다시 시작했으면, 오래된 응답은 버린다.
+      if (sessionSeq !== activeUc3SessionSeq) {
+        console.warn('Discard stale log response:', { sessionSeq, activeUc3SessionSeq, targetCallId });
+        return;
+      }
+
       uc3Loading.style.display = 'none';
       uc3StatusText.innerText = '대기 중';
       uc3LogContent.innerHTML = createCallLogCard(logData);
       uc3LogArea.style.display = 'flex';
     } catch (error) {
+      if (sessionSeq !== activeUc3SessionSeq) {
+        console.warn('Discard stale finalize error:', { sessionSeq, activeUc3SessionSeq, error });
+        return;
+      }
+
       console.error('UC3 finalize error:', error);
       uc3Loading.style.display = 'none';
       uc3StatusText.innerText = '대기 중';
@@ -871,16 +905,23 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
       `;
       uc3LogArea.style.display = 'flex';
     } finally {
-      currentCallId = null;
-      isUC3Ending = false;
-      resetUC3ToIdle('&#128222; 통화 다시 시작');
+      if (sessionSeq === activeUc3SessionSeq) {
+        currentCallId = null;
+        isUC3Ending = false;
+        resetUC3ToIdle('&#128222; 통화 다시 시작');
+      } else {
+        isUC3Ending = false;
+      }
     }
   }
 
-  function bindUltravoxSessionEvents(session) {
+  function bindUltravoxSessionEvents(session, sessionSeq) {
     session.addEventListener('status', async () => {
+      // 이미 현재 활성 세션이 아니면 UI/종료 처리에서 제외
+      if (sessionSeq !== activeUc3SessionSeq) return;
+
       const status = session.status;
-      console.log('Ultravox Call Status:', status);
+      console.log('Ultravox Call Status:', status, 'sessionSeq=', sessionSeq);
 
       if (status === 'connecting') {
         uc3StatusText.innerText = '통화 연결 중...';
@@ -892,8 +933,8 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
         uc3Start.style.display = 'none';
         uc3End.style.display = 'flex';
         uc3Visualizer.style.display = 'flex';
-        uc3LogArea.style.display = 'none';
         uc3Loading.style.display = 'none';
+        clearUC3LogView();
         return;
       }
 
@@ -906,16 +947,22 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
         uc3StatusText.innerText = '통화 종료됨';
 
         if (currentCallId && !isUC3Ending) {
-          await finalizeUC3Call({ autoTriggered: true });
+          await finalizeUC3Call({
+            autoTriggered: true,
+            sessionSeq,
+            forceCallId: currentCallId
+          });
         }
       }
     });
 
     session.addEventListener('transcripts', () => {
+      if (sessionSeq !== activeUc3SessionSeq) return;
       console.log('Ultravox transcripts:', session.transcripts);
     });
 
     session.addEventListener('experimental_message', (event) => {
+      if (sessionSeq !== activeUc3SessionSeq) return;
       console.log('Ultravox experimental_message:', event);
     });
   }
@@ -926,18 +973,26 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
         throw new Error('Ultravox SDK가 브라우저에 로드되지 않았습니다.');
       }
 
+      const nextSessionSeq = ++uc3SessionSeq;
+      activeUc3SessionSeq = nextSessionSeq;
       isUC3Ending = false;
+      currentCallId = null;
+
       uc3Start.disabled = true;
       uc3Start.innerText = 'URL 발급 중...';
       uc3StatusText.innerText = '연결 준비 중...';
-      uc3LogArea.style.display = 'none';
       uc3Loading.style.display = 'none';
+      clearUC3LogView();
+
+      await safeLeaveCurrentSession();
 
       const res = await fetch(CONFIG.UC3_START_CALL, {
         method: 'POST',
         cache: 'no-store',
         headers: {
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
         }
       });
 
@@ -947,6 +1002,12 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
 
       const data = await res.json();
       console.log('UC3 start-call response:', data);
+
+      // 사용자가 그 사이에 다시 새 세션을 시작했으면 이 응답은 버림
+      if (nextSessionSeq !== activeUc3SessionSeq) {
+        console.warn('Discard stale start-call response:', { nextSessionSeq, activeUc3SessionSeq });
+        return;
+      }
 
       const joinUrl = data.joinUrl || data.join_url || data?.data?.joinUrl || data?.data?.join_url || '';
       const callId = data.callId || data.call_id || data?.data?.callId || data?.data?.call_id || null;
@@ -960,23 +1021,30 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
       uc3Start.innerText = '마이크 권한 요청 중...';
       uc3StatusText.innerText = '마이크 권한을 확인하고 있습니다.';
 
-      await safeLeaveCurrentSession();
+      const session = new window.UltravoxSession();
+      window.uvSession = session;
+      bindUltravoxSessionEvents(session, nextSessionSeq);
 
-      window.uvSession = new window.UltravoxSession();
-      bindUltravoxSessionEvents(window.uvSession);
-
-      await window.uvSession.joinCall(joinUrl);
+      await session.joinCall(joinUrl);
     } catch (error) {
       console.error('Voice Agent Error:', error);
       alert('통화 연결 실패: ' + error.message);
 
       await safeLeaveCurrentSession();
+
+      // 시작 실패 시에만 현재 활성 세션 상태를 초기화
       currentCallId = null;
+      isUC3Ending = false;
+      clearUC3LogView();
       resetUC3ToIdle();
     }
   });
 
   uc3End.addEventListener('click', async () => {
-    await finalizeUC3Call({ autoTriggered: false });
+    await finalizeUC3Call({
+      autoTriggered: false,
+      sessionSeq: activeUc3SessionSeq,
+      forceCallId: currentCallId
+    });
   });
 });
