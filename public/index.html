@@ -83,17 +83,28 @@
       <section id="view-uc2" class="view-section">
         <div class="page-header">
           <h1>📊 CRM 데이터 및 Web Search 기반 제안서 초안 생성</h1>
-          <p>업체명을 입력하면 맞춤형 PPTX와 16:9 PDF 뷰어를 제공합니다.</p>
+          <p>템플릿을 먼저 선택하면 입력 항목이 동적으로 바뀌며, 결과 PDF/PPTX 동작은 그대로 유지됩니다.</p>
         </div>
         <div class="content-card">
-          <div class="control-panel">
-            <input type="text" id="uc2-companyName" class="input-field"
-              placeholder="고객 업체명 (예: Marriott International)">
-            <select id="uc2-templateType" class="select-field">
-              <option value="standard">표준 템플릿</option>
-              <option value="premium">프리미엄 템플릿</option>
-            </select>
-            <button id="uc2-runBtn" class="btn btn-primary">▶ 초안 생성</button>
+          <div class="control-panel uc2-control-panel">
+            <div class="uc2-field uc2-template-field">
+              <label class="field-label" for="uc2-templateType">템플릿 선택</label>
+              <select id="uc2-templateType" class="select-field">
+                <option value="hvac_template2">기업 제안서</option>
+                <option value="built_in_commercial">제품 제안서</option>
+              </select>
+            </div>
+
+            <div class="uc2-field uc2-primary-field">
+              <label class="field-label" id="uc2-primaryLabel" for="uc2-companyName">고객 업체명</label>
+              <input type="text" id="uc2-companyName" class="input-field"
+                placeholder="고객 업체명 (예: Marriott International)">
+              <p id="uc2-inputHint" class="field-hint">기업명을 입력하면 맞춤형 제안서를 생성합니다.</p>
+            </div>
+
+            <div class="uc2-action">
+              <button id="uc2-runBtn" class="btn btn-primary">▶ 초안 생성</button>
+            </div>
           </div>
 
           <div id="uc2-loading" class="loading-area" style="display: none;">

@@ -17,7 +17,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.final.uc2-pdfjs-embed 2026-03-23-v5';
+const APP_VERSION = 'app.final.uc2-template-router 2026-04-06-v1';
 console.log(APP_VERSION);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -304,6 +304,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
   const uc2Company = document.getElementById('uc2-companyName');
   const uc2Template = document.getElementById('uc2-templateType');
+  const uc2PrimaryLabel = document.getElementById('uc2-primaryLabel');
+  const uc2InputHint = document.getElementById('uc2-inputHint');
   const uc2Btn = document.getElementById('uc2-runBtn');
   const uc2Loading = document.getElementById('uc2-loading');
   const uc2DownloadArea = document.getElementById('uc2-downloadArea');
@@ -315,6 +317,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let uc2CurrentPdfViewUrl = '';
   let uc2ResizeTimer = null;
+  let uc2LastTemplateId = '';
+
+  const UC2_TEMPLATE_META = {
+    hvac_template2: {
+      label: '고객 업체명',
+      placeholder: '고객 업체명 (예: Marriott International)',
+      hint: '기업명을 입력하면 CRM/Web Search 기반 맞춤형 제안서를 생성합니다.',
+      payloadKey: 'companyName',
+      emptyMessage: '고객 업체명을 입력하세요.'
+    },
+    built_in_commercial: {
+      label: 'LG 제품 모델명',
+      placeholder: 'LG 제품 모델명 (예: BEI3GQLO)',
+      hint: '제품 제안서는 모델명을 기준으로 n8n 데이터 테이블에서 제품 정보를 조회합니다.',
+      payloadKey: 'modelName',
+      emptyMessage: 'LG 제품 모델명을 입력하세요.'
+    }
+  };
 
   function fitUC2Viewer() {
     if (!uc2ViewerWrapper || !uc2ViewerWrapper.parentElement) return;
@@ -344,11 +364,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const templateMap = {
       standard: 'hvac_template2',
+      premium: 'hvac_template2',
       '표준 템플릿': 'hvac_template2',
-      hvac_template2: 'hvac_template2'
+      '기업 제안서': 'hvac_template2',
+      hvac_template: 'hvac_template2',
+      hvac_template2: 'hvac_template2',
+      built_in_commercial: 'built_in_commercial',
+      builtin_commercial: 'built_in_commercial',
+      'built-in-commercial': 'built_in_commercial',
+      '제품 제안서': 'built_in_commercial',
+      'Built-in-Commercial.pptx': 'built_in_commercial'
     };
 
     return templateMap[raw] || raw;
+  }
+
+  function getUC2TemplateMeta(templateId) {
+    const normalizedTemplate = normalizeUC2Template(templateId);
+    return UC2_TEMPLATE_META[normalizedTemplate] || UC2_TEMPLATE_META.hvac_template2;
+  }
+
+  function syncUC2InputByTemplate({ preserveValue = false } = {}) {
+    const templateId = normalizeUC2Template(uc2Template.value);
+    const meta = getUC2TemplateMeta(templateId);
+
+    if (uc2PrimaryLabel) {
+      uc2PrimaryLabel.textContent = meta.label;
+    }
+
+    if (uc2Company) {
+      if (!preserveValue && uc2LastTemplateId && uc2LastTemplateId !== templateId) {
+        uc2Company.value = '';
+      }
+      uc2Company.placeholder = meta.placeholder;
+      uc2Company.setAttribute('aria-label', meta.label);
+    }
+
+    if (uc2InputHint) {
+      uc2InputHint.textContent = meta.hint;
+    }
+
+    uc2LastTemplateId = templateId;
   }
 
   function normalizeUC2Url(value) {
@@ -419,8 +475,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 180);
   });
 
+  syncUC2InputByTemplate({ preserveValue: true });
+  uc2Template.addEventListener('change', () => syncUC2InputByTemplate());
+
   uc2Btn.addEventListener('click', async () => {
-    if (!uc2Company.value.trim()) return alert('업체명을 입력하세요.');
+    const normalizedTemplate = normalizeUC2Template(uc2Template.value);
+    const templateMeta = getUC2TemplateMeta(normalizedTemplate);
+    const primaryValue = uc2Company.value.trim();
+
+    if (!primaryValue) return alert(templateMeta.emptyMessage);
 
     uc2Btn.disabled = true;
     uc2Btn.textContent = '처리 중...';
@@ -434,9 +497,14 @@ document.addEventListener('DOMContentLoaded', () => {
     uc2PdfLink.removeAttribute('href');
 
     const payload = {
-      companyName: uc2Company.value.trim(),
-      template: normalizeUC2Template(uc2Template.value)
+      template: normalizedTemplate
     };
+
+    if (templateMeta.payloadKey === 'modelName') {
+      payload.modelName = primaryValue;
+    } else {
+      payload.companyName = primaryValue;
+    }
 
     try {
       const res = await fetch(CONFIG.UC2_WEBHOOK, {
@@ -781,9 +849,9 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
           <span class="log-label">대화 내용</span>
           <div class="conversation-list">
             ${conversation.map(item => {
-              const role = String(item.role || 'Agent');
-              const isUser = role.toLowerCase() === 'user';
-              return `
+        const role = String(item.role || 'Agent');
+        const isUser = role.toLowerCase() === 'user';
+        return `
                 <div class="conversation-item ${isUser ? 'user-turn' : 'agent-turn'}">
                   <div class="conversation-meta">
                     <span class="conversation-index">${item.index ?? '-'}</span>
@@ -792,7 +860,7 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
                   <div class="conversation-text">${escapeHtml(item.text || '')}</div>
                 </div>
               `;
-            }).join('')}
+      }).join('')}
           </div>
         </div>
       `

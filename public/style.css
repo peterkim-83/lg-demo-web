@@ -331,6 +331,68 @@ body {
     padding: 16px;
     border-radius: 12px;
     border: 1px solid var(--border);
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.uc2-control-panel {
+    gap: 16px;
+}
+
+.uc2-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.uc2-template-field {
+    flex: 0 0 220px;
+}
+
+.uc2-primary-field {
+    flex: 1 1 360px;
+}
+
+.uc2-action {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+}
+
+.field-label {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.field-hint {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-sub);
+}
+
+.uc2-control-panel .input-field,
+.uc2-control-panel .select-field {
+    width: 100%;
+}
+
+.uc2-control-panel .btn {
+    min-width: 144px;
+    min-height: 48px;
+}
+
+@media (max-width: 920px) {
+
+    .uc2-template-field,
+    .uc2-primary-field,
+    .uc2-action {
+        flex: 1 1 100%;
+    }
+
+    .uc2-action .btn {
+        width: 100%;
+    }
 }
 
 .input-field,
@@ -639,12 +701,10 @@ body {
     box-shadow: var(--shadow-md);
     padding: 40px 30px 30px 50px;
     position: relative;
-    background-image: repeating-linear-gradient(
-        transparent,
-        transparent 31px,
-        #e5e7eb 31px,
-        #e5e7eb 32px
-    );
+    background-image: repeating-linear-gradient(transparent,
+            transparent 31px,
+            #e5e7eb 31px,
+            #e5e7eb 32px);
     background-attachment: local;
 }
 
@@ -849,9 +909,20 @@ body {
     text-transform: uppercase;
 }
 
-.status-badge.success { background: #d1fae5; color: #065f46; }
-.status-badge.info { background: #dbeafe; color: #1e40af; }
-.status-badge.warning { background: #fef3c7; color: #92400e; }
+.status-badge.success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-badge.info {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-badge.warning {
+    background: #fef3c7;
+    color: #92400e;
+}
 
 .log-card-body {
     padding: 20px;
