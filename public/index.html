@@ -185,7 +185,7 @@
       <section id="view-uc4" class="view-section">
         <div class="page-header">
           <h1>🧠 CRM Text-to-SQL 자연어 질의</h1>
-          <p>가상의 사용자 페르소나와 세션 정보를 선택한 뒤 자연어 질문을 입력하면, 우측에 구조화된 분석 결과가 카드 형태로 표시되는 데모 화면입니다.</p>
+          <p>최종 5종 Runtime Input 세트를 기준으로 데모용 가상 세션 컨텍스트를 선택하고, 질문을 자연어로 입력하는 화면 디자인입니다.</p>
         </div>
 
         <div class="uc4-layout">
@@ -193,54 +193,96 @@
             <div class="uc4-section-head">
               <div>
                 <h3>가상 세션 컨텍스트 선택</h3>
-                <p>데모 대상 사용자의 역할, 소속, 현재 화면 맥락을 선택하는 영역입니다.</p>
+                <p>실제 n8n Runtime Input을 염두에 두고, 질문 세트와 세션 맥락을 함께 선택하는 상단 구성입니다.</p>
               </div>
-              <span class="uc4-preview-badge">Demo Session</span>
+              <span class="uc4-preview-badge">Runtime Input Preview</span>
             </div>
 
-            <div class="control-panel uc4-control-panel">
-              <div class="uc4-field">
-                <label class="field-label" for="uc4-persona">페르소나</label>
-                <select id="uc4-persona" class="select-field">
-                  <option selected>영업대표 · 박지우</option>
-                  <option>영업관리자 · 김현수</option>
-                  <option>사업부 리더 · 이서연</option>
+            <div class="control-panel uc4-control-panel uc4-control-panel-5">
+              <div class="uc4-field uc4-field-wide">
+                <label class="field-label" for="uc4-runtimeSet">데모 시나리오 / Runtime Input 세트</label>
+                <select id="uc4-runtimeSet" class="select-field">
+                  <option selected>1. 영업대표 성과 심층 분석 (Scorecard)</option>
+                  <option>2. 고객사 360도 입체 뷰 (Account 360)</option>
+                  <option>3. 과거 스냅샷 기반 타임트래블 (Snapshot Time-travel)</option>
+                  <option>4. 리스크 및 핵심 요소 기반 AI 진단 (Risk &amp; Reason Analysis)</option>
+                  <option>5. 파이프라인 병목 현상 분석 (Stage Trend)</option>
                 </select>
               </div>
 
               <div class="uc4-field">
-                <label class="field-label" for="uc4-team">소속 / 팀</label>
-                <select id="uc4-team" class="select-field">
-                  <option selected>Enterprise Sales / Korea</option>
-                  <option>Commercial Sales / APAC</option>
-                  <option>Strategic Accounts / Global</option>
+                <label class="field-label" for="uc4-persona">가상 사용자 페르소나</label>
+                <select id="uc4-persona" class="select-field">
+                  <option selected>영업대표 · 박지우</option>
+                  <option>Account Manager · 박지우</option>
+                  <option>Opportunity Owner · 박지우</option>
+                  <option>영업 본부장 · 데모 관리자</option>
                 </select>
               </div>
 
               <div class="uc4-field">
                 <label class="field-label" for="uc4-page">현재 페이지 컨텍스트</label>
                 <select id="uc4-page" class="select-field">
-                  <option selected>Opportunity Workspace</option>
-                  <option>Account 360</option>
-                  <option>Pipeline Dashboard</option>
+                  <option selected>Owner Workspace</option>
+                  <option>Account Record Page</option>
+                  <option>Opportunity Record Page</option>
+                  <option>Pipeline Trend Dashboard</option>
                 </select>
               </div>
 
               <div class="uc4-field">
-                <label class="field-label" for="uc4-timezone">Timezone</label>
-                <select id="uc4-timezone" class="select-field">
-                  <option selected>Asia/Seoul</option>
-                  <option>UTC</option>
-                  <option>America/Los_Angeles</option>
+                <label class="field-label" for="uc4-pattern">질문 패턴</label>
+                <select id="uc4-pattern" class="select-field">
+                  <option selected>monthly_aggregate</option>
+                  <option>account_view_aggregate</option>
+                  <option>snapshot_time_series_comparison</option>
+                  <option>specific_opportunity_diagnosis</option>
+                  <option>stage_bottleneck_trend</option>
                 </select>
               </div>
             </div>
 
+            <div class="uc4-runtime-summary">
+              <div class="uc4-runtime-item">
+                <span class="uc4-meta-label">timezone</span>
+                <strong>Asia/Seoul</strong>
+              </div>
+              <div class="uc4-runtime-item">
+                <span class="uc4-meta-label">current_date</span>
+                <strong>2026-04-14</strong>
+              </div>
+              <div class="uc4-runtime-item">
+                <span class="uc4-meta-label">record_page_object</span>
+                <strong>null</strong>
+              </div>
+              <div class="uc4-runtime-item">
+                <span class="uc4-meta-label">record_id</span>
+                <strong>null</strong>
+              </div>
+              <div class="uc4-runtime-item">
+                <span class="uc4-meta-label">account_id</span>
+                <strong>null</strong>
+              </div>
+              <div class="uc4-runtime-item">
+                <span class="uc4-meta-label">opportunity_id</span>
+                <strong>null</strong>
+              </div>
+              <div class="uc4-runtime-item">
+                <span class="uc4-meta-label">owner_id</span>
+                <strong>005TJ000003inheYAA</strong>
+              </div>
+              <div class="uc4-runtime-item uc4-runtime-item-wide">
+                <span class="uc4-meta-label">candidate_models</span>
+                <strong>analytics_mart_dbt.mart_owner_scorecard_monthly</strong>
+              </div>
+            </div>
+
             <div class="uc4-context-strip">
-              <div class="uc4-chip">owner_id: 005TJ000003inheYAA</div>
-              <div class="uc4-chip">record_page_object: Opportunity</div>
-              <div class="uc4-chip">current_date: 2026-04-14</div>
-              <div class="uc4-chip">conversation mode: single-turn</div>
+              <div class="uc4-chip">retry_count: 0</div>
+              <div class="uc4-chip">auto_retry_count: 0</div>
+              <div class="uc4-chip">max_auto_retry_count: 1</div>
+              <div class="uc4-chip">execution mode: stateless PoC</div>
+              <div class="uc4-chip">future-ready: chatbot tool embedding</div>
             </div>
           </div>
 
@@ -249,29 +291,80 @@
               <div class="uc4-section-head">
                 <div>
                   <h3>자연어 질의 입력</h3>
-                  <p>세션 컨텍스트를 바탕으로 사용자의 질문을 보내는 영역입니다.</p>
+                  <p>최종 5종 질문 세트를 프리셋으로 두고, 필요 시 그대로 복사하거나 수정하여 질의할 수 있는 입력 구조입니다.</p>
                 </div>
               </div>
 
-              <div class="uc4-prompt-list">
-                <button class="uc4-prompt-chip" type="button">내 Commit 금액 합계가 얼마야?</button>
-                <button class="uc4-prompt-chip" type="button">제안 단계 opportunity 수가 몇 개야?</button>
-                <button class="uc4-prompt-chip" type="button">가장 큰 deal 5개 보여줘</button>
+              <div class="uc4-preset-grid">
+                <div class="uc4-preset-card active">
+                  <div class="uc4-preset-top">
+                    <span class="uc4-preset-index">1</span>
+                    <span class="uc4-preset-type">Scorecard</span>
+                  </div>
+                  <div class="uc4-preset-title">영업대표 성과 심층 분석</div>
+                  <div class="uc4-preset-desc">월별 수주율과 평균 수주 소요 기간을 비교 분석하는 시나리오</div>
+                </div>
+                <div class="uc4-preset-card">
+                  <div class="uc4-preset-top">
+                    <span class="uc4-preset-index">2</span>
+                    <span class="uc4-preset-type">Account 360</span>
+                  </div>
+                  <div class="uc4-preset-title">고객사 360도 입체 뷰</div>
+                  <div class="uc4-preset-desc">특정 고객사의 Won 금액, Open Pipeline, 최근 업데이트를 요약</div>
+                </div>
+                <div class="uc4-preset-card">
+                  <div class="uc4-preset-top">
+                    <span class="uc4-preset-index">3</span>
+                    <span class="uc4-preset-type">Snapshot</span>
+                  </div>
+                  <div class="uc4-preset-title">과거 스냅샷 기반 타임트래블</div>
+                  <div class="uc4-preset-desc">최근 한 달 간 Open 파이프라인 금액 변화를 시계열로 비교</div>
+                </div>
+                <div class="uc4-preset-card">
+                  <div class="uc4-preset-top">
+                    <span class="uc4-preset-index">4</span>
+                    <span class="uc4-preset-type">Diagnosis</span>
+                  </div>
+                  <div class="uc4-preset-title">리스크 및 핵심 요소 기반 AI 진단</div>
+                  <div class="uc4-preset-desc">특정 Opportunity의 리스크 총점과 win/loss reason을 진단</div>
+                </div>
+                <div class="uc4-preset-card">
+                  <div class="uc4-preset-top">
+                    <span class="uc4-preset-index">5</span>
+                    <span class="uc4-preset-type">Stage Trend</span>
+                  </div>
+                  <div class="uc4-preset-title">파이프라인 병목 현상 분석</div>
+                  <div class="uc4-preset-desc">최근 3개월 영업 단계별 Open Pipeline 금액 추이를 파악</div>
+                </div>
+              </div>
+
+              <div class="uc4-prompt-list uc4-prompt-list-vertical">
+                <button class="uc4-prompt-chip active" type="button">이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales
+                  Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.</button>
+                <button class="uc4-prompt-chip" type="button">이 고객사의 누적 수주 금액(Won Amount)과 현재 진행 중인 파이프라인 금액 비율을 알려주고,
+                  가장 최근에 영업기회가 업데이트된 날짜가 언제인지 요약해 브리핑해줘.</button>
+                <button class="uc4-prompt-chip" type="button">최근 한 달 새 내가 진행 중인(Open) 파이프라인 총 금액이 첫 스냅샷 때보다 얼마나
+                  늘었어?</button>
+                <button class="uc4-prompt-chip" type="button">현재 보고 있는 이 영업기회의 리스크 총점(opportunity_risk_total_score)은 몇
+                  점이고, 기록된 주요 수주/실패 요인(win_reason, loss_reason)은 무엇인지 확인해서 현재 상태를 요약해줘.</button>
+                <button class="uc4-prompt-chip" type="button">최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게
+                  변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.</button>
               </div>
 
               <label class="field-label" for="uc4-question">질문 입력</label>
               <textarea id="uc4-question" class="uc4-textarea"
-                placeholder="예: 나의 open opportunity 중 Proposal 단계는 몇 개야?"></textarea>
+                placeholder="예: 최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게 변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.">이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.</textarea>
 
               <div class="uc4-left-footer">
                 <div class="uc4-mode-card">
-                  <span class="uc4-mode-label">실행 모드</span>
-                  <strong>Stateless Text-to-SQL Demo</strong>
-                  <p>현재는 단발성 질의 엔진을 시연하는 화면이며, 향후 멀티턴 챗봇 도구로 확장 가능합니다.</p>
+                  <span class="uc4-mode-label">Demo Narrative</span>
+                  <strong>지금은 단발성 Text-to-SQL 엔진 시연</strong>
+                  <p>현재 화면은 고정된 세션 컨텍스트와 자연어 질의만으로 SQL 생성·검증·실행이 가능한 인상을 주는 PoC입니다. 이후 동일 엔진을 멀티턴 챗봇의 도구로 삽입할 수 있는 구조로
+                    확장합니다.</p>
                 </div>
 
                 <div class="uc4-action-row">
-                  <button class="btn btn-outline" type="button">초기화</button>
+                  <button class="btn btn-outline" type="button">프리셋 초기화</button>
                   <button class="btn btn-primary" type="button">▶ 질의 실행</button>
                 </div>
               </div>
@@ -281,76 +374,16 @@
               <div class="uc4-section-head">
                 <div>
                   <h3>응답 결과</h3>
-                  <p>응답 유형별로 카드가 쌓이는 결과 패널 디자인입니다.</p>
+                  <p>다음 단계에서 5종 질문별 실제 응답 결과를 채워 넣을 영역입니다.</p>
                 </div>
-                <span class="status-badge info">PREVIEW</span>
+                <span class="status-badge info">NEXT STEP</span>
               </div>
 
-              <div class="uc4-result-stack">
-                <div class="uc4-result-card uc4-answer-card">
-                  <div class="uc4-result-title">Answer Summary</div>
-                  <p class="uc4-result-text">
-                    현재 Commit 금액 합계는 <strong>2,524,257,700원</strong>입니다. 아래에는 사용된 모델, 생성된 SQL, 결과 preview가 구조화되어 표시됩니다.
-                  </p>
-                </div>
-
-                <div class="uc4-result-card">
-                  <div class="uc4-result-title">Selected Model / SQL</div>
-                  <div class="uc4-meta-grid">
-                    <div class="uc4-meta-item">
-                      <span class="uc4-meta-label">Selected Model</span>
-                      <span class="uc4-meta-value">analytics_mart_dbt.fct_opportunity_current</span>
-                    </div>
-                    <div class="uc4-meta-item">
-                      <span class="uc4-meta-label">Question Shape</span>
-                      <span class="uc4-meta-value">aggregate</span>
-                    </div>
-                  </div>
-                  <pre class="uc4-code-block">SELECT SUM(CASE WHEN forecast_category_name = 'Commit' THEN amount ELSE 0 END) AS commit_amount_sum
-FROM analytics_mart_dbt.fct_opportunity_current
-WHERE owner_id = '005TJ000003inheYAA'
-  AND is_open = 1;</pre>
-                </div>
-
-                <div class="uc4-result-card">
-                  <div class="uc4-result-title">Rows Preview</div>
-                  <div class="uc4-table-wrap">
-                    <table class="uc4-result-table">
-                      <thead>
-                        <tr>
-                          <th>commit_amount_sum</th>
-                          <th>row_count</th>
-                          <th>status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td>2,524,257,700</td>
-                          <td>1</td>
-                          <td>SUCCESS</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div class="uc4-result-card uc4-diagnostic-card">
-                  <div class="uc4-result-title">Execution / Diagnostic</div>
-                  <div class="uc4-diagnostic-grid">
-                    <div class="uc4-diagnostic-item">
-                      <span class="uc4-meta-label">Retry Count</span>
-                      <strong>0</strong>
-                    </div>
-                    <div class="uc4-diagnostic-item">
-                      <span class="uc4-meta-label">Auto Retry</span>
-                      <strong>Allowed</strong>
-                    </div>
-                    <div class="uc4-diagnostic-item">
-                      <span class="uc4-meta-label">Output Contract</span>
-                      <strong>Card-based UI</strong>
-                    </div>
-                  </div>
-                </div>
+              <div class="uc4-result-empty">
+                <div class="uc4-result-empty-icon">🗂️</div>
+                <h4>질문별 결과 카드가 이 영역에 표시됩니다</h4>
+                <p>다음 단계에서 각 시나리오별 Answer Summary, Selected Model, SQL, Rows Preview, Diagnostic 카드를 실제 예시 결과로 채워 응답부
+                  디자인을 완성합니다.</p>
               </div>
             </div>
           </div>

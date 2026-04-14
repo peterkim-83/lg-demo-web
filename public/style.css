@@ -1405,3 +1405,183 @@ body {
         min-height: 220px;
     }
 }
+
+
+/* ==========================================
+   UC4 Runtime Input Set 기반 입력부 개선 스타일
+   ========================================== */
+
+.uc4-control-panel-5 {
+    grid-template-columns: minmax(0, 1.45fr) repeat(3, minmax(0, 1fr));
+}
+
+.uc4-field-wide {
+    grid-column: span 1;
+}
+
+.uc4-runtime-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.uc4-runtime-item {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    min-width: 0;
+}
+
+.uc4-runtime-item strong {
+    display: block;
+    color: var(--text-main);
+    font-size: 0.92rem;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.uc4-runtime-item-wide {
+    grid-column: span 2;
+}
+
+.uc4-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.uc4-preset-card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: var(--shadow-sm);
+}
+
+.uc4-preset-card.active {
+    background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
+    border-color: #c7d2fe;
+}
+
+.uc4-preset-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.uc4-preset-index {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e0e7ff;
+    color: var(--primary);
+    font-size: 0.84rem;
+    font-weight: 800;
+}
+
+.uc4-preset-type {
+    color: var(--text-sub);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.uc4-preset-title {
+    font-size: 0.96rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.uc4-preset-desc {
+    color: var(--text-sub);
+    font-size: 0.84rem;
+    line-height: 1.55;
+}
+
+.uc4-prompt-list-vertical {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.uc4-prompt-list-vertical .uc4-prompt-chip {
+    width: 100%;
+    text-align: left;
+    white-space: normal;
+    line-height: 1.6;
+    border-radius: 14px;
+    padding: 12px 14px;
+}
+
+.uc4-prompt-chip.active {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #3730a3;
+}
+
+.uc4-result-empty {
+    min-height: 560px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 32px;
+}
+
+.uc4-result-empty-icon {
+    font-size: 2.8rem;
+    margin-bottom: 16px;
+}
+
+.uc4-result-empty h4 {
+    font-size: 1.08rem;
+    margin-bottom: 10px;
+}
+
+.uc4-result-empty p {
+    max-width: 540px;
+    color: var(--text-sub);
+    line-height: 1.7;
+}
+
+@media (max-width: 1180px) {
+
+    .uc4-control-panel-5,
+    .uc4-runtime-summary,
+    .uc4-preset-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .uc4-runtime-item-wide {
+        grid-column: span 2;
+    }
+}
+
+@media (max-width: 720px) {
+
+    .uc4-control-panel-5,
+    .uc4-runtime-summary,
+    .uc4-preset-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .uc4-runtime-item-wide {
+        grid-column: span 1;
+    }
+
+    .uc4-result-empty {
+        min-height: 360px;
+    }
+}
