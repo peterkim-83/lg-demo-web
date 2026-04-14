@@ -182,406 +182,523 @@
         </div>
       </section>
 
-      <section id="view-uc4" class="view-section">
-        <div class="page-header">
+
+
+      <section id="view-uc4" class="view-section uc4-view">
+        <div class="page-header uc4-page-header">
           <h1>🧠 CRM Text-to-SQL 자연어 질의</h1>
-          <p>최종 5종 Runtime Input 세트를 기준으로 데모용 가상 세션 컨텍스트를 선택하고, 질문을 자연어로 입력하는 화면 디자인입니다.</p>
+          <p>질문 세트를 먼저 고르고, 필요한 경우 세션 컨텍스트를 펼쳐 확인한 뒤, 좌측 질문 입력과 우측 응답 결과를 집중적으로 시연하는 구조입니다.</p>
         </div>
 
-        <div class="uc4-layout">
-          <div class="content-card uc4-session-card">
-            <div class="uc4-section-head">
+        <div class="uc4-shell">
+          <input class="uc4-scenario-radio" type="radio" name="uc4-scenario" id="uc4-scenario-1" checked>
+          <input class="uc4-scenario-radio" type="radio" name="uc4-scenario" id="uc4-scenario-2">
+          <input class="uc4-scenario-radio" type="radio" name="uc4-scenario" id="uc4-scenario-3">
+          <input class="uc4-scenario-radio" type="radio" name="uc4-scenario" id="uc4-scenario-4">
+          <input class="uc4-scenario-radio" type="radio" name="uc4-scenario" id="uc4-scenario-5">
+
+          <div class="content-card uc4-top-card">
+            <div class="uc4-section-head uc4-section-head-compact">
               <div>
-                <h3>가상 세션 컨텍스트 선택</h3>
-                <p>실제 n8n Runtime Input을 염두에 두고, 질문 세트와 세션 맥락을 함께 선택하는 상단 구성입니다.</p>
+                <h3>질문 세트 선택</h3>
+                <p>상단 카드에서 처리 가능한 질문 유형을 보여주고, 선택된 세트에 맞는 세션 컨텍스트와 응답 예시를 아래에 연결합니다.</p>
               </div>
-              <span class="uc4-preview-badge">Runtime Input Preview</span>
+              <span class="uc4-preview-badge">Scenario-Driven Demo</span>
             </div>
 
-            <div class="control-panel uc4-control-panel uc4-control-panel-5">
-              <div class="uc4-field uc4-field-wide">
-                <label class="field-label" for="uc4-runtimeSet">데모 시나리오 / Runtime Input 세트</label>
-                <select id="uc4-runtimeSet" class="select-field">
-                  <option selected>1. 영업대표 성과 심층 분석 (Scorecard)</option>
-                  <option>2. 고객사 360도 입체 뷰 (Account 360)</option>
-                  <option>3. 과거 스냅샷 기반 타임트래블 (Snapshot Time-travel)</option>
-                  <option>4. 리스크 및 핵심 요소 기반 AI 진단 (Risk &amp; Reason Analysis)</option>
-                  <option>5. 파이프라인 병목 현상 분석 (Stage Trend)</option>
-                </select>
+            <div class="uc4-scenario-picker">
+              <div class="uc4-scenario-grid">
+                <label class="uc4-scenario-card" for="uc4-scenario-1">
+                  <span class="uc4-scenario-index">1</span>
+                  <div class="uc4-scenario-type">monthly_aggregate</div>
+                  <div class="uc4-scenario-title">영업대표 성과 심층 분석</div>
+                  <p class="uc4-scenario-desc">이번 달 Win Rate와 Sales Cycle을 지난달과 비교 분석하는 질문</p>
+                </label>
+
+                <label class="uc4-scenario-card" for="uc4-scenario-2">
+                  <span class="uc4-scenario-index">2</span>
+                  <div class="uc4-scenario-type">account_view_aggregate</div>
+                  <div class="uc4-scenario-title">고객사 360도 입체 뷰</div>
+                  <p class="uc4-scenario-desc">특정 고객사의 Won 금액, Open Pipeline, 최신 업데이트를 브리핑</p>
+                </label>
+
+                <label class="uc4-scenario-card" for="uc4-scenario-3">
+                  <span class="uc4-scenario-index">3</span>
+                  <div class="uc4-scenario-type">snapshot_time_series</div>
+                  <div class="uc4-scenario-title">스냅샷 타임트래블</div>
+                  <p class="uc4-scenario-desc">최근 한 달 Open Pipeline이 얼마나 증가했는지 시점 비교</p>
+                </label>
+
+                <label class="uc4-scenario-card" for="uc4-scenario-4">
+                  <span class="uc4-scenario-index">4</span>
+                  <div class="uc4-scenario-type">opportunity_diagnosis</div>
+                  <div class="uc4-scenario-title">리스크 및 핵심 요소 진단</div>
+                  <p class="uc4-scenario-desc">특정 Opportunity의 리스크 총점과 win/loss reason을 점검</p>
+                </label>
+
+                <label class="uc4-scenario-card" for="uc4-scenario-5">
+                  <span class="uc4-scenario-index">5</span>
+                  <div class="uc4-scenario-type">stage_bottleneck_trend</div>
+                  <div class="uc4-scenario-title">파이프라인 병목 분석</div>
+                  <p class="uc4-scenario-desc">최근 3개월 Stage별 Open Pipeline이 어디에 쏠리는지 확인</p>
+                </label>
               </div>
 
-              <div class="uc4-field">
-                <label class="field-label" for="uc4-persona">가상 사용자 페르소나</label>
-                <select id="uc4-persona" class="select-field">
-                  <option selected>영업대표 · 박지우</option>
-                  <option>Account Manager · 박지우</option>
-                  <option>Opportunity Owner · 박지우</option>
-                  <option>영업 본부장 · 데모 관리자</option>
-                </select>
+              <div class="uc4-context-zone">
+                <details class="uc4-context-details" data-scenario="1">
+                  <summary>
+                    <div class="uc4-summary-copy"><strong>선택된 세션 컨텍스트</strong><span>박 지우 · 영업1팀 · Owner Workspace ·
+                        mart_owner_scorecard_monthly</span></div>
+                    <div class="uc4-summary-pills"><span class="uc4-summary-pill">owner_id ·
+                        005TJ000003inheYAA</span><span class="uc4-summary-pill">record_page_object · null</span><span
+                        class="uc4-summary-pill">candidate_models · 1</span></div>
+                  </summary>
+                  <div class="uc4-context-body">
+                    <div class="uc4-context-grid">
+                      <div class="uc4-context-item"><span>timezone</span><strong>Asia/Seoul</strong></div>
+                      <div class="uc4-context-item"><span>current_date</span><strong>2026-04-14</strong></div>
+                      <div class="uc4-context-item"><span>record_page_object</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>record_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>account_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>opportunity_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>owner_id</span><strong>005TJ000003inheYAA</strong></div>
+                      <div class="uc4-context-item uc4-context-item-wide">
+                        <span>candidate_models</span><strong>analytics_mart_dbt.mart_owner_scorecard_monthly</strong>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+                <details class="uc4-context-details" data-scenario="2">
+                  <summary>
+                    <div class="uc4-summary-copy"><strong>선택된 세션 컨텍스트</strong><span>박 지우 · Account Record Page · 지에스건설
+                        주식회사 · mart_account_360_current</span></div>
+                    <div class="uc4-summary-pills"><span class="uc4-summary-pill">account_id ·
+                        001TJ00000De275YAB</span><span class="uc4-summary-pill">record_page_object · Account</span><span
+                        class="uc4-summary-pill">candidate_models · 2</span></div>
+                  </summary>
+                  <div class="uc4-context-body">
+                    <div class="uc4-context-grid">
+                      <div class="uc4-context-item"><span>timezone</span><strong>Asia/Seoul</strong></div>
+                      <div class="uc4-context-item"><span>current_date</span><strong>2026-04-14</strong></div>
+                      <div class="uc4-context-item"><span>record_page_object</span><strong>Account</strong></div>
+                      <div class="uc4-context-item"><span>record_id</span><strong>001TJ00000De275YAB</strong></div>
+                      <div class="uc4-context-item"><span>account_id</span><strong>001TJ00000De275YAB</strong></div>
+                      <div class="uc4-context-item"><span>opportunity_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>owner_id</span><strong>005TJ000003inheYAA</strong></div>
+                      <div class="uc4-context-item uc4-context-item-wide">
+                        <span>candidate_models</span><strong>analytics_mart_dbt.mart_account_360_current,
+                          analytics_mart_dbt.dim_account_current</strong></div>
+                    </div>
+                  </div>
+                </details>
+                <details class="uc4-context-details" data-scenario="3">
+                  <summary>
+                    <div class="uc4-summary-copy"><strong>선택된 세션 컨텍스트</strong><span>박 지우 · Snapshot Time-travel · 최근 한 달
+                        Open Pipeline 증감 비교</span></div>
+                    <div class="uc4-summary-pills"><span class="uc4-summary-pill">owner_id ·
+                        005TJ000003inheYAA</span><span class="uc4-summary-pill">record_page_object · null</span><span
+                        class="uc4-summary-pill">candidate_models · 1</span></div>
+                  </summary>
+                  <div class="uc4-context-body">
+                    <div class="uc4-context-grid">
+                      <div class="uc4-context-item"><span>timezone</span><strong>Asia/Seoul</strong></div>
+                      <div class="uc4-context-item"><span>current_date</span><strong>2026-04-14</strong></div>
+                      <div class="uc4-context-item"><span>record_page_object</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>record_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>account_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>opportunity_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>owner_id</span><strong>005TJ000003inheYAA</strong></div>
+                      <div class="uc4-context-item uc4-context-item-wide">
+                        <span>candidate_models</span><strong>analytics_mart_dbt.fct_opportunity_snapshot_daily</strong>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+                <details class="uc4-context-details" data-scenario="4">
+                  <summary>
+                    <div class="uc4-summary-copy"><strong>선택된 세션 컨텍스트</strong><span>박 지우 · Opportunity Record Page ·
+                        더샵포레나 키친 패키지 납품</span></div>
+                    <div class="uc4-summary-pills"><span class="uc4-summary-pill">opportunity_id ·
+                        006JO00000BpGR3YAN</span><span class="uc4-summary-pill">record_page_object ·
+                        Opportunity</span><span class="uc4-summary-pill">candidate_models · 1</span></div>
+                  </summary>
+                  <div class="uc4-context-body">
+                    <div class="uc4-context-grid">
+                      <div class="uc4-context-item"><span>timezone</span><strong>Asia/Seoul</strong></div>
+                      <div class="uc4-context-item"><span>current_date</span><strong>2026-04-14</strong></div>
+                      <div class="uc4-context-item"><span>record_page_object</span><strong>Opportunity</strong></div>
+                      <div class="uc4-context-item"><span>record_id</span><strong>006JO00000BpGR3YAN</strong></div>
+                      <div class="uc4-context-item"><span>account_id</span><strong>001TJ00000De275YAB</strong></div>
+                      <div class="uc4-context-item"><span>opportunity_id</span><strong>006JO00000BpGR3YAN</strong></div>
+                      <div class="uc4-context-item"><span>owner_id</span><strong>005TJ000003inheYAA</strong></div>
+                      <div class="uc4-context-item uc4-context-item-wide">
+                        <span>candidate_models</span><strong>analytics_mart_dbt.obt_opportunity_search</strong></div>
+                    </div>
+                  </div>
+                </details>
+                <details class="uc4-context-details" data-scenario="5">
+                  <summary>
+                    <div class="uc4-summary-copy"><strong>선택된 세션 컨텍스트</strong><span>영업 본부장 관점 · Pipeline Trend Dashboard
+                        · mart_stage_trend_monthly</span></div>
+                    <div class="uc4-summary-pills"><span class="uc4-summary-pill">owner_id ·
+                        005TJ000003inheYAA</span><span class="uc4-summary-pill">record_page_object · null</span><span
+                        class="uc4-summary-pill">candidate_models · 1</span></div>
+                  </summary>
+                  <div class="uc4-context-body">
+                    <div class="uc4-context-grid">
+                      <div class="uc4-context-item"><span>timezone</span><strong>Asia/Seoul</strong></div>
+                      <div class="uc4-context-item"><span>current_date</span><strong>2026-04-14</strong></div>
+                      <div class="uc4-context-item"><span>record_page_object</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>record_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>account_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>opportunity_id</span><strong>null</strong></div>
+                      <div class="uc4-context-item"><span>owner_id</span><strong>005TJ000003inheYAA</strong></div>
+                      <div class="uc4-context-item uc4-context-item-wide">
+                        <span>candidate_models</span><strong>analytics_mart_dbt.mart_stage_trend_monthly</strong></div>
+                    </div>
+                  </div>
+                </details>
               </div>
-
-              <div class="uc4-field">
-                <label class="field-label" for="uc4-page">현재 페이지 컨텍스트</label>
-                <select id="uc4-page" class="select-field">
-                  <option selected>Owner Workspace</option>
-                  <option>Account Record Page</option>
-                  <option>Opportunity Record Page</option>
-                  <option>Pipeline Trend Dashboard</option>
-                </select>
-              </div>
-
-              <div class="uc4-field">
-                <label class="field-label" for="uc4-pattern">질문 패턴</label>
-                <select id="uc4-pattern" class="select-field">
-                  <option selected>monthly_aggregate</option>
-                  <option>account_view_aggregate</option>
-                  <option>snapshot_time_series_comparison</option>
-                  <option>specific_opportunity_diagnosis</option>
-                  <option>stage_bottleneck_trend</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="uc4-runtime-summary">
-              <div class="uc4-runtime-item">
-                <span class="uc4-meta-label">timezone</span>
-                <strong>Asia/Seoul</strong>
-              </div>
-              <div class="uc4-runtime-item">
-                <span class="uc4-meta-label">current_date</span>
-                <strong>2026-04-14</strong>
-              </div>
-              <div class="uc4-runtime-item">
-                <span class="uc4-meta-label">record_page_object</span>
-                <strong>null</strong>
-              </div>
-              <div class="uc4-runtime-item">
-                <span class="uc4-meta-label">record_id</span>
-                <strong>null</strong>
-              </div>
-              <div class="uc4-runtime-item">
-                <span class="uc4-meta-label">account_id</span>
-                <strong>null</strong>
-              </div>
-              <div class="uc4-runtime-item">
-                <span class="uc4-meta-label">opportunity_id</span>
-                <strong>null</strong>
-              </div>
-              <div class="uc4-runtime-item">
-                <span class="uc4-meta-label">owner_id</span>
-                <strong>005TJ000003inheYAA</strong>
-              </div>
-              <div class="uc4-runtime-item uc4-runtime-item-wide">
-                <span class="uc4-meta-label">candidate_models</span>
-                <strong>analytics_mart_dbt.mart_owner_scorecard_monthly</strong>
-              </div>
-            </div>
-
-            <div class="uc4-context-strip">
-              <div class="uc4-chip">retry_count: 0</div>
-              <div class="uc4-chip">auto_retry_count: 0</div>
-              <div class="uc4-chip">max_auto_retry_count: 1</div>
-              <div class="uc4-chip">execution mode: stateless PoC</div>
-              <div class="uc4-chip">future-ready: chatbot tool embedding</div>
             </div>
           </div>
 
-          <div class="uc4-split">
-            <div class="content-card uc4-left-panel">
-              <div class="uc4-section-head">
+          <div class="uc4-bottom-split">
+            <div class="content-card uc4-work-card uc4-left-work">
+              <div class="uc4-section-head uc4-section-head-compact">
                 <div>
-                  <h3>자연어 질의 입력</h3>
-                  <p>최종 5종 질문 세트를 프리셋으로 두고, 필요 시 그대로 복사하거나 수정하여 질의할 수 있는 입력 구조입니다.</p>
+                  <h3>질문 입력</h3>
+                  <p>선택된 질문 세트의 대표 질문이 보이고, 같은 세션 컨텍스트 안에서 변주 질문 3개를 빠르게 바꿔 시연할 수 있는 구조입니다.</p>
                 </div>
               </div>
-
-              <div class="uc4-preset-grid">
-                <div class="uc4-preset-card active">
-                  <div class="uc4-preset-top">
-                    <span class="uc4-preset-index">1</span>
-                    <span class="uc4-preset-type">Scorecard</span>
+              <div class="uc4-question-panels">
+                <div class="uc4-question-panel" data-scenario="1"><label class="field-label" for="uc4-question-s1">대표
+                    질문</label><textarea id="uc4-question-s1"
+                    class="uc4-textarea">이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.</textarea>
+                  <div class="uc4-bubble-list"><button type="button" class="uc4-bubble-chip">이번 달 내 Win Rate만 한 줄로
+                      요약해줘.</button><button type="button" class="uc4-bubble-chip">평균 수주 소요 기간만 지난달과
+                      비교해줘.</button><button type="button" class="uc4-bubble-chip">이번 달 성과를 영업 코칭 문장으로 정리해줘.</button>
                   </div>
-                  <div class="uc4-preset-title">영업대표 성과 심층 분석</div>
-                  <div class="uc4-preset-desc">월별 수주율과 평균 수주 소요 기간을 비교 분석하는 시나리오</div>
                 </div>
-                <div class="uc4-preset-card">
-                  <div class="uc4-preset-top">
-                    <span class="uc4-preset-index">2</span>
-                    <span class="uc4-preset-type">Account 360</span>
+                <div class="uc4-question-panel" data-scenario="2"><label class="field-label" for="uc4-question-s2">대표
+                    질문</label><textarea id="uc4-question-s2"
+                    class="uc4-textarea">이 고객사의 누적 수주 금액(Won Amount)과 현재 진행 중인 파이프라인 금액 비율을 알려주고, 가장 최근에 영업기회가 업데이트된 날짜가 언제인지 요약해 브리핑해줘.</textarea>
+                  <div class="uc4-bubble-list"><button type="button" class="uc4-bubble-chip">이 고객사의 Won 대비 Open Pipeline
+                      비율만 보여줘.</button><button type="button" class="uc4-bubble-chip">최근에 업데이트된 영업기회 날짜를 강조해서
+                      알려줘.</button><button type="button" class="uc4-bubble-chip">이 계정의 상태를 영업 요약 메모처럼 정리해줘.</button>
                   </div>
-                  <div class="uc4-preset-title">고객사 360도 입체 뷰</div>
-                  <div class="uc4-preset-desc">특정 고객사의 Won 금액, Open Pipeline, 최근 업데이트를 요약</div>
                 </div>
-                <div class="uc4-preset-card">
-                  <div class="uc4-preset-top">
-                    <span class="uc4-preset-index">3</span>
-                    <span class="uc4-preset-type">Snapshot</span>
-                  </div>
-                  <div class="uc4-preset-title">과거 스냅샷 기반 타임트래블</div>
-                  <div class="uc4-preset-desc">최근 한 달 간 Open 파이프라인 금액 변화를 시계열로 비교</div>
+                <div class="uc4-question-panel" data-scenario="3"><label class="field-label" for="uc4-question-s3">대표
+                    질문</label><textarea id="uc4-question-s3"
+                    class="uc4-textarea">최근 한 달 새 내가 진행 중인(Open) 파이프라인 총 금액이 첫 스냅샷 때보다 얼마나 늘었어?</textarea>
+                  <div class="uc4-bubble-list"><button type="button" class="uc4-bubble-chip">첫 스냅샷과 최신 스냅샷 금액을 각각
+                      알려줘.</button><button type="button" class="uc4-bubble-chip">증가 금액을 억 원 단위로 브리핑해줘.</button><button
+                      type="button" class="uc4-bubble-chip">최근 한 달 파이프라인이 늘어난 추세인지 판단해줘.</button></div>
                 </div>
-                <div class="uc4-preset-card">
-                  <div class="uc4-preset-top">
-                    <span class="uc4-preset-index">4</span>
-                    <span class="uc4-preset-type">Diagnosis</span>
-                  </div>
-                  <div class="uc4-preset-title">리스크 및 핵심 요소 기반 AI 진단</div>
-                  <div class="uc4-preset-desc">특정 Opportunity의 리스크 총점과 win/loss reason을 진단</div>
+                <div class="uc4-question-panel" data-scenario="4"><label class="field-label" for="uc4-question-s4">대표
+                    질문</label><textarea id="uc4-question-s4"
+                    class="uc4-textarea">현재 보고 있는 이 영업기회의 리스크 총점(opportunity_risk_total_score)은 몇 점이고, 기록된 주요 수주/실패 요인(win_reason, loss_reason)은 무엇인지 확인해서 현재 상태를 요약해줘.</textarea>
+                  <div class="uc4-bubble-list"><button type="button" class="uc4-bubble-chip">이 영업기회의 리스크 총점만 먼저
+                      알려줘.</button><button type="button" class="uc4-bubble-chip">현재 단계와 Forecast를 함께
+                      요약해줘.</button><button type="button" class="uc4-bubble-chip">win_reason / loss_reason 기록 여부를
+                      점검해줘.</button></div>
                 </div>
-                <div class="uc4-preset-card">
-                  <div class="uc4-preset-top">
-                    <span class="uc4-preset-index">5</span>
-                    <span class="uc4-preset-type">Stage Trend</span>
+                <div class="uc4-question-panel" data-scenario="5"><label class="field-label" for="uc4-question-s5">대표
+                    질문</label><textarea id="uc4-question-s5"
+                    class="uc4-textarea">최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게 변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.</textarea>
+                  <div class="uc4-bubble-list"><button type="button" class="uc4-bubble-chip">가장 금액이 많이 쌓인 Stage를
+                      알려줘.</button><button type="button" class="uc4-bubble-chip">Negotiation과 Proposal만
+                      비교해줘.</button><button type="button" class="uc4-bubble-chip">최근 3개월 병목 구간을 임원 브리핑처럼 정리해줘.</button>
                   </div>
-                  <div class="uc4-preset-title">파이프라인 병목 현상 분석</div>
-                  <div class="uc4-preset-desc">최근 3개월 영업 단계별 Open Pipeline 금액 추이를 파악</div>
                 </div>
               </div>
-
-              <div class="uc4-prompt-list uc4-prompt-list-vertical">
-                <button class="uc4-prompt-chip active" type="button">이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales
-                  Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.</button>
-                <button class="uc4-prompt-chip" type="button">이 고객사의 누적 수주 금액(Won Amount)과 현재 진행 중인 파이프라인 금액 비율을 알려주고,
-                  가장 최근에 영업기회가 업데이트된 날짜가 언제인지 요약해 브리핑해줘.</button>
-                <button class="uc4-prompt-chip" type="button">최근 한 달 새 내가 진행 중인(Open) 파이프라인 총 금액이 첫 스냅샷 때보다 얼마나
-                  늘었어?</button>
-                <button class="uc4-prompt-chip" type="button">현재 보고 있는 이 영업기회의 리스크 총점(opportunity_risk_total_score)은 몇
-                  점이고, 기록된 주요 수주/실패 요인(win_reason, loss_reason)은 무엇인지 확인해서 현재 상태를 요약해줘.</button>
-                <button class="uc4-prompt-chip" type="button">최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게
-                  변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.</button>
-              </div>
-
-              <label class="field-label" for="uc4-question">질문 입력</label>
-              <textarea id="uc4-question" class="uc4-textarea"
-                placeholder="예: 최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게 변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.">이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.</textarea>
-
               <div class="uc4-left-footer">
-                <div class="uc4-mode-card">
-                  <span class="uc4-mode-label">Demo Narrative</span>
-                  <strong>지금은 단발성 Text-to-SQL 엔진 시연</strong>
-                  <p>현재 화면은 고정된 세션 컨텍스트와 자연어 질의만으로 SQL 생성·검증·실행이 가능한 인상을 주는 PoC입니다. 이후 동일 엔진을 멀티턴 챗봇의 도구로 삽입할 수 있는 구조로
-                    확장합니다.</p>
+                <div class="uc4-mode-card"><span class="uc4-mode-label">Demo Flow</span><strong>질문 세트 선택 → 컨텍스트 확인 → 질의
+                    실행</strong>
+                  <p>지금 단계는 상단 카드 선택에 따라 대표 질문·세션 컨텍스트·응답 결과 영역이 함께 바뀌는 화면 구조를 먼저 검증하는 디자인 반영본입니다.</p>
                 </div>
-
-                <div class="uc4-action-row">
-                  <button class="btn btn-outline" type="button">프리셋 초기화</button>
-                  <button class="btn btn-primary" type="button">▶ 질의 실행</button>
-                </div>
+                <div class="uc4-action-row"><button class="btn btn-outline" type="button">질문 초기화</button><button
+                    class="btn btn-primary" type="button">▶ SQL 실행</button></div>
               </div>
             </div>
 
-            <div class="content-card uc4-right-panel">
-              <div class="uc4-section-head">
+            <div class="content-card uc4-work-card uc4-right-work">
+              <div class="uc4-section-head uc4-section-head-compact">
                 <div>
                   <h3>응답 결과</h3>
-                  <p>5종 실제 실행 결과를 기준으로, LLM 자연어 브리핑 + 핵심 지표 + rows preview + SQL trace가 함께 보이도록 재구성한 응답 영역입니다.</p>
-                </div>
-                <span class="status-badge success">SUCCESS DEMO</span>
+                  <p>AI 브리핑을 유지하면서, 질문 유형별로 KPI·Rows Preview·인사이트·SQL trace를 풍부하게 보여주는 핵심 시연 영역입니다.</p>
+                </div><span class="status-badge success">Demo Response</span>
               </div>
-
-              <div class="uc4-response-shell">
-                <div class="uc4-response-topline">
-                  <span class="status-badge success">SUCCESS</span>
-                  <span class="uc4-inline-meta">question_shape: monthly_aggregate</span>
-                  <span class="uc4-inline-meta">selected_model: mart_owner_scorecard_monthly</span>
-                  <span class="uc4-inline-meta">row_count: 2</span>
-                  <span class="uc4-inline-meta">retry_count: 0</span>
-                </div>
-
-                <div class="uc4-result-card uc4-answer-card">
-                  <div class="uc4-result-title">AI 브리핑</div>
-                  <div class="uc4-result-text">
-                    박 지우 님의 2026년 4월 기준 전체 영업기회 수주율은 <strong>66.7%</strong>이며, 평균 수주 소요 기간은 <strong>106일</strong>입니다.
-                    다만 2026년 3월에는 동일 지표가 집계되지 않아 전월과의 직접 비교는 제한적입니다. 현재 데이터만 보면 승률은 양호한 편이며,
-                    이후 전월 데이터가 누적되면 추세 기반 성과 코칭 메시지까지 자연스럽게 확장할 수 있습니다.
+              <div class="uc4-result-panels">
+                <div class="uc4-result-panel" data-scenario="1">
+                  <div class="uc4-response-topline"><span class="status-badge success">SUCCESS</span><span
+                      class="uc4-inline-meta">question_shape · monthly_aggregate</span><span
+                      class="uc4-inline-meta">row_count · 2</span><span class="uc4-inline-meta">retry_count · 0</span>
                   </div>
-                </div>
-
-                <div class="uc4-kpi-band">
-                  <div class="uc4-kpi-card">
-                    <span class="uc4-kpi-label">Win Rate</span>
-                    <strong class="uc4-kpi-value">66.7%</strong>
-                    <span class="uc4-kpi-note">2026-04 snapshot</span>
+                  <div class="uc4-result-card uc4-answer-card">
+                    <div class="uc4-result-title">AI 브리핑</div>
+                    <div class="uc4-result-text">박 지우 님의 2026년 4월 기준 수주율은 <strong>66.7%</strong>, 평균 수주 소요 기간은
+                      <strong>106일</strong>입니다. 3월 데이터는 null이라 직접 비교는 제한적이지만, 현재 스냅샷만 놓고 보면 성과 지표는 양호한 편입니다.</div>
                   </div>
-                  <div class="uc4-kpi-card">
-                    <span class="uc4-kpi-label">Sales Cycle</span>
-                    <strong class="uc4-kpi-value">106일</strong>
-                    <span class="uc4-kpi-note">avg_sales_cycle_days_won</span>
-                  </div>
-                  <div class="uc4-kpi-card">
-                    <span class="uc4-kpi-label">Owner</span>
-                    <strong class="uc4-kpi-value">박 지우</strong>
-                    <span class="uc4-kpi-note">영업1팀</span>
-                  </div>
-                  <div class="uc4-kpi-card">
-                    <span class="uc4-kpi-label">비교 가능성</span>
-                    <strong class="uc4-kpi-value">제한적</strong>
-                    <span class="uc4-kpi-note">3월 값 null</span>
-                  </div>
-                </div>
-
-                <details class="uc4-details" open>
-                  <summary>Rows Preview · 월간 성과 비교</summary>
-                  <div class="uc4-table-wrap">
-                    <table class="uc4-result-table">
-                      <thead>
-                        <tr>
-                          <th>snapshot_month</th>
-                          <th>owner_name</th>
-                          <th>owner_department</th>
-                          <th>win_rate</th>
-                          <th>avg_sales_cycle_days_won</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td>2026-04-01</td>
-                          <td>박 지우</td>
-                          <td>영업1팀</td>
-                          <td>0.6666666667</td>
-                          <td>106</td>
-                        </tr>
-                        <tr>
-                          <td>2026-03-01</td>
-                          <td>박 지우</td>
-                          <td>영업1팀</td>
-                          <td>null</td>
-                          <td>null</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </details>
-
-                <div class="uc4-result-card">
-                  <div class="uc4-result-title">응답 유형별 카드 구조 예시</div>
-                  <div class="uc4-archetype-grid">
-                    <div class="uc4-archetype-card">
-                      <div class="uc4-archetype-head">
-                        <span class="uc4-archetype-tag">Account 360</span>
-                        <span class="uc4-mini-badge">1 row</span>
-                      </div>
-                      <div class="uc4-archetype-title">고객사 브리핑형</div>
-                      <p class="uc4-archetype-summary">지에스건설 주식회사의 누적 수주 금액은 19.84억 원, 현재 진행 중인 파이프라인은 24.14억 원이며, Won
-                        대비 Pipeline 비율은 0.821874입니다. 최근 영업기회 업데이트 시점은 2026-04-14 07:58:20 UTC입니다.</p>
-                      <div class="uc4-metric-list">
-                        <div class="uc4-metric-row"><span class="uc4-metric-name">won_amount</span><strong
-                            class="uc4-metric-value">1,984,170,000</strong></div>
-                        <div class="uc4-metric-row"><span class="uc4-metric-name">open_pipeline_amount</span><strong
-                            class="uc4-metric-value">2,414,201,400</strong></div>
-                        <div class="uc4-metric-row"><span class="uc4-metric-name">won_to_pipeline_ratio</span><strong
-                            class="uc4-metric-value">0.821874</strong></div>
-                      </div>
+                  <div class="uc4-kpi-band">
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Win Rate</span><strong
+                        class="uc4-kpi-value">66.7%</strong><span class="uc4-kpi-note">2026-04</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Sales Cycle</span><strong
+                        class="uc4-kpi-value">106일</strong><span class="uc4-kpi-note">avg_sales_cycle_days_won</span>
                     </div>
-
-                    <div class="uc4-archetype-card">
-                      <div class="uc4-archetype-head">
-                        <span class="uc4-archetype-tag">Snapshot</span>
-                        <span class="uc4-mini-badge">aggregate</span>
-                      </div>
-                      <div class="uc4-archetype-title">증감 분석형</div>
-                      <p class="uc4-archetype-summary">최근 한 달 동안 Open 파이프라인 총액은 첫 스냅샷 94.29억 원에서 최신 스냅샷 110.79억 원으로
-                        증가했고, 총 증가액은 16.5억 원입니다.</p>
-                      <div class="uc4-metric-list">
-                        <div class="uc4-metric-row"><span
-                            class="uc4-metric-name">first_snapshot_open_pipeline_amount</span><strong
-                            class="uc4-metric-value">9,429,004,312</strong></div>
-                        <div class="uc4-metric-row"><span
-                            class="uc4-metric-name">latest_snapshot_open_pipeline_amount</span><strong
-                            class="uc4-metric-value">11,079,004,312</strong></div>
-                        <div class="uc4-metric-row"><span class="uc4-metric-name">increase_amount</span><strong
-                            class="uc4-metric-value">1,650,000,000</strong></div>
-                      </div>
-                    </div>
-
-                    <div class="uc4-archetype-card">
-                      <div class="uc4-archetype-head">
-                        <span class="uc4-archetype-tag">Opportunity</span>
-                        <span class="uc4-mini-badge">retry 2</span>
-                      </div>
-                      <div class="uc4-archetype-title">개별 기회 진단형</div>
-                      <p class="uc4-archetype-summary">더샵포레나 키친 패키지 납품 건은 Proposal 단계, Forecast는 Best Case이며 금액은
-                        428,040,000원입니다. 리스크 총점은 66점이고 win_reason, loss_reason은 아직 기록되지 않았습니다.</p>
-                      <div class="uc4-metric-list">
-                        <div class="uc4-metric-row"><span class="uc4-metric-name">stage_name</span><strong
-                            class="uc4-metric-value">Proposal</strong></div>
-                        <div class="uc4-metric-row"><span class="uc4-metric-name">forecast_category_name</span><strong
-                            class="uc4-metric-value">Best Case</strong></div>
-                        <div class="uc4-metric-row"><span
-                            class="uc4-metric-name">opportunity_risk_total_score</span><strong
-                            class="uc4-metric-value">66</strong></div>
-                      </div>
-                    </div>
-
-                    <div class="uc4-archetype-card uc4-archetype-card-wide">
-                      <div class="uc4-archetype-head">
-                        <span class="uc4-archetype-tag">Stage Trend</span>
-                        <span class="uc4-mini-badge">13 rows</span>
-                      </div>
-                      <div class="uc4-archetype-title">트렌드 / 병목 인사이트형</div>
-                      <p class="uc4-archetype-summary">최근 3개월 결과를 보면 Negotiation(61.05억), Proposal(51.07억),
-                        Registration(49.44억) 단계에 파이프라인이 집중되어 있습니다. 특히 2026-04 시점에 중후반 단계 금액이 크게 쏠려 있어 병목 진단 카드에 적합한
-                        형태입니다.</p>
-                      <div class="uc4-trend-list">
-                        <div class="uc4-trend-row"><span>Negotiation</span>
-                          <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:100%"></span></div>
-                          <strong>6,104,521,812</strong>
-                        </div>
-                        <div class="uc4-trend-row"><span>Proposal</span>
-                          <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:84%"></span></div>
-                          <strong>5,106,910,750</strong>
-                        </div>
-                        <div class="uc4-trend-row"><span>Registration</span>
-                          <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:81%"></span></div>
-                          <strong>4,944,254,400</strong>
-                        </div>
-                        <div class="uc4-trend-row"><span>Go/No-Go</span>
-                          <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:39%"></span></div>
-                          <strong>2,358,755,750</strong>
-                        </div>
-                      </div>
-                    </div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Owner</span><strong class="uc4-kpi-value">박
+                        지우</strong><span class="uc4-kpi-note">영업1팀</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">전월 비교</span><strong
+                        class="uc4-kpi-value">제한적</strong><span class="uc4-kpi-note">3월 null</span></div>
                   </div>
-                </div>
-
-                <div class="uc4-bottom-grid">
-                  <div class="uc4-result-card uc4-diagnostic-card">
-                    <div class="uc4-result-title">실행 메타데이터</div>
-                    <div class="uc4-meta-grid">
-                      <div class="uc4-meta-item">
-                        <span class="uc4-meta-label">status</span>
-                        <span class="uc4-meta-value">SUCCESS</span>
-                      </div>
-                      <div class="uc4-meta-item">
-                        <span class="uc4-meta-label">question_shape</span>
-                        <span class="uc4-meta-value">monthly_aggregate</span>
-                      </div>
-                      <div class="uc4-meta-item">
-                        <span class="uc4-meta-label">selected_model</span>
-                        <span class="uc4-meta-value">analytics_mart_dbt.mart_owner_scorecard_monthly</span>
-                      </div>
-                      <div class="uc4-meta-item">
-                        <span class="uc4-meta-label">row_count</span>
-                        <span class="uc4-meta-value">2</span>
-                      </div>
+                  <details class="uc4-details" open>
+                    <summary>Rows Preview</summary>
+                    <div class="uc4-table-wrap">
+                      <table class="uc4-result-table">
+                        <thead>
+                          <tr>
+                            <th>snapshot_month</th>
+                            <th>owner_name</th>
+                            <th>win_rate</th>
+                            <th>avg_sales_cycle_days_won</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>2026-04-01</td>
+                            <td>박 지우</td>
+                            <td>0.6666666667</td>
+                            <td>106</td>
+                          </tr>
+                          <tr>
+                            <td>2026-03-01</td>
+                            <td>박 지우</td>
+                            <td>null</td>
+                            <td>null</td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
-                    <div class="uc4-brief-note">이 영역은 실제 구현 시 retry_count, evaluation.status, failure_reason, execution
-                      trace를 카드형으로 자연스럽게 노출하는 위치입니다.</div>
-                  </div>
-
-                  <details class="uc4-details uc4-sql-details" open>
+                  </details>
+                  <details class="uc4-details">
                     <summary>Generated SQL Trace</summary>
-                    <pre class="uc4-code-block">SELECT
-  snapshot_month,
-  owner_id,
-  owner_name,
-  owner_department,
-  win_rate,
-  avg_sales_cycle_days_won
+                    <pre class="uc4-code-block">SELECT snapshot_month, owner_id, owner_name, owner_department, win_rate, avg_sales_cycle_days_won
 FROM analytics_mart_dbt.mart_owner_scorecard_monthly
 WHERE owner_id = '005TJ000003inheYAA'
   AND snapshot_month IN ('2026-04-01', '2026-03-01')
 ORDER BY snapshot_month DESC</pre>
+                  </details>
+                </div>
+                <div class="uc4-result-panel" data-scenario="2">
+                  <div class="uc4-response-topline"><span class="status-badge success">SUCCESS</span><span
+                      class="uc4-inline-meta">question_shape · unknown</span><span class="uc4-inline-meta">row_count ·
+                      1</span><span class="uc4-inline-meta">selected_model · mart_account_360_current</span></div>
+                  <div class="uc4-result-card uc4-answer-card">
+                    <div class="uc4-result-title">AI 브리핑</div>
+                    <div class="uc4-result-text">지에스건설 주식회사의 누적 수주 금액은 <strong>19.84억 원</strong>, 현재 진행 중인 파이프라인은
+                      <strong>24.14억 원</strong>입니다. Won 대비 Pipeline 비율은 <strong>0.821874</strong>이며, 최근 영업기회 업데이트 시점은
+                      <strong>2026-04-14 07:58:20 UTC</strong>입니다.</div>
+                  </div>
+                  <div class="uc4-kpi-band">
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Won Amount</span><strong
+                        class="uc4-kpi-value">19.84억</strong><span class="uc4-kpi-note">won_amount</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Open Pipeline</span><strong
+                        class="uc4-kpi-value">24.14억</strong><span class="uc4-kpi-note">open_pipeline_amount</span>
+                    </div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Won / Pipeline</span><strong
+                        class="uc4-kpi-value">0.821874</strong><span class="uc4-kpi-note">ratio</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">최근 업데이트</span><strong
+                        class="uc4-kpi-value">04-14</strong><span class="uc4-kpi-note">07:58 UTC</span></div>
+                  </div>
+                  <details class="uc4-details" open>
+                    <summary>Account 360 Snapshot</summary>
+                    <div class="uc4-metric-list">
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">account_name</span><strong
+                          class="uc4-metric-value">지에스건설 주식회사</strong></div>
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">won_amount</span><strong
+                          class="uc4-metric-value">1,984,170,000</strong></div>
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">open_pipeline_amount</span><strong
+                          class="uc4-metric-value">2,414,201,400</strong></div>
+                      <div class="uc4-metric-row"><span
+                          class="uc4-metric-name">latest_opportunity_system_modstamp_at</span><strong
+                          class="uc4-metric-value">2026-04-14T07:58:20Z</strong></div>
+                    </div>
+                  </details>
+                  <details class="uc4-details">
+                    <summary>Generated SQL Trace</summary>
+                    <pre class="uc4-code-block">SELECT account_id, account_name, won_amount, open_pipeline_amount,
+CASE WHEN open_pipeline_amount = 0 THEN NULL ELSE CAST(won_amount AS decimal(38, 6)) / NULLIF(CAST(open_pipeline_amount AS decimal(38, 6)), 0) END AS won_to_pipeline_ratio,
+latest_opportunity_system_modstamp_at
+FROM analytics_mart_dbt.mart_account_360_current
+WHERE account_id = '001TJ00000De275YAB'</pre>
+                  </details>
+                </div>
+                <div class="uc4-result-panel" data-scenario="3">
+                  <div class="uc4-response-topline"><span class="status-badge success">SUCCESS</span><span
+                      class="uc4-inline-meta">question_shape · aggregate</span><span class="uc4-inline-meta">row_count ·
+                      1</span><span class="uc4-inline-meta">selected_model · fct_opportunity_snapshot_daily</span></div>
+                  <div class="uc4-result-card uc4-answer-card">
+                    <div class="uc4-result-title">AI 브리핑</div>
+                    <div class="uc4-result-text">최근 한 달 동안 Open 파이프라인 총액은 첫 스냅샷 <strong>94.29억 원</strong>에서 최신 스냅샷
+                      <strong>110.79억 원</strong>으로 증가했습니다. 총 증가액은 <strong>16.5억 원</strong>으로, 최근 파이프라인이 유의미하게 확대된 흐름으로 볼
+                      수 있습니다.</div>
+                  </div>
+                  <div class="uc4-kpi-band">
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">First Snapshot</span><strong
+                        class="uc4-kpi-value">94.29억</strong><span class="uc4-kpi-note">start</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Latest Snapshot</span><strong
+                        class="uc4-kpi-value">110.79억</strong><span class="uc4-kpi-note">latest</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Increase</span><strong
+                        class="uc4-kpi-value">16.5억</strong><span class="uc4-kpi-note">delta</span></div>
+                  </div>
+                  <details class="uc4-details" open>
+                    <summary>Aggregate Output</summary>
+                    <div class="uc4-metric-list">
+                      <div class="uc4-metric-row"><span
+                          class="uc4-metric-name">first_snapshot_open_pipeline_amount</span><strong
+                          class="uc4-metric-value">9,429,004,312</strong></div>
+                      <div class="uc4-metric-row"><span
+                          class="uc4-metric-name">latest_snapshot_open_pipeline_amount</span><strong
+                          class="uc4-metric-value">11,079,004,312</strong></div>
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">increase_amount</span><strong
+                          class="uc4-metric-value">1,650,000,000</strong></div>
+                    </div>
+                  </details>
+                  <details class="uc4-details">
+                    <summary>Generated SQL Trace</summary>
+                    <pre class="uc4-code-block">SELECT SUM(CASE WHEN rn_asc = 1 THEN amount ELSE 0 END) AS first_snapshot_open_pipeline_amount,
+SUM(CASE WHEN rn_desc = 1 THEN amount ELSE 0 END) AS latest_snapshot_open_pipeline_amount,
+SUM(CASE WHEN rn_desc = 1 THEN amount ELSE 0 END) - SUM(CASE WHEN rn_asc = 1 THEN amount ELSE 0 END) AS increase_amount
+FROM (
+  SELECT opportunity_id, snapshot_date, amount, is_open,
+         ROW_NUMBER() OVER (PARTITION BY opportunity_id ORDER BY snapshot_date ASC) AS rn_asc,
+         ROW_NUMBER() OVER (PARTITION BY opportunity_id ORDER BY snapshot_date DESC) AS rn_desc
+  FROM analytics_mart_dbt.fct_opportunity_snapshot_daily
+  WHERE owner_id = '005TJ000003inheYAA' AND is_open = 1 AND snapshot_date >= '2026-03-14'
+) s;</pre>
+                  </details>
+                </div>
+                <div class="uc4-result-panel" data-scenario="4">
+                  <div class="uc4-response-topline"><span class="status-badge success">SUCCESS</span><span
+                      class="uc4-inline-meta">question_shape · aggregate</span><span class="uc4-inline-meta">row_count ·
+                      1</span><span class="uc4-inline-meta">retry_count · 2</span></div>
+                  <div class="uc4-result-card uc4-answer-card">
+                    <div class="uc4-result-title">AI 브리핑</div>
+                    <div class="uc4-result-text">현재 Opportunity <strong>더샵포레나 키친 패키지 납품</strong>은
+                      <strong>Proposal</strong> 단계이며 Forecast는 <strong>Best Case</strong>입니다. 금액은
+                      <strong>428,040,000원</strong>, 리스크 총점은 <strong>66점</strong>입니다. win_reason과 loss_reason은 아직 기록되지
+                      않았습니다.</div>
+                  </div>
+                  <div class="uc4-kpi-band">
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Risk Score</span><strong
+                        class="uc4-kpi-value">66</strong><span class="uc4-kpi-note">opportunity_risk_total_score</span>
+                    </div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Stage</span><strong
+                        class="uc4-kpi-value">Proposal</strong><span class="uc4-kpi-note">stage_name</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Forecast</span><strong
+                        class="uc4-kpi-value">Best Case</strong><span class="uc4-kpi-note">forecast_category_name</span>
+                    </div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Amount</span><strong
+                        class="uc4-kpi-value">4.28억</strong><span class="uc4-kpi-note">close_date · 2026-05-31</span>
+                    </div>
+                  </div>
+                  <details class="uc4-details" open>
+                    <summary>Opportunity Diagnosis</summary>
+                    <div class="uc4-metric-list">
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">opportunity_name</span><strong
+                          class="uc4-metric-value">더샵포레나 키친 패키지 납품</strong></div>
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">win_reason</span><strong
+                          class="uc4-metric-value">null</strong></div>
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">loss_reason</span><strong
+                          class="uc4-metric-value">null</strong></div>
+                      <div class="uc4-metric-row"><span class="uc4-metric-name">is_open / is_won / is_lost</span><strong
+                          class="uc4-metric-value">1 / 0 / 0</strong></div>
+                    </div>
+                  </details>
+                  <details class="uc4-details">
+                    <summary>Generated SQL Trace</summary>
+                    <pre class="uc4-code-block">SELECT TOP (1) opportunity_id, opportunity_name, account_id, account_name, owner_id, owner_name, stage_name,
+forecast_category_name, amount, close_date, opportunity_risk_total_score, win_reason, loss_reason,
+is_open, is_won_flag, is_lost
+FROM analytics_mart_dbt.obt_opportunity_search
+WHERE opportunity_id = '006JO00000BpGR3YAN'</pre>
+                  </details>
+                </div>
+                <div class="uc4-result-panel" data-scenario="5">
+                  <div class="uc4-response-topline"><span class="status-badge success">SUCCESS</span><span
+                      class="uc4-inline-meta">question_shape · unknown</span><span class="uc4-inline-meta">row_count ·
+                      13</span><span class="uc4-inline-meta">selected_model · mart_stage_trend_monthly</span></div>
+                  <div class="uc4-result-card uc4-answer-card">
+                    <div class="uc4-result-title">AI 브리핑</div>
+                    <div class="uc4-result-text">최근 3개월 추이를 보면 <strong>Negotiation(61.05억)</strong>,
+                      <strong>Proposal(51.07억)</strong>, <strong>Registration(49.44억)</strong> 단계에 파이프라인이 집중되어 있습니다. 특히
+                      2026-04 시점의 중후반 단계 금액 집중이 뚜렷해 병목 진단 포인트로 활용하기 좋습니다.</div>
+                  </div>
+                  <div class="uc4-kpi-band">
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Top Bottleneck</span><strong
+                        class="uc4-kpi-value">Negotiation</strong><span class="uc4-kpi-note">61.05억</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">2nd Stage</span><strong
+                        class="uc4-kpi-value">Proposal</strong><span class="uc4-kpi-note">51.07억</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">3rd Stage</span><strong
+                        class="uc4-kpi-value">Registration</strong><span class="uc4-kpi-note">49.44억</span></div>
+                    <div class="uc4-kpi-card"><span class="uc4-kpi-label">Rows</span><strong
+                        class="uc4-kpi-value">13</strong><span class="uc4-kpi-note">trend output</span></div>
+                  </div>
+                  <details class="uc4-details" open>
+                    <summary>Stage Trend Insight</summary>
+                    <div class="uc4-trend-list">
+                      <div class="uc4-trend-row"><span>Negotiation</span>
+                        <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:100%"></span></div>
+                        <strong>6,104,521,812</strong>
+                      </div>
+                      <div class="uc4-trend-row"><span>Proposal</span>
+                        <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:84%"></span></div>
+                        <strong>5,106,910,750</strong>
+                      </div>
+                      <div class="uc4-trend-row"><span>Registration</span>
+                        <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:81%"></span></div>
+                        <strong>4,944,254,400</strong>
+                      </div>
+                      <div class="uc4-trend-row"><span>Go/No-Go</span>
+                        <div class="uc4-trend-bar"><span class="uc4-trend-fill" style="width:39%"></span></div>
+                        <strong>2,358,755,750</strong>
+                      </div>
+                    </div>
+                  </details>
+                  <details class="uc4-details">
+                    <summary>Rows Preview</summary>
+                    <div class="uc4-table-wrap">
+                      <table class="uc4-result-table">
+                        <thead>
+                          <tr>
+                            <th>snapshot_month</th>
+                            <th>stage_name</th>
+                            <th>open_pipeline_amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>2026-04-01</td>
+                            <td>Negotiation</td>
+                            <td>6,104,521,812</td>
+                          </tr>
+                          <tr>
+                            <td>2026-04-01</td>
+                            <td>Proposal</td>
+                            <td>5,106,910,750</td>
+                          </tr>
+                          <tr>
+                            <td>2026-04-01</td>
+                            <td>Registration</td>
+                            <td>4,944,254,400</td>
+                          </tr>
+                          <tr>
+                            <td>2026-04-01</td>
+                            <td>Go/No-Go</td>
+                            <td>2,358,755,750</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </details>
                 </div>
               </div>
@@ -589,6 +706,8 @@ ORDER BY snapshot_month DESC</pre>
           </div>
         </div>
       </section>
+
+
 
 
     </main>
