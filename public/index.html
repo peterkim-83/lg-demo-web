@@ -20,6 +20,7 @@
         <button class="menu-item" data-target="view-uc1">📄 1. PDF 추출 자동화</button>
         <button class="menu-item" data-target="view-uc2">📊 2. 제안서 초안 생성</button>
         <button class="menu-item" data-target="view-uc3">🎙️ 3. Voice Agent Callbot</button>
+        <button class="menu-item" data-target="view-uc4">🧠 4. Text-to-SQL</button>
       </nav>
     </aside>
 
@@ -47,6 +48,11 @@
             <div class="card-icon">🎙️</div>
             <div class="card-title">음성 에이전트 Callbot</div>
             <div class="card-desc">자연스러운 대화와 가벼운 지식 문서를 기반으로 음성 답변을 제공합니다.</div>
+          </div>
+          <div class="demo-card" data-target="view-uc4">
+            <div class="card-icon">🧠</div>
+            <div class="card-title">Text-to-SQL 자연어 질의</div>
+            <div class="card-desc">가상 세션 컨텍스트를 선택하고 CRM 데이터를 자연어로 질의하는 분석 데모입니다.</div>
           </div>
         </div>
       </section>
@@ -175,6 +181,182 @@
           </div>
         </div>
       </section>
+
+      <section id="view-uc4" class="view-section">
+        <div class="page-header">
+          <h1>🧠 CRM Text-to-SQL 자연어 질의</h1>
+          <p>가상의 사용자 페르소나와 세션 정보를 선택한 뒤 자연어 질문을 입력하면, 우측에 구조화된 분석 결과가 카드 형태로 표시되는 데모 화면입니다.</p>
+        </div>
+
+        <div class="uc4-layout">
+          <div class="content-card uc4-session-card">
+            <div class="uc4-section-head">
+              <div>
+                <h3>가상 세션 컨텍스트 선택</h3>
+                <p>데모 대상 사용자의 역할, 소속, 현재 화면 맥락을 선택하는 영역입니다.</p>
+              </div>
+              <span class="uc4-preview-badge">Demo Session</span>
+            </div>
+
+            <div class="control-panel uc4-control-panel">
+              <div class="uc4-field">
+                <label class="field-label" for="uc4-persona">페르소나</label>
+                <select id="uc4-persona" class="select-field">
+                  <option selected>영업대표 · 박지우</option>
+                  <option>영업관리자 · 김현수</option>
+                  <option>사업부 리더 · 이서연</option>
+                </select>
+              </div>
+
+              <div class="uc4-field">
+                <label class="field-label" for="uc4-team">소속 / 팀</label>
+                <select id="uc4-team" class="select-field">
+                  <option selected>Enterprise Sales / Korea</option>
+                  <option>Commercial Sales / APAC</option>
+                  <option>Strategic Accounts / Global</option>
+                </select>
+              </div>
+
+              <div class="uc4-field">
+                <label class="field-label" for="uc4-page">현재 페이지 컨텍스트</label>
+                <select id="uc4-page" class="select-field">
+                  <option selected>Opportunity Workspace</option>
+                  <option>Account 360</option>
+                  <option>Pipeline Dashboard</option>
+                </select>
+              </div>
+
+              <div class="uc4-field">
+                <label class="field-label" for="uc4-timezone">Timezone</label>
+                <select id="uc4-timezone" class="select-field">
+                  <option selected>Asia/Seoul</option>
+                  <option>UTC</option>
+                  <option>America/Los_Angeles</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="uc4-context-strip">
+              <div class="uc4-chip">owner_id: 005TJ000003inheYAA</div>
+              <div class="uc4-chip">record_page_object: Opportunity</div>
+              <div class="uc4-chip">current_date: 2026-04-14</div>
+              <div class="uc4-chip">conversation mode: single-turn</div>
+            </div>
+          </div>
+
+          <div class="uc4-split">
+            <div class="content-card uc4-left-panel">
+              <div class="uc4-section-head">
+                <div>
+                  <h3>자연어 질의 입력</h3>
+                  <p>세션 컨텍스트를 바탕으로 사용자의 질문을 보내는 영역입니다.</p>
+                </div>
+              </div>
+
+              <div class="uc4-prompt-list">
+                <button class="uc4-prompt-chip" type="button">내 Commit 금액 합계가 얼마야?</button>
+                <button class="uc4-prompt-chip" type="button">제안 단계 opportunity 수가 몇 개야?</button>
+                <button class="uc4-prompt-chip" type="button">가장 큰 deal 5개 보여줘</button>
+              </div>
+
+              <label class="field-label" for="uc4-question">질문 입력</label>
+              <textarea id="uc4-question" class="uc4-textarea"
+                placeholder="예: 나의 open opportunity 중 Proposal 단계는 몇 개야?"></textarea>
+
+              <div class="uc4-left-footer">
+                <div class="uc4-mode-card">
+                  <span class="uc4-mode-label">실행 모드</span>
+                  <strong>Stateless Text-to-SQL Demo</strong>
+                  <p>현재는 단발성 질의 엔진을 시연하는 화면이며, 향후 멀티턴 챗봇 도구로 확장 가능합니다.</p>
+                </div>
+
+                <div class="uc4-action-row">
+                  <button class="btn btn-outline" type="button">초기화</button>
+                  <button class="btn btn-primary" type="button">▶ 질의 실행</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="content-card uc4-right-panel">
+              <div class="uc4-section-head">
+                <div>
+                  <h3>응답 결과</h3>
+                  <p>응답 유형별로 카드가 쌓이는 결과 패널 디자인입니다.</p>
+                </div>
+                <span class="status-badge info">PREVIEW</span>
+              </div>
+
+              <div class="uc4-result-stack">
+                <div class="uc4-result-card uc4-answer-card">
+                  <div class="uc4-result-title">Answer Summary</div>
+                  <p class="uc4-result-text">
+                    현재 Commit 금액 합계는 <strong>2,524,257,700원</strong>입니다. 아래에는 사용된 모델, 생성된 SQL, 결과 preview가 구조화되어 표시됩니다.
+                  </p>
+                </div>
+
+                <div class="uc4-result-card">
+                  <div class="uc4-result-title">Selected Model / SQL</div>
+                  <div class="uc4-meta-grid">
+                    <div class="uc4-meta-item">
+                      <span class="uc4-meta-label">Selected Model</span>
+                      <span class="uc4-meta-value">analytics_mart_dbt.fct_opportunity_current</span>
+                    </div>
+                    <div class="uc4-meta-item">
+                      <span class="uc4-meta-label">Question Shape</span>
+                      <span class="uc4-meta-value">aggregate</span>
+                    </div>
+                  </div>
+                  <pre class="uc4-code-block">SELECT SUM(CASE WHEN forecast_category_name = 'Commit' THEN amount ELSE 0 END) AS commit_amount_sum
+FROM analytics_mart_dbt.fct_opportunity_current
+WHERE owner_id = '005TJ000003inheYAA'
+  AND is_open = 1;</pre>
+                </div>
+
+                <div class="uc4-result-card">
+                  <div class="uc4-result-title">Rows Preview</div>
+                  <div class="uc4-table-wrap">
+                    <table class="uc4-result-table">
+                      <thead>
+                        <tr>
+                          <th>commit_amount_sum</th>
+                          <th>row_count</th>
+                          <th>status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>2,524,257,700</td>
+                          <td>1</td>
+                          <td>SUCCESS</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="uc4-result-card uc4-diagnostic-card">
+                  <div class="uc4-result-title">Execution / Diagnostic</div>
+                  <div class="uc4-diagnostic-grid">
+                    <div class="uc4-diagnostic-item">
+                      <span class="uc4-meta-label">Retry Count</span>
+                      <strong>0</strong>
+                    </div>
+                    <div class="uc4-diagnostic-item">
+                      <span class="uc4-meta-label">Auto Retry</span>
+                      <strong>Allowed</strong>
+                    </div>
+                    <div class="uc4-diagnostic-item">
+                      <span class="uc4-meta-label">Output Contract</span>
+                      <strong>Card-based UI</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
 
     </main>
   </div>
