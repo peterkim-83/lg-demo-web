@@ -1108,6 +1108,197 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
     }
   });
 
+  // ==========================================
+  // 🧠 Use Case 4: Text-to-SQL Scenario UI
+  // ✅ 기존 UC1~UC3 로직 유지 + UC4 인터랙션만 추가
+  // ==========================================
+  const uc4ScenarioCards = Array.from(document.querySelectorAll('.uc4-scenario-card'));
+  const uc4ContextPanels = Array.from(document.querySelectorAll('.uc4-context-details'));
+  const uc4ResultPanels = Array.from(document.querySelectorAll('.uc4-result-panel'));
+  const uc4VariantStrip = document.getElementById('uc4-variantStrip');
+  const uc4QuestionInput = document.getElementById('uc4-questionInput');
+  const uc4RunBtn = document.getElementById('uc4-runBtn');
+  const uc4ResultPanelsWrap = document.getElementById('uc4-resultPanels');
+
+  if (uc4ScenarioCards.length && uc4QuestionInput && uc4VariantStrip) {
+    const UC4_SCENARIOS = {
+      '1': {
+        question: '이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.',
+        variants: [
+          {
+            label: '전월 대비 성과 진단',
+            text: '이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.'
+          },
+          {
+            label: '핵심 지표 요약',
+            text: '이번 달 나의 영업 수주율(Win Rate)과 딜 하나를 수주하는 데 걸리는 평균 시간(Sales Cycle)을 알려줘.'
+          },
+          {
+            label: '실적 개선 여부 분석',
+            text: '수주 소요 기간과 수주율을 기준으로 볼 때, 내 영업 퍼포먼스가 지난달보다 얼마나 나아졌는지 수치로 비교해줘.'
+          }
+        ]
+      },
+      '2': {
+        question: '이 고객사의 누적 수주 금액(Won Amount)과 현재 진행 중인 파이프라인 금액 비율을 알려주고, 가장 최근에 영업기회가 업데이트된 날짜가 언제인지 요약해 브리핑해줘.',
+        variants: [
+          {
+            label: '고객사 요약 브리핑',
+            text: '이 고객사의 누적 수주 금액(Won Amount)과 현재 진행 중인 파이프라인 금액 비율을 알려주고, 가장 최근에 영업기회가 업데이트된 날짜가 언제인지 요약해 브리핑해줘.'
+          },
+          {
+            label: '수주 비중 분석',
+            text: '이 고객사와 진행 중인 전체 금액 중에서 이미 성공적으로 수주(Won)된 금액의 비율은 얼마나 돼?'
+          },
+          {
+            label: '최근 액티비티 체크',
+            text: '해당 고객사의 총 수주 금액 규모와 현재 열려있는 파이프라인 금액을 비교해주고, 이 고객사 건으로 가장 마지막에 액션이 일어난 시점이 언제인지 확인해줘.'
+          }
+        ]
+      },
+      '3': {
+        question: '최근 한 달 새 내가 진행 중인(Open) 파이프라인 총 금액이 첫 스냅샷 때보다 얼마나 늘었어?',
+        variants: [
+          {
+            label: '파이프라인 증감액',
+            text: '최근 한 달 새 내가 진행 중인(Open) 파이프라인 총 금액이 첫 스냅샷 때보다 얼마나 늘었어?'
+          },
+          {
+            label: '진행 중 딜 규모 변화',
+            text: '한 달 전 데이터와 비교해서, 지금 활성화되어 있는 영업기회들의 파이프라인 총액이 얼마나 증가했는지 계산해줘.'
+          },
+          {
+            label: '과거 대비 모멘텀',
+            text: '가장 오래된 스냅샷 날짜 기준으로 현재 나의 오픈 파이프라인 금액(Amount) 총합은 얼마나 큰 폭으로 성장했어?'
+          }
+        ]
+      },
+      '4': {
+        question: '현재 보고 있는 이 영업기회의 리스크 총점(opportunity_risk_total_score)은 몇 점이고, 기록된 주요 수주/실패 요인(win_reason, loss_reason)은 무엇인지 확인해서 현재 상태를 요약해줘.',
+        variants: [
+          {
+            label: '영업기회 리스크 진단',
+            text: '현재 보고 있는 이 영업기회의 리스크 총점(opportunity_risk_total_score)은 몇 점이고, 기록된 주요 수주/실패 요인(win_reason, loss_reason)은 무엇인지 확인해서 현재 상태를 요약해줘.'
+          },
+          {
+            label: '딜 건전성 체크',
+            text: '이 딜의 리스크 점수(Risk Score)를 확인해주고, 만약 수주나 실패 요인이 이미 기록되어 있다면 어떤 내용인지 함께 브리핑해줘.'
+          },
+          {
+            label: 'AI 딜 컨설팅',
+            text: '해당 영업기회의 수주 가능성을 진단하기 위해 리스크 총점과 수주/실패 요인(win/loss reason) 정보를 추출해줘.'
+          }
+        ]
+      },
+      '5': {
+        question: '최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게 변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.',
+        variants: [
+          {
+            label: '스테이지별 정체 분석',
+            text: '최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게 변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.'
+          },
+          {
+            label: '병목 구간 탐지',
+            text: '지난 3개월간 어느 영업 단계(Stage)에 파이프라인 금액이 가장 많이 몰려있어? 자금이 묶여 있는 병목 구간을 분석해줘.'
+          },
+          {
+            label: '월별 파이프라인 흐름',
+            text: '최근 3개월 기준 영업 단계별(Stage) 파이프라인 총액 변화를 보여주고, 제안이나 협상 단계에서 지연되는 딜이 있는지 알려줘.'
+          }
+        ]
+      }
+    };
+
+    let uc4ActiveScenarioId = '1';
+    let uc4ActiveVariantIndex = -1;
+
+    function setUc4ActiveResult(scenarioId) {
+      uc4ResultPanels.forEach((panel) => {
+        panel.classList.toggle('is-active', panel.dataset.scenario === scenarioId);
+      });
+    }
+
+    function setUc4ActiveContext(scenarioId) {
+      uc4ContextPanels.forEach((detailsEl) => {
+        const isTarget = detailsEl.dataset.scenario === scenarioId;
+        detailsEl.classList.toggle('is-active', isTarget);
+        if (isTarget) {
+          detailsEl.open = true;
+        } else {
+          detailsEl.open = false;
+        }
+      });
+    }
+
+    function renderUc4Variants(scenarioId) {
+      const scenario = UC4_SCENARIOS[scenarioId];
+      uc4VariantStrip.innerHTML = '';
+      if (!scenario || !Array.isArray(scenario.variants)) return;
+
+      scenario.variants.forEach((variant, index) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'uc4-variant-chip';
+        if (index === uc4ActiveVariantIndex) btn.classList.add('is-active');
+
+        btn.textContent = `[${variant.label}]`;
+
+        btn.title = variant.text;
+        btn.setAttribute('aria-label', `${variant.label}: ${variant.text}`);
+
+        btn.addEventListener('click', () => {
+          uc4ActiveVariantIndex = index;
+          uc4QuestionInput.value = variant.text;
+          renderUc4Variants(scenarioId);
+        });
+
+        uc4VariantStrip.appendChild(btn);
+      });
+    }
+
+    function setUc4Scenario(scenarioId, options = {}) {
+      const { preserveQuestion = false, preserveVariant = false } = options;
+      const scenario = UC4_SCENARIOS[scenarioId];
+      if (!scenario) return;
+
+      uc4ActiveScenarioId = scenarioId;
+      if (!preserveVariant) uc4ActiveVariantIndex = -1;
+
+      uc4ScenarioCards.forEach((card) => {
+        card.classList.toggle('is-active', card.dataset.scenario === scenarioId);
+      });
+
+      setUc4ActiveContext(scenarioId);
+      setUc4ActiveResult(scenarioId);
+      renderUc4Variants(scenarioId);
+
+      if (!preserveQuestion) {
+        uc4QuestionInput.value = scenario.question;
+      }
+    }
+
+    uc4ScenarioCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        const scenarioId = card.dataset.scenario;
+        setUc4Scenario(scenarioId);
+      });
+    });
+
+    uc4RunBtn?.addEventListener('click', () => {
+      setUc4ActiveResult(uc4ActiveScenarioId);
+      const activePanel = uc4ResultPanels.find((panel) => panel.dataset.scenario === uc4ActiveScenarioId);
+      if (activePanel) {
+        activePanel.classList.remove('uc4-run-pulse');
+        void activePanel.offsetWidth;
+        activePanel.classList.add('uc4-run-pulse');
+        activePanel.scrollTop = 0;
+      }
+      uc4ResultPanelsWrap?.scrollTo?.({ top: 0, behavior: 'smooth' });
+    });
+
+    setUc4Scenario('1');
+  }
+
   uc3End.addEventListener('click', async () => {
     await finalizeUC3Call({
       autoTriggered: false,
