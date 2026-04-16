@@ -590,9 +590,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const uc3Next = document.getElementById('uc3-nextBtn');
 
   const scripts = [
-    '1. 고객 콜 시작 멘트\n\n안녕하세요, LG 솔루션 데모 Callbot입니다. 오늘은 기업 고객 대상 CRM + AI 데모 시나리오를 가정해 통화 예시를 보여드립니다.\n\n- 고객 응대 및 문의 확인\n- 간단한 제품 관심사 파악\n- 구조화된 통화 로그 생성',
-    '2. 제품 제안 및 Follow-up\n\n고객이 관심을 보인 제품군에 대해 추가 정보를 제공하고, 다음 액션(예: 제안서 발송, 방문 일정 조율)을 자연스럽게 연결합니다.\n\n- 관심 제품 확인\n- 후속 자료 발송 제안\n- 영업 담당자 연결 시나리오',
-    '3. 콜 종료 및 로그 요약\n\n통화 종료 후에는 대화 내용을 구조화된 JSON으로 저장하고, AI가 자동 요약합니다.\n\n- 대화 요약\n- 고객 의도 / 관심사 태깅\n- 후속 액션 추천'
+    `[Context: A corporate IT director calls to equip a large executive conference room and the main company lobby.]
+Agent: Hello! You've reached LG Business Solutions. How can I help you upgrade your workspace today?
+User: Hi there. We are setting up a new executive boardroom for Microsoft Teams meetings. We need a really wide, large interactive board.
+Agent: Let me check that for you. For a large boardroom, our 105-inch 105TR5WP-B CreateBoard is an excellent choice for $13,333. It features an ultra-wide screen that is perfect for immersive video calls and supports Google Mobile Services. Would you like to hear about its audio features?
+User: Yes, does it have its own speakers? We prefer an all-in-one setup.
+Agent: Give me just a second to pull up the specs. Yes, it has built-in speakers and wireless connectivity, making it a true all-in-one solution. Are you also looking for any standard digital signage for your office lobby?
+User: Actually, yes. We want something similar in size but just for displaying company news and videos in the lobby, no touch needed.
+Agent: Let me check our standard signage lineup. I highly recommend the 105-inch 105BM5P-B Ultra Stretch Signage for $14,667. It offers a stunning 5-K resolution and includes a wireless screen share feature. Shall I send over a quote for both of these 105-inch displays?
+User: That sounds perfect. Please send the quote to my email.
+Agent: You've got it. I will send that over immediately. Have a wonderful day!`,
+
+    `[Context: A restaurant franchise owner is looking for self-ordering solutions and a menu board system for a new location.]
+Agent: Hello! You've reached LG Business Solutions. How can I help you upgrade your workspace today?
+User: Hi, I'm opening a new fast-casual restaurant. Space is a bit tight, but we need a self-ordering kiosk that customers can use easily.
+Agent: Let me check our kiosk options for compact spaces. We have the 22-inch 22KC3P-M self-service kiosk available for $2,400. It features a modular design that lets you easily attach peripherals like barcode scanners. Does this size sound like a good fit for your layout?
+User: That size is great. We want to make sure it's accessible for all our customers, including wheelchair users. Can we adjust the height?
+Agent: Give me just a second to verify the mounting options. Yes, it has versatile stand options sold separately, or it can be wall-mounted. When installed at the proper height, its touch interface perfectly supports ADA compliance. Do you also need any digital menu boards for behind the counter?
+User: We were actually thinking about a seamless LED wall instead of standard TVs for a more premium look.
+Agent: Let me look into our direct view LED signage. To power a stunning LED menu wall, you will use our CEAA LED Controller. You can also use LG Business Cloud to easily manage and update your menus remotely. Would you like me to connect you with an LED specialist to design the perfect wall size?
+User: Yes, please set that up. And send me the details on that 22-inch kiosk.
+Agent: I will arrange that consultation and email you the kiosk quote right away. Thank you for calling LG!`,
+
+    `[Context: A hospital administrator is looking for patient room entertainment and a projector for a new staff training center.]
+Agent: Hello! You've reached LG Business Solutions. How can I help you upgrade your workspace today?
+User: Hello. We are outfitting a new hospital wing and need interactive TVs attached to flexible arms for the patient beds.
+Agent: Let me check our healthcare lineup for you. I recommend the 15.6-inch 15LN766A model. It is a Pro:Centric Touch Screen Arm TV that includes a built-in web browser and apps for patient entertainment. Would you like to know more about its management system?
+User: Yes, our IT team needs to be able to manage the apps and welcome screens centrally.
+Agent: Give me just a second to confirm those details. Yes, the Pro:Centric platform allows your team to easily manage content and settings remotely across all patient rooms. Are you also upgrading the technology in your staff training rooms?
+User: We are. We need a really bright projector for our main lecture hall, something that is easy to use.
+Agent: Let me check our ProBeam lineup. The BF50RG is a high-performance laser projector that outputs 5000 lumens for $2,399.99. It runs on our webOS platform, making it incredibly user-friendly for your staff. Would you like me to add the projector and the patient TVs to a formal proposal?
+User: That would be incredibly helpful. Send it over whenever you can.
+Agent: I will get that proposal generated and sent to your inbox shortly. Have a great afternoon!`
   ];
 
   let currentPage = 0;
@@ -602,8 +631,42 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeUc3SessionSeq = 0;
 
   function renderScript() {
-    uc3Script.innerText = scripts[currentPage];
+    const rawLines = scripts[currentPage].split('\n');
+    const htmlLines = rawLines.map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return '<div class="script-spacer"></div>';
+
+      if (trimmed.startsWith('[')) {
+        return `<div class="context-line"><span class="context-text">${escapeHtml(trimmed)}</span></div>`;
+      }
+
+      if (trimmed.startsWith('Agent:')) {
+        const text = mergedLineText(trimmed, 'Agent:');
+        return `
+          <div class="agent-line">
+            <span class="speaker-badge agent-badge">Agent</span>
+            <span class="agent-text">${escapeHtml(text)}</span>
+          </div>`;
+      }
+
+      if (trimmed.startsWith('User:')) {
+        const text = mergedLineText(trimmed, 'User:');
+        return `
+          <div class="user-line">
+            <span class="speaker-badge user-badge">User</span>
+            <span class="user-text">${escapeHtml(text)}</span>
+          </div>`;
+      }
+
+      return `<div class="script-line script-free">${escapeHtml(trimmed)}</div>`;
+    });
+
+    uc3Script.innerHTML = htmlLines.join('');
     uc3Page.innerText = `${currentPage + 1} / ${scripts.length}`;
+  }
+
+  function mergedLineText(line, prefix) {
+    return line.slice(prefix.length).trim();
   }
 
   renderScript();

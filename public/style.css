@@ -811,9 +811,9 @@ body {
 }
 
 .agent-badge {
-    background: #e2e8f0;
-    color: #475569;
-    font-size: 0.78rem;
+    background: #f1f5f9;
+    color: #94a3b8;
+    font-size: 0.75rem;
 }
 
 .user-badge {
@@ -823,10 +823,10 @@ body {
 }
 
 .agent-text {
-    color: #475569;
-    font-weight: 500;
-    font-size: 0.98rem;
-    line-height: 1.8;
+    color: #94a3b8;
+    font-weight: 400;
+    font-size: 0.92rem;
+    line-height: 1.7;
     letter-spacing: -0.01em;
     max-width: calc(100% - 72px);
 }
