@@ -719,6 +719,58 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
       .replace(/'/g, '&#039;');
   }
 
+  function uc3NormalizeConversation(rawConversation) {
+    const list = Array.isArray(rawConversation) ? rawConversation : [];
+
+    return list
+      .map((item, idx) => {
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          const role = String(item.role || '').trim() || 'Agent';
+          const text = String(item.text || '').trim();
+          const rawIndex = item.index ?? (idx + 1);
+          const index = Number.isFinite(Number(rawIndex)) ? Number(rawIndex) : (idx + 1);
+
+          if (!text) return null;
+          return { index, role, text };
+        }
+
+        const line = String(item ?? '').trim();
+        if (!line) return null;
+
+        const matched = line.match(/^\s*(\d+)\)\s*(User|Agent)\s*:\s*([\s\S]*)$/i);
+        if (matched) {
+          return {
+            index: Number(matched[1]),
+            role: matched[2],
+            text: matched[3].trim()
+          };
+        }
+
+        return {
+          index: idx + 1,
+          role: 'Agent',
+          text: line.replace(/^\s*\d+\)\s*/, '').trim()
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function uc3NormalizeLogData(data) {
+    const normalizedConversation = uc3NormalizeConversation(
+      data?.conversation ?? data?.log ?? []
+    );
+
+    const rawStatus = String(data?.status || '').trim();
+    const summary = String(data?.summary || '').trim();
+
+    return {
+      ...data,
+      summary,
+      status: rawStatus || (normalizedConversation.length > 0 || summary ? 'SUCCESS' : 'UNKNOWN'),
+      conversation: normalizedConversation
+    };
+  }
+
   function createCallLogCard(data) {
     function escapeHtml(str) {
       return String(str ?? '')
@@ -729,11 +781,10 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
         .replace(/'/g, '&#039;');
     }
 
-    const summary = data?.summary ?? '요약이 제공되지 않았습니다.';
-    const status = data?.status ?? 'unknown';
-    const conversation = Array.isArray(data?.conversation) ? data.conversation : (
-      Array.isArray(data?.log) ? data.log : []
-    );
+    const normalized = uc3NormalizeLogData(data || {});
+    const summary = normalized.summary || '요약이 제공되지 않았습니다.';
+    const status = normalized.status || 'UNKNOWN';
+    const conversation = normalized.conversation;
 
     let badgeClass = 'info';
     const s = status.toLowerCase();
@@ -742,56 +793,56 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
 
     const conversationHtml = conversation.length > 0
       ? `
-        <div class="log-section">
-          <span class="log-label">대화 내용</span>
-          <div class="conversation-list">
-            ${conversation.map(item => {
+      <div class="log-section">
+        <span class="log-label">대화 내용</span>
+        <div class="conversation-list">
+          ${conversation.map(item => {
         const role = String(item.role || 'Agent');
         const isUser = role.toLowerCase() === 'user';
         return `
-                <div class="conversation-item ${isUser ? 'user-turn' : 'agent-turn'}">
-                  <div class="conversation-meta">
-                    <span class="conversation-index">${item.index ?? '-'}</span>
-                    <span class="conversation-role ${isUser ? 'user-role' : 'agent-role'}">${escapeHtml(role)}</span>
-                  </div>
-                  <div class="conversation-text">${escapeHtml(item.text || '')}</div>
+              <div class="conversation-item ${isUser ? 'user-turn' : 'agent-turn'}">
+                <div class="conversation-meta">
+                  <span class="conversation-index">${item.index ?? '-'}</span>
+                  <span class="conversation-role ${isUser ? 'user-role' : 'agent-role'}">${escapeHtml(role)}</span>
                 </div>
-              `;
+                <div class="conversation-text">${escapeHtml(item.text || '')}</div>
+              </div>
+            `;
       }).join('')}
-          </div>
-        </div>
-      `
-      : `
-        <div class="log-section">
-          <span class="log-label">대화 내용</span>
-          <div class="log-value">표시할 대화 내용이 없습니다.</div>
-        </div>
-      `;
-
-    return `
-      <div class="log-card calllog-card">
-        <div class="log-card-header">
-          <h4>🎤 AI 통화 분석 리포트</h4>
-          <span class="status-badge ${badgeClass}">${escapeHtml(status)}</span>
-        </div>
-
-        <div class="log-card-body">
-          <div class="log-section">
-            <span class="log-label">대화 요약</span>
-            <div class="log-value summary-highlight">${escapeHtml(summary)}</div>
-          </div>
-
-          ${conversationHtml}
-
-          <div class="raw-json-area">
-            <details>
-              <summary class="raw-json-toggle">🔍 원본 JSON 데이터 보기</summary>
-              <pre style="font-size: 0.7rem; background: #f1f5f9; padding: 10px; margin-top: 8px; border-radius: 6px; overflow-x: auto; border: 1px solid #e2e8f0;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
-            </details>
-          </div>
         </div>
       </div>
+    `
+      : `
+      <div class="log-section">
+        <span class="log-label">대화 내용</span>
+        <div class="log-value">표시할 대화 내용이 없습니다.</div>
+      </div>
     `;
+
+    return `
+    <div class="log-card calllog-card">
+      <div class="log-card-header">
+        <h4>🎤 AI 통화 분석 리포트</h4>
+        <span class="status-badge ${badgeClass}">${escapeHtml(status)}</span>
+      </div>
+
+      <div class="log-card-body">
+        <div class="log-section">
+          <span class="log-label">대화 요약</span>
+          <div class="log-value summary-highlight">${escapeHtml(summary)}</div>
+        </div>
+
+        ${conversationHtml}
+
+        <div class="raw-json-area">
+          <details>
+            <summary class="raw-json-toggle">🔍 원본 JSON 데이터 보기</summary>
+            <pre style="font-size: 0.7rem; background: #f1f5f9; padding: 10px; margin-top: 8px; border-radius: 6px; overflow-x: auto; border: 1px solid #e2e8f0;">${escapeHtml(JSON.stringify(normalized, null, 2))}</pre>
+          </details>
+        </div>
+      </div>
+    </div>
+  `;
   }
 
   async function finalizeUC3Call({
@@ -842,6 +893,7 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
       }
 
       const logData = await res.json();
+      const normalizedLogData = uc3NormalizeLogData(logData);
 
       // 응답이 돌아오는 동안 사용자가 새 통화를 다시 시작했으면, 오래된 응답은 버린다.
       if (sessionSeq !== activeUc3SessionSeq) {
@@ -851,7 +903,7 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
 
       uc3Loading.style.display = 'none';
       uc3StatusText.innerText = '대기 중';
-      uc3LogContent.innerHTML = createCallLogCard(logData);
+      uc3LogContent.innerHTML = createCallLogCard(normalizedLogData);
       uc3LogArea.style.display = 'flex';
     } catch (error) {
       if (sessionSeq !== activeUc3SessionSeq) {
@@ -873,7 +925,7 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
       if (sessionSeq === activeUc3SessionSeq) {
         currentCallId = null;
         isUC3Ending = false;
-        resetUC3ToIdle('&#128222; 통화 다시 시작');
+        resetUC3ToIdle('📞 통화 다시 시작');
       } else {
         isUC3Ending = false;
       }
