@@ -441,7 +441,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function buildUC2EmbedUrl(pdfViewUrl) {
     if (!pdfViewUrl) return '';
-    return `pdf-embed.html?src=${encodeURIComponent(pdfViewUrl)}`;
+
+    const encoded = encodeURIComponent(pdfViewUrl);
+
+    // pdf-embed.html은 file 파라미터를 읽는다.
+    // src도 함께 실어두어 혹시 기존 호환 코드가 있어도 깨지지 않게 한다.
+    return `pdf-embed.html?file=${encoded}&src=${encoded}`;
   }
 
   window.addEventListener('resize', () => {
