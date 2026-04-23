@@ -1071,114 +1071,197 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
   const UC4_SCENARIOS = {
     '1': {
       id: '1',
-      type: 'monthly_aggregate',
-      sessionSummary: '박 지우 · 영업1팀 · Owner Workspace · mart_owner_scorecard_monthly',
-      question: '이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.',
+      type: 'open_pipeline_priority_worklist',
+      cardCode: 'OPEN_PIPELINE_PRIORITY_WORKLIST',
+      cardTitle: '지금 가장 먼저 확인해야 할 고액 오픈 딜은?',
+      cardDescription: '고액 · 마감 임박 · 오픈 딜 우선순위',
+      sessionSummary: '박종명 · Open Pipeline Worklist · 고액/마감 임박 딜 우선순위',
+      question: '내 현재 오픈 기회 중에서 Close Date가 지나지 않은 건만 대상으로, 금액이 큰 순으로 5건을 보여줘. 각 건의 단계, 금액, Close Date를 같이 보여주고, 특히 마감이 임박한 건은 왜 먼저 봐야 하는지도 설명해줘.',
+      keywords: ['Open Pipeline', 'High Amount', 'Close Date'],
       session_context: {
         timezone: 'Asia/Seoul',
-        current_date: '2026-04-14',
+        current_date: '2025-03-20',
         record_page_object: null,
         record_id: null,
         account_id: null,
         opportunity_id: null,
-        owner_id: '005TJ000003inheYAA'
-      },
-      candidate_models: ['analytics_mart_dbt.mart_owner_scorecard_monthly'],
-      variants: [
-        { id: '1-base', label: '전월 대비 성과 진단', question: '이번 달 나의 전체 영업기회 수주율(Win Rate)과 평균 수주 소요 기간(Sales Cycle)은 어떻게 돼? 지난달 데이터와 비교해서 내가 개선되고 있는지 분석해줘.' },
-        { id: '1-summary', label: '핵심 지표 요약', question: '이번 달 나의 영업 수주율(Win Rate)과 딜 하나를 수주하는 데 걸리는 평균 시간(Sales Cycle)을 알려줘.' },
-        { id: '1-improvement', label: '실적 개선 여부 분석', question: '수주 소요 기간과 수주율을 기준으로 볼 때, 내 영업 퍼포먼스가 지난달보다 얼마나 나아졌는지 수치로 비교해줘.' }
-      ]
-    },
-    '2': {
-      id: '2',
-      type: 'account_view_aggregate',
-      sessionSummary: '박 지우 · Account Record Page · 지에스건설 주식회사 · mart_account_360_current',
-      question: '이 고객사의 누적 수주 금액(Won Amount)과 현재 진행 중인 파이프라인 금액 비율을 알려주고, 가장 최근에 영업기회가 업데이트된 날짜가 언제인지 요약해 브리핑해줘.',
-      session_context: {
-        timezone: 'Asia/Seoul',
-        current_date: '2026-04-14',
-        record_page_object: 'Account',
-        record_id: '001TJ00000De275YAB',
-        account_id: '001TJ00000De275YAB',
-        opportunity_id: null,
-        owner_id: '005TJ000003inheYAA'
-      },
-      candidate_models: ['analytics_mart_dbt.mart_account_360_current', 'analytics_mart_dbt.dim_account_current'],
-      variants: [
-        { id: '2-base', label: '고객사 요약 브리핑', question: '이 고객사의 누적 수주 금액(Won Amount)과 현재 진행 중인 파이프라인 금액 비율을 알려주고, 가장 최근에 영업기회가 업데이트된 날짜가 언제인지 요약해 브리핑해줘.' },
-        { id: '2-ratio', label: '수주 비중 분석', question: '이 고객사와 진행 중인 전체 금액 중에서 이미 성공적으로 수주(Won)된 금액의 비율은 얼마나 돼?' },
-        { id: '2-activity', label: '최근 액티비티 체크', question: '해당 고객사의 총 수주 금액 규모와 현재 열려있는 파이프라인 금액을 비교해주고, 이 고객사 건으로 가장 마지막에 액션이 일어난 시점이 언제인지 확인해줘.' }
-      ]
-    },
-    '3': {
-      id: '3',
-      type: 'snapshot_time_series_comparison',
-      sessionSummary: '박 지우 · Snapshot Time-travel · 최근 한 달 Open Pipeline 증감 비교',
-      question: '최근 한 달 새 내가 진행 중인(Open) 파이프라인 총 금액이 첫 스냅샷 때보다 얼마나 늘었어?',
-      session_context: {
-        timezone: 'Asia/Seoul',
-        current_date: '2026-04-14',
-        record_page_object: null,
-        record_id: null,
-        account_id: null,
-        opportunity_id: null,
-        owner_id: '005TJ000003inheYAA'
-      },
-      candidate_models: ['analytics_mart_dbt.fct_opportunity_snapshot_daily'],
-      variants: [
-        { id: '3-base', label: '파이프라인 증감액', question: '최근 한 달 새 내가 진행 중인(Open) 파이프라인 총 금액이 첫 스냅샷 때보다 얼마나 늘었어?' },
-        { id: '3-change', label: '진행 중 딜 규모 변화', question: '한 달 전 데이터와 비교해서, 지금 활성화되어 있는 영업기회들의 파이프라인 총액이 얼마나 증가했는지 계산해줘.' },
-        { id: '3-momentum', label: '과거 대비 모멘텀', question: '가장 오래된 스냅샷 날짜 기준으로 현재 나의 오픈 파이프라인 금액(Amount) 총합은 얼마나 큰 폭으로 성장했어?' }
-      ]
-    },
-    '4': {
-      id: '4',
-      type: 'specific_opportunity_diagnosis',
-      sessionSummary: '박 지우 · Opportunity Record Page · 더샵포레나 키친 패키지 납품',
-      question: '현재 보고 있는 이 영업기회의 리스크 총점(opportunity_risk_total_score)은 몇 점이고, 기록된 주요 수주/실패 요인(win_reason, loss_reason)은 무엇인지 확인해서 현재 상태를 요약해줘.',
-      session_context: {
-        timezone: 'Asia/Seoul',
-        current_date: '2026-04-14',
-        record_page_object: 'Opportunity',
-        record_id: '006JO00000BpGR3YAN',
-        account_id: '001TJ00000De275YAB',
-        opportunity_id: '006JO00000BpGR3YAN',
-        owner_id: '005TJ000003inheYAA'
+        owner_id: '0052x000003pHryAAE'
       },
       candidate_models: ['analytics_mart_dbt.obt_opportunity_search'],
       variants: [
-        { id: '4-base', label: '영업기회 리스크 진단', question: '현재 보고 있는 이 영업기회의 리스크 총점(opportunity_risk_total_score)은 몇 점이고, 기록된 주요 수주/실패 요인(win_reason, loss_reason)은 무엇인지 확인해서 현재 상태를 요약해줘.' },
-        { id: '4-health', label: '딜 건전성 체크', question: '이 딜의 리스크 점수(Risk Score)를 확인해주고, 만약 수주나 실패 요인이 이미 기록되어 있다면 어떤 내용인지 함께 브리핑해줘.' },
-        { id: '4-consult', label: 'AI 딜 컨설팅', question: '해당 영업기회의 수주 가능성을 진단하기 위해 리스크 총점과 수주/실패 요인(win/loss reason) 정보를 추출해줘.' }
+        {
+          id: '1-base',
+          label: '고액 오픈 딜 우선순위',
+          question: '내 현재 오픈 기회 중에서 Close Date가 지나지 않은 건만 대상으로, 금액이 큰 순으로 5건을 보여줘. 각 건의 단계, 금액, Close Date를 같이 보여주고, 특히 마감이 임박한 건은 왜 먼저 봐야 하는지도 설명해줘.'
+        },
+        {
+          id: '1-top5',
+          label: '금액 상위 5건 요약',
+          question: '내 현재 오픈 기회 중 금액 상위 5건을 보여줘. Close Date가 지나지 않은 건만 보고, 각 건의 단계와 마감일을 같이 설명해줘.'
+        },
+        {
+          id: '1-deadline',
+          label: '2주 내 마감 딜 점검',
+          question: '내 오픈 기회 중에서 금액이 큰 순으로 5건을 보여주고, 특히 2주 안에 마감되는 건은 왜 우선 점검해야 하는지도 말해줘.'
+        }
       ]
     },
-    '5': {
-      id: '5',
-      type: 'stage_bottleneck_trend',
-      sessionSummary: '영업 본부장 관점 · Pipeline Trend Dashboard · mart_stage_trend_monthly',
-      question: '최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게 변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.',
+
+    '2': {
+      id: '2',
+      type: 'open_pipeline_composition',
+      cardCode: 'OPEN_PIPELINE_COMPOSITION',
+      cardTitle: '내 파이프라인은 어디에 쌓여 있고, 어디에 돈이 몰려 있을까?',
+      cardDescription: '단계별 건수/금액 집중도',
+      sessionSummary: '박종명 · Open Pipeline Composition · 단계별 건수/금액 집중도',
+      question: '내 현재 오픈 파이프라인이 어느 단계에 가장 많이 쌓여 있고, 금액은 어느 단계에 가장 많이 집중돼 있는지 보여줘. 단계별 건수와 금액을 같이 비교해서 어디가 적체 구간인지 설명해줘.',
+      keywords: ['Stage Mix', 'Amount Focus', 'Bottleneck'],
       session_context: {
         timezone: 'Asia/Seoul',
-        current_date: '2026-04-14',
+        current_date: '2026-04-16',
         record_page_object: null,
         record_id: null,
         account_id: null,
         opportunity_id: null,
-        owner_id: '005TJ000003inheYAA'
+        owner_id: '0052x000003pHryAAE'
       },
-      candidate_models: ['analytics_mart_dbt.mart_stage_trend_monthly'],
+      candidate_models: ['analytics_mart_dbt.fct_opportunity_current'],
       variants: [
-        { id: '5-base', label: '스테이지별 정체 분석', question: '최근 3개월 동안 영업 단계(Stage)별로 파이프라인 금액(Open Pipeline) 추이가 어떻게 변하고 있어? 특히 어느 단계에서 딜이 정체되고 있는지 트렌드를 시사해줘.' },
-        { id: '5-bottleneck', label: '병목 구간 탐지', question: '지난 3개월간 어느 영업 단계(Stage)에 파이프라인 금액이 가장 많이 몰려있어? 자금이 묶여 있는 병목 구간을 분석해줘.' },
-        { id: '5-flow', label: '월별 파이프라인 흐름', question: '최근 3개월 기준 영업 단계별(Stage) 파이프라인 총액 변화를 보여주고, 제안이나 협상 단계에서 지연되는 딜이 있는지 알려줘.' }
+        {
+          id: '2-base',
+          label: '단계별 적체 구간',
+          question: '내 현재 오픈 파이프라인이 어느 단계에 가장 많이 쌓여 있고, 금액은 어느 단계에 가장 많이 집중돼 있는지 보여줘. 단계별 건수와 금액을 같이 비교해서 어디가 적체 구간인지 설명해줘.'
+        },
+        {
+          id: '2-count-vs-amount',
+          label: '건수 vs 금액 비교',
+          question: '내 오픈 파이프라인은 어떤 stage에 가장 많이 몰려 있어? 건수 기준과 금액 기준을 같이 보여주고, 둘 사이 차이도 설명해줘.'
+        },
+        {
+          id: '2-bottleneck',
+          label: '병목 단계 탐지',
+          question: '현재 내 pipeline에서 적체가 가장 심한 단계와, 금액이 가장 크게 걸려 있는 단계를 각각 보여줘.'
+        }
+      ]
+    },
+
+    '3': {
+      id: '3',
+      type: 'specific_opportunity_commercial_diagnosis',
+      cardCode: 'SPECIFIC_OPPORTUNITY_COMMERCIAL_DIAGNOSIS',
+      cardTitle: '현재 Opportunity의 상업 구조를 진단해줘',
+      cardDescription: 'Quote 승인/동기화 · 금액 일관성 · 라인 규모',
+      sessionSummary: '박성주 · Opportunity Record Page · 이제너두 commercial detail',
+      question: '이 기회의 상업 구조를 브리핑해줘. 현재 단계와 Forecast, 견적 승인/동기화 상태, 견적 금액, 라인아이템 규모, 그리고 금액 일관성(견적 소계·총액·라인 합계)이 맞는지도 함께 설명해줘.',
+      keywords: ['Commercial Detail', 'Approved Quote', 'Consistency'],
+      session_context: {
+        timezone: 'Asia/Seoul',
+        current_date: '2026-04-16',
+        record_page_object: 'Opportunity',
+        record_id: '006Ih000003oU96IAE',
+        account_id: '0012x00000cVyjMAAS',
+        opportunity_id: '006Ih000003oU96IAE',
+        owner_id: '005Ih000000xfxcIAA'
+      },
+      candidate_models: ['analytics_mart_dbt.mart_opportunity_commercial_detail'],
+      variants: [
+        {
+          id: '3-base',
+          label: '상업 구조 진단',
+          question: '이 기회의 상업 구조를 브리핑해줘. 현재 단계와 Forecast, 견적 승인/동기화 상태, 견적 금액, 라인아이템 규모, 그리고 금액 일관성(견적 소계·총액·라인 합계)이 맞는지도 함께 설명해줘.'
+        },
+        {
+          id: '3-quote-view',
+          label: 'Quote 기준 요약',
+          question: '이 기회의 상업 구조를 quote 기준으로 설명해줘. 승인 상태, 동기화 상태, 금액 규모와 라인아이템 규모를 같이 보여줘.'
+        },
+        {
+          id: '3-consistency',
+          label: '금액 일관성 점검',
+          question: '이 딜의 견적/상업 구조가 일관적인지 봐줘. 견적 소계·총액·라인 합계가 맞는지와 서비스일 구조를 같이 설명해줘.'
+        }
+      ]
+    },
+
+    '4': {
+      id: '4',
+      type: 'specific_opportunity_product_mix',
+      cardCode: 'SPECIFIC_OPPORTUNITY_PRODUCT_MIX',
+      cardTitle: '이 딜에서 어떤 품목이 금액 대부분을 만들고 있을까?',
+      cardDescription: 'Product Mix Summary · 상위 3개 품목 ID 집중도',
+      sessionSummary: '박성주 · Opportunity Record Page · Product Mix Summary',
+      question: '이 기회의 제품 믹스를 요약해줘. 총 라인 수, 총수량, 총액과 함께 금액 기준 상위 3개 품목 ID의 수량, 단가, 총액을 한 번에 보여줘.',
+      keywords: ['Product Mix', 'Top 3 Items', 'Aggregate'],
+      session_context: {
+        timezone: 'Asia/Seoul',
+        current_date: '2026-04-16',
+        record_page_object: 'Opportunity',
+        record_id: '006Ih000003oU96IAE',
+        account_id: '0012x00000cVyjMAAS',
+        opportunity_id: '006Ih000003oU96IAE',
+        owner_id: '005Ih000000xfxcIAA'
+      },
+      candidate_models: ['analytics_mart_dbt.fct_opportunity_line_item'],
+      variants: [
+        {
+          id: '4-base',
+          label: '제품 믹스 요약',
+          question: '이 기회의 제품 믹스를 요약해줘. 총 라인 수, 총수량, 총액과 함께 금액 기준 상위 3개 품목 ID의 수량, 단가, 총액을 한 번에 보여줘.'
+        },
+        {
+          id: '4-top3',
+          label: '상위 3개 품목 집중도',
+          question: '현재 Opportunity에서 어떤 품목 ID가 deal value를 가장 많이 차지하는지 보여줘. 총 라인 수, 총수량, 총액과 상위 3개 품목의 금액을 함께 보고 싶어.'
+        },
+        {
+          id: '4-aggregate',
+          label: '집계형 Product Mix',
+          question: '이 딜의 product mix를 한 줄 요약이 아니라 집계형으로 보여줘. 전체 규모와 함께 금액 기준 top 3 품목 ID를 설명해줘.'
+        }
+      ]
+    },
+
+    '5': {
+      id: '5',
+      type: 'specific_opportunity_stage_history_timeline',
+      cardCode: 'SPECIFIC_OPPORTUNITY_STAGE_HISTORY_TIMELINE',
+      cardTitle: '이 딜은 어떤 단계를 거쳐 수주까지 왔을까?',
+      cardDescription: 'Stage History Timeline · 단계/확률/예상매출 변화',
+      sessionSummary: '박종명 · Opportunity Record Page · Stage History Timeline',
+      question: '이 기회의 stage history를 날짜 기준 timeline으로 보여줘. 각 단계가 어떤 순서로 바뀌었는지와 함께 금액, 예상매출, 확률이 어떻게 변했는지도 간단히 설명해줘.',
+      keywords: ['Timeline', 'Probability', 'Expected Revenue'],
+      session_context: {
+        timezone: 'Asia/Seoul',
+        current_date: '2026-04-16',
+        record_page_object: 'Opportunity',
+        record_id: '006Ih000003oOgyIAE',
+        account_id: '0012x00000cbJRQAA2',
+        opportunity_id: '006Ih000003oOgyIAE',
+        owner_id: '0052x000003pHryAAE'
+      },
+      candidate_models: ['analytics_mart_dbt.fct_opportunity_stage_history'],
+      variants: [
+        {
+          id: '5-base',
+          label: 'Stage history timeline',
+          question: '이 기회의 stage history를 날짜 기준 timeline으로 보여줘. 각 단계가 어떤 순서로 바뀌었는지와 함께 금액, 예상매출, 확률이 어떻게 변했는지도 간단히 설명해줘.'
+        },
+        {
+          id: '5-progression',
+          label: 'Closed Won까지의 progression',
+          question: '이 기회가 어떤 stage들을 거쳐 Closed Won까지 왔는지 날짜 순으로 보여줘. 단계별로 예상매출과 확률 변화도 같이 설명해줘.'
+        },
+        {
+          id: '5-numeric-flow',
+          label: '숫자 변화 포함 이력',
+          question: '이 딜의 진행 이력을 시간순으로 정리해줘. Registration부터 Closed Won까지 어떤 단계 전환이 있었고, 그 과정에서 숫자가 어떻게 바뀌었는지 설명해줘.'
+        }
       ]
     }
   };
 
   const uc4ScenarioGrid = document.getElementById('uc4-scenarioGrid');
-  const uc4ScenarioCards = document.querySelectorAll('.uc4-scenario-card');
-  const uc4ContextDetails = document.querySelectorAll('.uc4-context-details');
+  const uc4ContextZone = document.getElementById('uc4-contextZone');
   const uc4VariantStrip = document.getElementById('uc4-variantStrip');
   const uc4QuestionInput = document.getElementById('uc4-questionInput');
   const uc4RunBtn = document.getElementById('uc4-runBtn');
@@ -1279,14 +1362,29 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
     if (!uc4VariantStrip) return;
 
     if (!scenario) {
-      uc4VariantStrip.innerHTML = '<span class="uc4-variant-empty">상단 질문 세트를 선택하면 변주 질문이 표시됩니다.</span>';
+      uc4VariantStrip.innerHTML = '<span class="uc4-variant-empty">상단 질문 세트를 선택하면 변주 질문과 키워드가 표시됩니다.</span>';
       return;
     }
 
-    uc4VariantStrip.innerHTML = scenario.variants.map((variant) => {
+    const keywordBadges = uc4SafeArray(scenario.keywords).map((keyword) => (
+      `<span class="uc4-keyword-chip"># ${uc4EscapeHtml(keyword)}</span>`
+    )).join('');
+
+    uc4VariantStrip.innerHTML = `
+      <div class="uc4-variant-headline">
+        <div class="uc4-variant-copy">
+          <strong>${uc4EscapeHtml(scenario.cardCode || scenario.type)}</strong>
+          <span>${uc4EscapeHtml(scenario.cardDescription || '')}</span>
+        </div>
+        <div class="uc4-keyword-strip">${keywordBadges}</div>
+      </div>
+      <div class="uc4-variant-buttons">
+        ${scenario.variants.map((variant) => {
       const activeClass = variant.id === uc4SelectedVariantId ? ' is-active' : '';
       return `<button type="button" class="uc4-variant-chip${activeClass}" data-variant-id="${uc4EscapeHtml(variant.id)}">${uc4EscapeHtml(variant.label)}</button>`;
-    }).join('');
+    }).join('')}
+      </div>
+    `;
 
     uc4VariantStrip.querySelectorAll('.uc4-variant-chip').forEach((chip) => {
       chip.addEventListener('click', () => {
@@ -1303,8 +1401,70 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
     });
   }
 
+  function uc4RenderScenarioCards() {
+    if (!uc4ScenarioGrid) return;
+
+    uc4ScenarioGrid.innerHTML = Object.values(UC4_SCENARIOS).map((scenario) => {
+      const activeClass = scenario.id === uc4SelectedScenarioId ? ' is-active' : '';
+      return `
+        <button class="uc4-scenario-card${activeClass}" data-scenario="${uc4EscapeHtml(scenario.id)}" type="button">
+          <span class="uc4-scenario-index">${uc4EscapeHtml(scenario.id)}</span>
+          <div class="uc4-scenario-type">${uc4EscapeHtml(scenario.cardCode || scenario.type)}</div>
+          <div class="uc4-scenario-question">${uc4EscapeHtml(scenario.cardTitle || scenario.question)}</div>
+          <div class="uc4-scenario-sub">${uc4EscapeHtml(scenario.cardDescription || scenario.sessionSummary || '')}</div>
+          <div class="uc4-scenario-keywords">
+            ${uc4SafeArray(scenario.keywords).slice(0, 3).map((keyword) => `<span class="uc4-scenario-keyword">${uc4EscapeHtml(keyword)}</span>`).join('')}
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    uc4ScenarioGrid.querySelectorAll('.uc4-scenario-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        uc4SelectScenario(card.dataset.scenario, { populateQuestion: true });
+      });
+    });
+  }
+
+  function uc4RenderContextPanels() {
+    if (!uc4ContextZone) return;
+
+    uc4ContextZone.innerHTML = Object.values(UC4_SCENARIOS).map((scenario) => {
+      const ctx = scenario.session_context ?? {};
+      const activeClass = scenario.id === uc4SelectedScenarioId ? ' is-active' : '';
+      const openAttr = scenario.id === uc4SelectedScenarioId ? ' open' : '';
+      return `
+        <details class="uc4-context-details${activeClass}" data-scenario="${uc4EscapeHtml(scenario.id)}"${openAttr}>
+          <summary>
+            <div class="uc4-summary-copy">
+              <strong>세션 컨텍스트</strong>
+              <span>${uc4EscapeHtml(scenario.sessionSummary || '')}</span>
+            </div>
+            <div class="uc4-summary-pills">
+              <span class="uc4-summary-pill">owner_id · ${uc4EscapeHtml(ctx.owner_id ?? 'null')}</span>
+              <span class="uc4-summary-pill">record_page_object · ${uc4EscapeHtml(ctx.record_page_object ?? 'null')}</span>
+              <span class="uc4-summary-pill">candidate_models · ${uc4EscapeHtml(String(uc4SafeArray(scenario.candidate_models).length))}</span>
+            </div>
+          </summary>
+          <div class="uc4-context-body">
+            <div class="uc4-context-grid">
+              <div class="uc4-context-item"><span>timezone</span><strong>${uc4EscapeHtml(ctx.timezone ?? 'null')}</strong></div>
+              <div class="uc4-context-item"><span>current_date</span><strong>${uc4EscapeHtml(ctx.current_date ?? 'null')}</strong></div>
+              <div class="uc4-context-item"><span>record_page_object</span><strong>${uc4EscapeHtml(ctx.record_page_object ?? 'null')}</strong></div>
+              <div class="uc4-context-item"><span>record_id</span><strong>${uc4EscapeHtml(ctx.record_id ?? 'null')}</strong></div>
+              <div class="uc4-context-item"><span>account_id</span><strong>${uc4EscapeHtml(ctx.account_id ?? 'null')}</strong></div>
+              <div class="uc4-context-item"><span>opportunity_id</span><strong>${uc4EscapeHtml(ctx.opportunity_id ?? 'null')}</strong></div>
+              <div class="uc4-context-item"><span>owner_id</span><strong>${uc4EscapeHtml(ctx.owner_id ?? 'null')}</strong></div>
+              <div class="uc4-context-item uc4-context-item-wide"><span>candidate_models</span><strong>${uc4EscapeHtml(uc4SafeArray(scenario.candidate_models).join(', '))}</strong></div>
+            </div>
+          </div>
+        </details>
+      `;
+    }).join('');
+  }
+
   function uc4ActivateContext(scenarioId) {
-    uc4ContextDetails.forEach((details) => {
+    document.querySelectorAll('.uc4-context-details').forEach((details) => {
       const isTarget = details.dataset.scenario === scenarioId;
       details.classList.toggle('is-active', isTarget);
       if (isTarget) {
@@ -1316,7 +1476,7 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
   }
 
   function uc4ActivateScenarioCard(scenarioId) {
-    uc4ScenarioCards.forEach((card) => {
+    document.querySelectorAll('.uc4-scenario-card').forEach((card) => {
       card.classList.toggle('is-active', card.dataset.scenario === scenarioId);
     });
   }
@@ -1398,45 +1558,47 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
     const cards = [];
 
     if (scenario?.id === '1') {
+      const top1 = rows[0] ?? {};
+      const top2 = rows[1] ?? {};
       cards.push(
-        { label: 'Win Rate', value: uc4FormatPercent(first.win_rate), note: first.snapshot_month ? String(first.snapshot_month).slice(0, 10) : 'current' },
-        { label: 'Sales Cycle', value: Number.isFinite(Number(first.avg_sales_cycle_days_won)) ? `${uc4FormatNumber(first.avg_sales_cycle_days_won)}일` : 'null', note: 'avg_sales_cycle_days_won' },
-        { label: '담당자', value: first.owner_name ?? '-', note: first.owner_department ?? '-' },
-        { label: 'Rows', value: uc4FormatNumber(response?.sql_result?.row_count ?? 0), note: 'result rows' }
+        { label: 'Top 1 Amount', value: uc4FormatCurrencyCompact(top1.amount), note: top1.stage_name ?? '-' },
+        { label: 'Top 1 Close Date', value: top1.close_date ? uc4FormatDate(top1.close_date) : '-', note: top1.opportunity_id ?? '-' },
+        { label: 'Top 2 Amount', value: uc4FormatCurrencyCompact(top2.amount), note: top2.stage_name ?? '-' },
+        { label: 'Rows', value: uc4FormatNumber(response?.sql_result?.row_count ?? 0), note: 'priority list' }
       );
     } else if (scenario?.id === '2') {
+      const byCount = [...rows].sort((a, b) => Number(b.opportunity_count) - Number(a.opportunity_count));
+      const byAmount = [...rows].sort((a, b) => Number(b.total_amount) - Number(a.total_amount));
+      const topCount = byCount[0] ?? {};
+      const topAmount = byAmount[0] ?? {};
       cards.push(
-        { label: 'Won Amount', value: uc4FormatCurrencyCompact(first.won_amount), note: 'won_amount' },
-        { label: 'Open Pipeline', value: uc4FormatCurrencyCompact(first.open_pipeline_amount), note: 'open_pipeline_amount' },
-        { label: 'Won / Pipeline', value: first.won_to_pipeline_ratio != null ? Number(first.won_to_pipeline_ratio).toFixed(6) : 'null', note: 'ratio' },
-        { label: '최근 업데이트', value: first.latest_opportunity_system_modstamp_at ? uc4FormatDate(first.latest_opportunity_system_modstamp_at) : '-', note: 'system_modstamp' }
+        { label: 'Top by Count', value: topCount.stage_name ?? '-', note: `${uc4FormatNumber(topCount.opportunity_count ?? 0)}건` },
+        { label: 'Top by Amount', value: topAmount.stage_name ?? '-', note: uc4FormatCurrencyCompact(topAmount.total_amount) },
+        { label: 'Stage Count', value: uc4FormatNumber(rows.length), note: 'distinct stages' },
+        { label: 'Rows', value: uc4FormatNumber(response?.sql_result?.row_count ?? 0), note: 'aggregate rows' }
       );
     } else if (scenario?.id === '3') {
       cards.push(
-        { label: 'First Snapshot', value: uc4FormatCurrencyCompact(first.first_snapshot_open_pipeline_amount), note: 'start' },
-        { label: 'Latest Snapshot', value: uc4FormatCurrencyCompact(first.latest_snapshot_open_pipeline_amount), note: 'latest' },
-        { label: 'Increase', value: uc4FormatCurrencyCompact(first.increase_amount), note: 'delta' },
-        { label: 'Rows', value: uc4FormatNumber(response?.sql_result?.row_count ?? 0), note: 'aggregate row' }
+        { label: 'Stage', value: first.current_stage_name ?? '-', note: first.current_forecast_category_name ?? '-' },
+        { label: 'Quote Status', value: first.quote_status ?? '-', note: first.is_synced_quote ? 'synced' : 'not synced' },
+        { label: 'Quote Amount', value: uc4FormatCurrencyCompact(first.quote_grand_total), note: 'quote_grand_total' },
+        { label: 'Line Items', value: uc4FormatNumber(first.line_item_count ?? 0), note: `qty ${uc4FormatNumber(first.total_quantity ?? 0)}` }
       );
     } else if (scenario?.id === '4') {
       cards.push(
-        { label: 'Risk Score', value: first.opportunity_risk_total_score ?? 'null', note: 'opportunity_risk_total_score' },
-        { label: 'Stage', value: first.stage_name ?? '-', note: 'stage_name' },
-        { label: 'Forecast', value: first.forecast_category_name ?? '-', note: 'forecast_category_name' },
-        { label: 'Amount', value: uc4FormatCurrencyCompact(first.amount), note: first.close_date ? uc4FormatDate(first.close_date) : 'close_date' }
+        { label: 'Total Amount', value: uc4FormatCurrencyCompact(first.total_amount), note: 'all line items' },
+        { label: 'Line Count', value: uc4FormatNumber(first.line_item_count ?? 0), note: 'line_item_count' },
+        { label: 'Total Qty', value: uc4FormatNumber(first.total_quantity ?? 0), note: 'total_quantity' },
+        { label: 'Top Product', value: first.top_product2_id ?? '-', note: uc4FormatCurrencyCompact(first.top_product_total_price) }
       );
     } else if (scenario?.id === '5') {
-      const topRows = rows
-        .filter((row) => Number(row?.open_pipeline_amount) > 0)
-        .sort((a, b) => Number(b.open_pipeline_amount) - Number(a.open_pipeline_amount));
-      const top1 = topRows[0] ?? {};
-      const top2 = topRows[1] ?? {};
-      const top3 = topRows[2] ?? {};
+      const firstEvent = rows[0] ?? {};
+      const lastEvent = rows[rows.length - 1] ?? {};
       cards.push(
-        { label: 'Top Bottleneck', value: top1.stage_name ?? '-', note: uc4FormatCurrencyCompact(top1.open_pipeline_amount) },
-        { label: '2nd Stage', value: top2.stage_name ?? '-', note: uc4FormatCurrencyCompact(top2.open_pipeline_amount) },
-        { label: '3rd Stage', value: top3.stage_name ?? '-', note: uc4FormatCurrencyCompact(top3.open_pipeline_amount) },
-        { label: 'Rows', value: uc4FormatNumber(response?.sql_result?.row_count ?? 0), note: 'trend rows' }
+        { label: 'First Stage', value: firstEvent.history_stage_name ?? '-', note: firstEvent.history_event_date ? uc4FormatDate(firstEvent.history_event_date) : '-' },
+        { label: 'Final Stage', value: lastEvent.history_stage_name ?? lastEvent.current_stage_name ?? '-', note: lastEvent.current_stage_name ?? '-' },
+        { label: 'Final Probability', value: lastEvent.history_probability != null ? `${uc4FormatNumber(lastEvent.history_probability)}%` : 'null', note: 'history_probability' },
+        { label: 'Events', value: uc4FormatNumber(response?.sql_result?.row_count ?? 0), note: 'timeline rows' }
       );
     } else {
       cards.push(
@@ -1454,6 +1616,54 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
             <span class="uc4-kpi-label">${uc4EscapeHtml(card.label)}</span>
             <strong class="uc4-kpi-value">${uc4EscapeHtml(card.value)}</strong>
             <span class="uc4-kpi-note">${uc4EscapeHtml(card.note)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function uc4BuildInsightHighlights(response) {
+    const rows = uc4SafeArray(response?.sql_result?.rows_preview);
+    const scenario = uc4GetSelectedScenario();
+    const first = rows[0] ?? {};
+    const chips = [];
+
+    if (scenario?.id === '1') {
+      const top1 = rows[0] ?? {};
+      const top2 = rows[1] ?? {};
+      if (top1.opportunity_name) chips.push({ title: 'Top Priority', text: `${top1.opportunity_name} · ${uc4FormatCurrencyCompact(top1.amount)}` });
+      if (top2.opportunity_name) chips.push({ title: 'Second Deal', text: `${top2.opportunity_name} · ${uc4FormatCurrencyCompact(top2.amount)}` });
+      if (top1.close_date) chips.push({ title: 'Deadline Signal', text: `${uc4FormatDate(top1.close_date)} close date` });
+    } else if (scenario?.id === '2') {
+      const byCount = [...rows].sort((a, b) => Number(b.opportunity_count) - Number(a.opportunity_count));
+      const byAmount = [...rows].sort((a, b) => Number(b.total_amount) - Number(a.total_amount));
+      if (byCount[0]) chips.push({ title: 'Most Crowded', text: `${byCount[0].stage_name} · ${uc4FormatNumber(byCount[0].opportunity_count)}건` });
+      if (byAmount[0]) chips.push({ title: 'Most Money', text: `${byAmount[0].stage_name} · ${uc4FormatCurrencyCompact(byAmount[0].total_amount)}` });
+      if (rows.length) chips.push({ title: 'Stage Spread', text: `${uc4FormatNumber(rows.length)}개 stage active` });
+    } else if (scenario?.id === '3') {
+      if (first.quote_status) chips.push({ title: 'Quote Status', text: `${first.quote_status} / ${first.is_synced_quote ? 'synced' : 'not synced'}` });
+      if (first.quote_grand_total != null) chips.push({ title: 'Quote Amount', text: uc4FormatCurrencyCompact(first.quote_grand_total) });
+      if (first.line_item_count != null) chips.push({ title: 'Line Scale', text: `${uc4FormatNumber(first.line_item_count)} lines · qty ${uc4FormatNumber(first.total_quantity ?? 0)}` });
+    } else if (scenario?.id === '4') {
+      if (first.top_product2_id) chips.push({ title: 'Top Product ID', text: `${first.top_product2_id}` });
+      if (first.top_product_total_price != null) chips.push({ title: 'Top Product Amount', text: uc4FormatCurrencyCompact(first.top_product_total_price) });
+      if (first.total_amount != null) chips.push({ title: 'Deal Total', text: uc4FormatCurrencyCompact(first.total_amount) });
+    } else if (scenario?.id === '5') {
+      const stages = [...new Set(rows.map((row) => row.history_stage_name).filter(Boolean))];
+      if (stages.length) chips.push({ title: 'Stage Path', text: stages.join(' → ') });
+      const lastEvent = rows[rows.length - 1] ?? {};
+      if (lastEvent.history_probability != null) chips.push({ title: 'Final Probability', text: `${uc4FormatNumber(lastEvent.history_probability)}%` });
+      if (lastEvent.current_stage_name) chips.push({ title: 'Current State', text: `${lastEvent.current_stage_name} / ${lastEvent.current_forecast_category_name ?? '-'}` });
+    }
+
+    if (!chips.length) return '';
+
+    return `
+      <div class="uc4-insight-grid">
+        ${chips.map((chip) => `
+          <div class="uc4-insight-card">
+            <span class="uc4-insight-title">${uc4EscapeHtml(chip.title)}</span>
+            <strong class="uc4-insight-text">${uc4EscapeHtml(chip.text)}</strong>
           </div>
         `).join('')}
       </div>
@@ -1521,6 +1731,8 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
       ? 'AI 브리핑이 아직 비어 있습니다. diagnostics.message와 rows preview를 함께 확인하세요.'
       : response?.diagnostics?.suggested_next_action || response?.diagnostics?.message || '실패 원인과 다음 조치를 확인하세요.');
 
+    const scenario = uc4GetSelectedScenario();
+
     uc4ResultPanels.innerHTML = `
       <div class="uc4-result-panel is-active">
         <div class="uc4-runtime-grid">
@@ -1530,11 +1742,13 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
           </div>
 
           <div class="uc4-result-card uc4-answer-card">
-            <div class="uc4-result-title">AI 브리핑</div>
+            <div class="uc4-result-title">${uc4EscapeHtml(scenario?.cardTitle || 'AI 브리핑')}</div>
+            <div class="uc4-result-subtitle">${uc4EscapeHtml(scenario?.cardDescription || '')}</div>
             <div class="uc4-result-text">${uc4EscapeHtml(briefing)}</div>
           </div>
 
           ${uc4BuildKpiCards(response)}
+          ${uc4BuildInsightHighlights(response)}
           ${uc4BuildDiagnosticsCard(response)}
           ${uc4BuildRowsPreviewTable(response?.sql_result?.rows_preview)}
           ${uc4BuildSqlDetails(response)}
@@ -1620,13 +1834,15 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
       }
 
       const rawText = await res.text();
-      let data;
+      let parsed;
       try {
-        data = JSON.parse(rawText);
+        parsed = JSON.parse(rawText);
       } catch (parseError) {
         console.error('UC4 JSON parse error:', parseError, rawText);
         throw new Error('Text-to-SQL 응답(JSON) 파싱 실패');
       }
+
+      const data = Array.isArray(parsed) ? (parsed[0] ?? {}) : parsed;
 
       if (uc4PendingRequestId !== requestId) return;
 
@@ -1648,16 +1864,12 @@ Agent: I will get that proposal generated and sent to your inbox shortly. Have a
   }
 
   if (uc4ScenarioGrid && uc4QuestionInput && uc4RunBtn && uc4ResultPanels) {
+    uc4RenderScenarioCards();
+    uc4RenderContextPanels();
     uc4RenderVariantStrip(null);
     uc4RenderEmptyState();
     uc4QuestionInput.value = '';
     uc4UpdateRunButtonState();
-
-    uc4ScenarioCards.forEach((card) => {
-      card.addEventListener('click', () => {
-        uc4SelectScenario(card.dataset.scenario, { populateQuestion: true });
-      });
-    });
 
     uc4QuestionInput.addEventListener('input', () => {
       const scenario = uc4GetSelectedScenario();

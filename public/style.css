@@ -1814,3 +1814,111 @@ body {
 .uc4-action-row .btn[disabled] {
     opacity: 0.55;
 }
+
+/* === UC4 final tuning additions === */
+.uc4-scenario-keywords {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.uc4-scenario-keyword,
+.uc4-keyword-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #dbeafe;
+    color: #475569;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.uc4-variant-headline {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 6px;
+}
+
+.uc4-variant-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.uc4-variant-copy strong {
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #6366f1;
+    letter-spacing: 0.04em;
+}
+
+.uc4-variant-copy span {
+    font-size: 0.88rem;
+    color: var(--text-sub);
+    line-height: 1.5;
+}
+
+.uc4-keyword-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.uc4-variant-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+}
+
+.uc4-result-subtitle {
+    font-size: 0.88rem;
+    color: var(--text-sub);
+    margin-bottom: 8px;
+}
+
+.uc4-insight-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.uc4-insight-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+}
+
+.uc4-insight-title {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-sub);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 8px;
+}
+
+.uc4-insight-text {
+    display: block;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+@media (max-width: 1200px) {
+    .uc4-insight-grid {
+        grid-template-columns: 1fr;
+    }
+}
