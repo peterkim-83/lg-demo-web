@@ -488,25 +488,25 @@ Customer: Thanks, Liam. Speak soon.`
       name: '브라질 Bourbon B2B',
       description: '디지털 사이니지 (포르투갈어)',
       script: `[Context: Ana (AI) is making an outbound call to Carlos Eduardo Figueiredo at Rede Hotéis Bourbon in Brazil.]
-고객: Olá?
+Customer: Olá?
 Agent: (Sistema abertura em tempo real — Aviso de IA incluído)
-고객: Sim, pode falar.
+Customer: Sim, pode falar.
 Agent: Pelo que vi na sua solicitação, parece que seria para o lobby e as áreas comuns do hotel — está correto?
-고객: Isso mesmo.
+Customer: Isso mesmo.
 Agent: E aproximadamente quantas telas, unidades, quartos ou zonas vocês estão pensando?
-고객: Acho que umas 10 telas.
+Customer: Acho que umas 10 telas.
 Agent: Entendido — dez telas. A solicitação mencionava em torno de seiscentos e oitenta mil reais — ainda é mais ou menos isso?
-고객: Sim, esse é o orçamento.
+Customer: Sim, esse é o orçamento.
 Agent: Vocês têm uma data-alvo ou prazo de instalação em mente?
-고객: Até o final de agosto.
+Customer: Até o final de agosto.
 Agent: Só para confirmar... vocês estão buscando soluções de Sinalização Digital para o lobby e áreas comuns... em torno de seiscentos e oitenta mil reais... com previsão para o final de agosto. Está correto?
-고객: Sim, está correto.
+Customer: Sim, está correto.
 Agent: Como vocês gostariam que nossa equipe entrasse em contato — por telefone, e-mail ou uma visita presencial?
-고객: Por telefone, por favor.
+Customer: Por telefone, por favor.
 Agent: Qual dia e horário funcionam melhor para a ligação?
-고객: Na terça-feira à tarde, às duas horas.
+Customer: Na terça-feira à tarde, às duas horas.
 Agent: Ótimo — terça-feira à tarde, às duas horas. Já registrei tudo e passei para a equipe. Eles entrarão em contato conforme sua preferência. Muito obrigado pelo seu tempo, Carlos Eduardo — tenha um ótimo dia!
-고객: Obrigado, bom dia.`
+Customer: Obrigado, bom dia.`
     },
     'd1db20b3-88d9-4715-93fc-5cf233c8f3c4': {
       type: 'O/B Lead-intake',
