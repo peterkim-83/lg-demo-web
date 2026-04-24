@@ -463,21 +463,25 @@ Customer: Hello?
 Agent: (runtime opening injected by system — AI disclosure included)
 Customer: Yes, go ahead.
 Agent: From your inquiry, it sounds like this may be for the lobby and common areas — is that right?
-Customer: That's right, yes.
+Customer: Yes, correct. We're looking at the main lobby and check-in area, and maybe a couple of dining areas as well.
 Agent: And roughly how many displays, units, or zones are you looking at?
-Customer: About ten screens, I'd say.
-Agent: Noted — around ten screens. The inquiry mentioned around one hundred and twenty thousand dollars — is that still roughly right?
-Customer: Yes, that's about right.
+Customer: We're thinking around eight to ten screens in total.
+Agent: Eight to ten screens — got it. And the inquiry mentioned around one hundred and twenty thousand dollars — is that still roughly right?
+Customer: Actually, while I have you — these screens would be running pretty much all day in the hotel lobby. Are LG's commercial displays built for that kind of continuous use?
+Agent: [내부: queryCorpus 실행 → UV5N-E 스펙 반환 → Operation Hours: 24/7 / Lifetime: Up to 50,000 Hrs]
+Customer: Okay, good to know.
+Agent: Coming back to your budget — the inquiry mentioned around one hundred and twenty thousand dollars. Is that still roughly right?
+Customer: Yes, that's about where we are. We might have a little flexibility depending on what's recommended.
 Agent: Do you have a target installation date or deadline in mind?
-Customer: We're hoping to have it done by end of September.
-Agent: So just to confirm... you're looking at Digital Signage solutions for the lobby and common areas... around ten screens... with a budget of one hundred and twenty thousand dollars... and aiming for installation by end of September. Does that sound right?
-Customer: Yes, that's correct.
-Agent: How would you like our team to follow up — by phone, by email, or with a visit?
-Customer: Email would be great.
-Agent: I have j dot whitfield... at marriottbrisbane... dot com dot au on file — is that still the best address?
+Customer: We'd ideally want everything installed before the refurbishment wraps up — end of September.
+Agent: So just to confirm — you're looking at Digital Signage solutions for the main lobby, check-in area, and dining areas, around eight to ten screens, with a budget of one hundred and twenty thousand dollars, and aiming for installation before the end of September. Does that sound right?
 Customer: Yes, that's the one.
-Agent: Perfect. I've noted everything and passed it to the team. They'll be in touch based on your preference. Thanks so much for your time, James — have a great day.
-Customer: Thanks, you too.`
+Agent: How would you like our team to follow up — by phone, by email, or with a visit?
+Customer: Email.
+Agent: I have j dot whitfield at marriottbrisbane dot com dot au on file — is that still the best address?
+Customer: Correct.
+Agent: Perfect. I've noted that and passed it to the team. They'll be in touch by email based on your preference. Thanks so much for your time, James — have a great day.
+Customer: Thanks, Liam. Speak soon.`
     },
     '837b6f13-0bb3-4633-b65d-ce96b43fdb9d': {
       type: 'O/B Lead-intake',
