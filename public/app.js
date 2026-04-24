@@ -441,17 +441,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const UC3_AGENTS = {
     '123a3199-c0e5-4025-889a-d2731595aa42': {
       type: 'I/B',
-      name: '제품문의 (Kiosk & Signage)',
+      name: '제품문의',
       description: 'B2B Inbound 상담 (영어)',
       script: `[Context: A restaurant franchise owner is looking for self-ordering solutions and a menu board system for a new location.]
 Agent: Hello! You've reached LG Business Solutions. How can I help you upgrade your workspace today?
-User: Hi, I'm opening a new fast-casual restaurant. Space is a bit tight, but we need a self-ordering kiosk that customers can use easily.
+Customer: Hi, I'm opening a new fast-casual restaurant. Space is a bit tight, but we need a self-ordering kiosk that customers can use easily.
 Agent: Let me check our kiosk options for compact spaces. We have the 22-inch 22KC3P-M self-service kiosk available for $2,400. It features a modular design that lets you easily attach peripherals like barcode scanners. Does this size sound like a good fit for your layout?
-User: That size is great. We want to make sure it's accessible for all our customers, including wheelchair users. Can we adjust the height?
+Customer: That size is great. We want to make sure it's accessible for all our customers, including wheelchair users. Can we adjust the height?
 Agent: Give me just a second to verify the mounting options. Yes, it has versatile stand options sold separately, or it can be wall-mounted. When installed at the proper height, its touch interface perfectly supports ADA compliance. Do you also need any digital menu boards for behind the counter?
-User: We were actually thinking about a seamless LED wall instead of standard TVs for a more premium look.
+Customer: We were actually thinking about a seamless LED wall instead of standard TVs for a more premium look.
 Agent: Let me look into our direct view LED signage. To power a stunning LED menu wall, you will use our CEAA LED Controller. You can also use LG Business Cloud to easily manage and update your menus remotely. Would you like me to connect you with an LED specialist to design the perfect wall size?
-User: Yes, please set that up. And send me the details on that 22-inch kiosk.
+Customer: Yes, please set that up. And send me the details on that 22-inch kiosk.
 Agent: I will arrange that consultation and email you the kiosk quote right away. Thank you for calling LG!`
     },
     '227d0baa-3493-4bcb-b66c-16ef32f36f99': {
@@ -865,44 +865,64 @@ Customer: Thank you. Goodbye.`
   // ==========================================
   const UC4_SCENARIOS = {
     '1': {
-      id: '1', type: 'open_pipeline_priority_worklist', cardCode: 'OPEN_PIPELINE_PRIORITY_WORKLIST', cardTitle: '지금 가장 먼저 확인해야 할 고액 오픈 딜은?', cardDescription: '고액 · 마감 임박 · 오픈 딜 우선순위', sessionSummary: '박종명 · Open Pipeline Worklist · 고액/마감 임박 딜 우선순위',
+      id: '1', type: 'open_pipeline_priority_worklist', cardCode: 'OPEN_PIPELINE_PRIORITY_WORKLIST', cardShortCode: 'OPEN_PIPELINE_PRIORITY', cardTitle: '지금 가장 먼저 확인해야 할 고액 오픈 딜은?', cardDescription: '고액 · 마감 임박 · 오픈 딜 우선순위', sessionSummary: '박종명 · Open Pipeline Worklist · 고액/마감 임박 딜 우선순위',
       question: '내 현재 오픈 기회 중에서 Close Date가 지나지 않은 건만 대상으로, 금액이 큰 순으로 5건을 보여줘. 각 건의 단계, 금액, Close Date를 같이 보여주고, 특히 마감이 임박한 건은 왜 먼저 봐야 하는지도 설명해줘.',
-      keywords: ['Open Pipeline', 'High Amount', 'Close Date'],
+      keywords: ['고액 오픈 딜', '마감 임박', '우선순위'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2025-03-20', record_page_object: null, record_id: null, account_id: null, opportunity_id: null, owner_id: '0052x000003pHryAAE' },
       candidate_models: ['analytics_mart_dbt.obt_opportunity_search'],
-      variants: [{ id: '1-base', label: '고액 오픈 딜 우선순위', question: '내 현재 오픈 기회 중에서 Close Date가 지나지 않은 건만 대상으로, 금액이 큰 순으로 5건을 보여줘. 각 건의 단계, 금액, Close Date를 같이 보여주고, 특히 마감이 임박한 건은 왜 먼저 봐야 하는지도 설명해줘.' }]
+      variants: [
+        { id: '1-v1', label: '금액 상위 5건', question: '내 현재 오픈 기회 중 금액 상위 5건을 보여줘. Close Date가 지나지 않은 건만 보고, 각 건의 단계와 마감일을 같이 설명해줘.' },
+        { id: '1-v2', label: '2주 내 마감', question: '내 오픈 기회 중에서 금액이 큰 순으로 5건을 보여주고, 특히 2주 안에 마감되는 건은 왜 우선 점검해야 하는지도 말해줘.' },
+        { id: '1-v3', label: '우선순위 설명', question: '내 현재 파이프라인에서 지금 바로 확인해야 할 고액 오픈 딜 5건을 보여줘. 단계, 금액, Close Date를 함께 보고 우선순위를 설명해줘.' }
+      ]
     },
     '2': {
-      id: '2', type: 'open_pipeline_composition', cardCode: 'OPEN_PIPELINE_COMPOSITION', cardTitle: '내 파이프라인은 어디에 쌓여 있고, 어디에 돈이 몰려 있을까?', cardDescription: '단계별 건수/금액 집중도', sessionSummary: '박종명 · Open Pipeline Composition · 단계별 건수/금액 집중도',
+      id: '2', type: 'open_pipeline_composition', cardCode: 'OPEN_PIPELINE_COMPOSITION', cardShortCode: 'PIPELINE_COMPOSITION', cardTitle: '내 파이프라인은 어디에 쌓여 있고, 어디에 돈이 몰려 있을까?', cardDescription: '단계별 건수/금액 집중도', sessionSummary: '박종명 · Open Pipeline Composition · 단계별 건수/금액 집중도',
       question: '내 현재 오픈 파이프라인이 어느 단계에 가장 많이 쌓여 있고, 금액은 어느 단계에 가장 많이 집중돼 있는지 보여줘. 단계별 건수와 금액을 같이 비교해서 어디가 적체 구간인지 설명해줘.',
       keywords: ['Stage Mix', 'Amount Focus', 'Bottleneck'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2026-04-16', record_page_object: null, record_id: null, account_id: null, opportunity_id: null, owner_id: '0052x000003pHryAAE' },
       candidate_models: ['analytics_mart_dbt.fct_opportunity_current'],
-      variants: [{ id: '2-base', label: '단계별 적체 구간', question: '내 현재 오픈 파이프라인이 어느 단계에 가장 많이 쌓여 있고, 금액은 어느 단계에 가장 많이 집중돼 있는지 보여줘. 단계별 건수와 금액을 같이 비교해서 어디가 적체 구간인지 설명해줘.' }]
+      variants: [
+        { id: '2-v1', label: 'Stage 몰림', question: '내 오픈 파이프라인은 어떤 stage에 가장 많이 몰려 있어? 건수 기준과 금액 기준을 같이 보여주고, 둘 사이 차이도 설명해줘.' },
+        { id: '2-v2', label: '적체/금액 단계', question: '현재 내 pipeline에서 적체가 가장 심한 단계와, 금액이 가장 크게 걸려 있는 단계를 각각 보여줘.' },
+        { id: '2-v3', label: '단계별 비교', question: '내 오픈 영업기회를 단계별로 나눠서 건수와 금액을 비교해줘. 어디에 물량이 쌓여 있고 어디에 큰 딜이 몰려 있는지 알고 싶어.' }
+      ]
     },
     '3': {
-      id: '3', type: 'specific_opportunity_commercial_diagnosis', cardCode: 'SPECIFIC_OPPORTUNITY_COMMERCIAL_DIAGNOSIS', cardTitle: '현재 Opportunity의 상업 구조를 진단해줘', cardDescription: 'Quote 승인/동기화 · 금액 일관성 · 라인 규모', sessionSummary: '박성주 · Opportunity Record Page · 이제너두 commercial detail',
+      id: '3', type: 'specific_opportunity_commercial_diagnosis', cardCode: 'SPECIFIC_OPPORTUNITY_COMMERCIAL_DIAGNOSIS', cardShortCode: 'COMMERCIAL_DIAGNOSIS', cardTitle: '현재 Opportunity의 상업 구조를 진단해줘', cardDescription: 'Quote 승인/동기화 · 금액 일관성 · 라인 규모', sessionSummary: '박성주 · Opportunity Record Page · 이제너두 commercial detail',
       question: '이 기회의 상업 구조를 브리핑해줘. 현재 단계와 Forecast, 견적 승인/동기화 상태, 견적 금액, 라인아이템 규모, 그리고 금액 일관성(견적 소계·총액·라인 합계)이 맞는지도 함께 설명해줘.',
       keywords: ['Commercial Detail', 'Approved Quote', 'Consistency'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2026-04-16', record_page_object: 'Opportunity', record_id: '006Ih000003oU96IAE', account_id: '0012x00000cVyjMAAS', opportunity_id: '006Ih000003oU96IAE', owner_id: '005Ih000000xfxcIAA' },
       candidate_models: ['analytics_mart_dbt.mart_opportunity_commercial_detail'],
-      variants: [{ id: '3-base', label: '상업 구조 진단', question: '이 기회의 상업 구조를 브리핑해줘. 현재 단계와 Forecast, 견적 승인/동기화 상태, 견적 금액, 라인아이템 규모, 그리고 금액 일관성(견적 소계·총액·라인 합계)이 맞는지도 함께 설명해줘.' }]
+      variants: [
+        { id: '3-v1', label: 'Quote 기준', question: '이 기회의 상업 구조를 quote 기준으로 설명해줘. 승인 상태, 동기화 상태, 금액 규모와 라인아이템 규모를 같이 보여줘.' },
+        { id: '3-v2', label: 'Commercial 요약', question: '현재 보고 있는 Opportunity의 commercial detail을 요약해줘. 단계, forecast, quote 상태, 금액, 수량, 서비스일을 함께 설명해줘.' },
+        { id: '3-v3', label: '금액 일관성', question: '이 딜의 견적/상업 구조가 일관적인지 봐줘. 견적 소계·총액·라인 합계가 맞는지와 서비스일 구조를 같이 설명해줘.' }
+      ]
     },
     '4': {
-      id: '4', type: 'specific_opportunity_product_mix', cardCode: 'SPECIFIC_OPPORTUNITY_PRODUCT_MIX', cardTitle: '이 딜에서 어떤 품목이 금액 대부분을 만들고 있을까?', cardDescription: 'Product Mix Summary · 상위 3개 품목 ID 집중도', sessionSummary: '박성주 · Opportunity Record Page · Product Mix Summary',
+      id: '4', type: 'specific_opportunity_product_mix', cardCode: 'SPECIFIC_OPPORTUNITY_PRODUCT_MIX', cardShortCode: 'PRODUCT_MIX', cardTitle: '이 딜에서 어떤 품목이 금액 대부분을 만들고 있을까?', cardDescription: 'Product Mix Summary · 상위 3개 품목 ID 집중도', sessionSummary: '박성주 · Opportunity Record Page · Product Mix Summary',
       question: '이 기회의 제품 믹스를 요약해줘. 총 라인 수, 총수량, 총액과 함께 금액 기준 상위 3개 품목 ID의 수량, 단가, 총액을 한 번에 보여줘.',
       keywords: ['Product Mix', 'Top 3 Items', 'Aggregate'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2026-04-16', record_page_object: 'Opportunity', record_id: '006Ih000003oU96IAE', account_id: '0012x00000cVyjMAAS', opportunity_id: '006Ih000003oU96IAE', owner_id: '005Ih000000xfxcIAA' },
       candidate_models: ['analytics_mart_dbt.fct_opportunity_line_item'],
-      variants: [{ id: '4-base', label: '제품 믹스 요약', question: '이 기회의 제품 믹스를 요약해줘. 총 라인 수, 총수량, 총액과 함께 금액 기준 상위 3개 품목 ID의 수량, 단가, 총액을 한 번에 보여줘.' }]
+      variants: [
+        { id: '4-v1', label: '제품 구성', question: '이 기회의 제품 구성을 요약해줘. 전체 라인 수와 총액을 보여주고, 금액 상위 3개 품목 ID의 수량·단가·총액을 같이 설명해줘.' },
+        { id: '4-v2', label: 'Deal value', question: '현재 Opportunity에서 어떤 품목 ID가 deal value를 가장 많이 차지하는지 보여줘. 총 라인 수, 총수량, 총액과 상위 3개 품목의 금액을 함께 보고 싶어.' },
+        { id: '4-v3', label: 'Top 3 품목', question: '이 딜의 product mix를 한 줄 요약이 아니라 집계형으로 보여줘. 전체 규모와 함께 금액 기준 top 3 품목 ID를 설명해줘.' }
+      ]
     },
     '5': {
-      id: '5', type: 'specific_opportunity_stage_history_timeline', cardCode: 'SPECIFIC_OPPORTUNITY_STAGE_HISTORY_TIMELINE', cardTitle: '이 딜은 어떤 단계를 거쳐 수주까지 왔을까?', cardDescription: 'Stage History Timeline · 단계/확률/예상매출 변화', sessionSummary: '박종명 · Opportunity Record Page · Stage History Timeline',
+      id: '5', type: 'specific_opportunity_stage_history_timeline', cardCode: 'SPECIFIC_OPPORTUNITY_STAGE_HISTORY_TIMELINE', cardShortCode: 'STAGE_HISTORY_TIMELINE', cardTitle: '이 딜은 어떤 단계를 거쳐 수주까지 왔을까?', cardDescription: 'Stage History Timeline · 단계/확률/예상매출 변화', sessionSummary: '박종명 · Opportunity Record Page · Stage History Timeline',
       question: '이 기회의 stage history를 날짜 기준 timeline으로 보여줘. 각 단계가 어떤 순서로 바뀌었는지와 함께 금액, 예상매출, 확률이 어떻게 변했는지도 간단히 설명해줘.',
       keywords: ['Timeline', 'Probability', 'Expected Revenue'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2026-04-16', record_page_object: 'Opportunity', record_id: '006Ih000003oOgyIAE', account_id: '0012x00000cbJRQAA2', opportunity_id: '006Ih000003oOgyIAE', owner_id: '0052x000003pHryAAE' },
       candidate_models: ['analytics_mart_dbt.fct_opportunity_stage_history'],
-      variants: [{ id: '5-base', label: 'Stage history timeline', question: '이 기회의 stage history를 날짜 기준 timeline으로 보여줘. 각 단계가 어떤 순서로 바뀌었는지와 함께 금액, 예상매출, 확률이 어떻게 변했는지도 간단히 설명해줘.' }]
+      variants: [
+        { id: '5-v1', label: 'Closed Won 경로', question: '이 기회가 어떤 stage들을 거쳐 Closed Won까지 왔는지 날짜 순으로 보여줘. 단계별로 예상매출과 확률 변화도 같이 설명해줘.' },
+        { id: '5-v2', label: 'Progression', question: '현재 보고 있는 Opportunity의 progression timeline을 보여줘. stage 변경 흐름과 금액/예상매출/확률 변화가 어떻게 이어졌는지 보고 싶어.' },
+        { id: '5-v3', label: '시간순 이력', question: '이 딜의 진행 이력을 시간순으로 정리해줘. Registration부터 Closed Won까지 어떤 단계 전환이 있었고, 그 과정에서 숫자가 어떻게 바뀌었는지 설명해줘.' }
+      ]
     }
   };
 
@@ -935,7 +955,7 @@ Customer: Thank you. Goodbye.`
     if (!scenario) { uc4VariantStrip.innerHTML = '<span class="uc4-variant-empty">상단 질문 세트를 선택하면 변주 질문과 키워드가 표시됩니다.</span>'; return; }
     const keywordBadges = uc4SafeArray(scenario.keywords).map((k) => `<span class="uc4-keyword-chip"># ${uc4EscapeHtml(k)}</span>`).join('');
     uc4VariantStrip.innerHTML = `
-      <div class="uc4-variant-headline"><div class="uc4-variant-copy"><strong>${uc4EscapeHtml(scenario.cardCode || scenario.type)}</strong><span>${uc4EscapeHtml(scenario.cardDescription || '')}</span></div><div class="uc4-keyword-strip">${keywordBadges}</div></div>
+      <div class="uc4-variant-headline"><div class="uc4-variant-copy"><strong>${uc4EscapeHtml(scenario.cardTitle || scenario.cardCode || scenario.type)}</strong><span>${uc4EscapeHtml(scenario.cardDescription || '')}</span></div><div class="uc4-keyword-strip">${keywordBadges}</div></div>
       <div class="uc4-variant-buttons">${scenario.variants.map((v) => `<button type="button" class="uc4-variant-chip${v.id === uc4SelectedVariantId ? ' is-active' : ''}" data-variant-id="${uc4EscapeHtml(v.id)}">${uc4EscapeHtml(v.label)}</button>`).join('')}</div>
     `;
     uc4VariantStrip.querySelectorAll('.uc4-variant-chip').forEach((chip) => {
@@ -952,9 +972,13 @@ Customer: Thank you. Goodbye.`
     if (!uc4ScenarioGrid) return;
     uc4ScenarioGrid.innerHTML = Object.values(UC4_SCENARIOS).map((s) => `
       <button class="uc4-scenario-card${s.id === uc4SelectedScenarioId ? ' is-active' : ''}" data-scenario="${uc4EscapeHtml(s.id)}" type="button">
-        <span class="uc4-scenario-index">${uc4EscapeHtml(s.id)}</span>
-        <div class="uc4-scenario-type">${uc4EscapeHtml(s.cardCode || s.type)}</div>
-        <div class="uc4-scenario-question">${uc4EscapeHtml(s.cardTitle || s.question)}</div>
+        <div class="uc4-scenario-top">
+          <span class="uc4-scenario-index">${uc4EscapeHtml(s.id)}</span>
+          <div class="uc4-scenario-topcopy">
+            <div class="uc4-scenario-type">${uc4EscapeHtml(s.cardShortCode || s.cardCode || s.type)}</div>
+            <div class="uc4-scenario-question">${uc4EscapeHtml(s.cardTitle || s.question)}</div>
+          </div>
+        </div>
         <div class="uc4-scenario-sub">${uc4EscapeHtml(s.cardDescription || s.sessionSummary || '')}</div>
         <div class="uc4-scenario-keywords">${uc4SafeArray(s.keywords).slice(0, 3).map((k) => `<span class="uc4-scenario-keyword">${uc4EscapeHtml(k)}</span>`).join('')}</div>
       </button>`).join('');
@@ -990,9 +1014,9 @@ Customer: Thank you. Goodbye.`
   function uc4SelectScenario(scenarioId, { populateQuestion = true, preferredVariantId = null } = {}) {
     const scenario = UC4_SCENARIOS[scenarioId]; if (!scenario) return;
     uc4SelectedScenarioId = scenarioId; uc4ActivateScenarioCard(scenarioId); uc4ActivateContext(scenarioId);
-    const defaultVariant = scenario.variants.find((v) => v.id === preferredVariantId) || scenario.variants[0];
+    const defaultVariant = preferredVariantId ? scenario.variants.find((v) => v.id === preferredVariantId) : null;
     uc4SelectedVariantId = defaultVariant?.id ?? null;
-    if (populateQuestion && defaultVariant) uc4QuestionInput.value = defaultVariant.question;
+    if (populateQuestion) uc4QuestionInput.value = defaultVariant?.question ?? scenario.question ?? '';
     uc4RenderVariantStrip(scenario); uc4UpdateRunButtonState();
   }
 
