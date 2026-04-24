@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-
 <html lang="ko">
 
 <head>
   <meta charset="utf-8" />
   <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   <title>LGE DEMO AI Workspace</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link href="style.css" rel="stylesheet" />
 </head>
 
@@ -25,6 +24,7 @@
       </nav>
     </aside>
     <main id="main-content">
+
       <section class="view-section active" id="view-home">
         <div class="page-header text-center">
           <img alt="Azure, n8n, Salesforce Integration" class="img-fluid header-banana-image" id="header-banana-image"
@@ -55,6 +55,7 @@
           </div>
         </div>
       </section>
+
       <section class="view-section" id="view-uc1">
         <div class="page-header">
           <h1>📄 지자체/기관별 PDF의 세출예산 사업명세서 추출</h1>
@@ -81,6 +82,7 @@
           </div>
         </div>
       </section>
+
       <section class="view-section" id="view-uc2">
         <div class="page-header">
           <h1>📊 CRM 데이터 및 Web Search 기반 제안서 초안 생성</h1>
@@ -122,11 +124,15 @@
           </div>
         </div>
       </section>
+
       <section class="view-section h-full-calc" id="view-uc3">
         <div class="split-container">
           <div class="split-left">
             <h2>🎙️ 실시간 Voice Agent 통화</h2>
             <p class="subtitle mb-4">WebRTC 마이크 연결 및 콜 로그 구조화</p>
+
+            <div class="uc3-agent-grid" id="uc3-agentGrid"></div>
+
             <div class="call-controls">
               <p id="uc3-statusText" style="text-align: center; font-weight: 600; color: #4f46e5; margin-bottom: 10px;">
                 대기 중</p>
@@ -140,6 +146,7 @@
                 <span class="ml-2 text-primary">통화 중...</span>
               </div>
             </div>
+
             <div class="loading-area mt-4" id="uc3-loading" style="display: none;">
               <div class="hourglass">⏳</div>
               <p class="status-msg">콜 로그 수집 및 AI 요약 중...</p>
@@ -153,17 +160,13 @@
             <div class="notepad">
               <div class="note-header">
                 <span>참고 대화 스크립트</span>
-                <div class="script-nav">
-                  <button class="nav-btn" id="uc3-prevBtn">&lt;</button>
-                  <span id="uc3-pageIndicator">1 / 3</span>
-                  <button class="nav-btn" id="uc3-nextBtn">&gt;</button>
-                </div>
               </div>
               <div class="note-body" id="uc3-scriptContent"></div>
             </div>
           </div>
         </div>
       </section>
+
       <section class="view-section uc4-view" id="view-uc4">
         <div class="page-header uc4-page-header">
           <h1>🧠 CRM Text-to-SQL 자연어 질의</h1>
