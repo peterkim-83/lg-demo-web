@@ -891,7 +891,7 @@ Customer: Thank you. Goodbye.`
     '3': {
       id: '3', type: 'specific_opportunity_commercial_diagnosis', cardCode: 'SPECIFIC_OPPORTUNITY_COMMERCIAL_DIAGNOSIS', cardShortCode: 'COMMERCIAL_DIAGNOSIS', cardTitle: '현재 Opportunity의 상업 구조를 진단해줘', cardDescription: 'Quote 승인/동기화 · 금액 일관성 · 라인 규모', sessionSummary: '박성주 · Opportunity Record Page · 이제너두 commercial detail',
       question: '이 기회의 상업 구조를 브리핑해줘. 현재 단계와 Forecast, 견적 승인/동기화 상태, 견적 금액, 라인아이템 규모, 그리고 금액 일관성(견적 소계·총액·라인 합계)이 맞는지도 함께 설명해줘.',
-      keywords: ['Commercial Detail', 'Approved Quote', 'Consistency'],
+      keywords: ['Quote Detail', 'Approved Quote', 'Consistency'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2026-04-16', record_page_object: 'Opportunity', record_id: '006Ih000003oU96IAE', account_id: '0012x00000cVyjMAAS', opportunity_id: '006Ih000003oU96IAE', owner_id: '005Ih000000xfxcIAA' },
       candidate_models: ['analytics_mart_dbt.mart_opportunity_commercial_detail'],
       variants: [
@@ -915,7 +915,7 @@ Customer: Thank you. Goodbye.`
     '5': {
       id: '5', type: 'specific_opportunity_stage_history_timeline', cardCode: 'SPECIFIC_OPPORTUNITY_STAGE_HISTORY_TIMELINE', cardShortCode: 'STAGE_HISTORY_TIMELINE', cardTitle: '이 딜은 어떤 단계를 거쳐 수주까지 왔을까?', cardDescription: 'Stage History Timeline · 단계/확률/예상매출 변화', sessionSummary: '박종명 · Opportunity Record Page · Stage History Timeline',
       question: '이 기회의 stage history를 날짜 기준 timeline으로 보여줘. 각 단계가 어떤 순서로 바뀌었는지와 함께 금액, 예상매출, 확률이 어떻게 변했는지도 간단히 설명해줘.',
-      keywords: ['Timeline', 'Probability', 'Expected Revenue'],
+      keywords: ['Timeline', 'Probability', 'Revenue'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2026-04-16', record_page_object: 'Opportunity', record_id: '006Ih000003oOgyIAE', account_id: '0012x00000cbJRQAA2', opportunity_id: '006Ih000003oOgyIAE', owner_id: '0052x000003pHryAAE' },
       candidate_models: ['analytics_mart_dbt.fct_opportunity_stage_history'],
       variants: [
