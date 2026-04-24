@@ -729,10 +729,23 @@ Customer: Thank you. Goodbye.`
 
       await safeLeaveCurrentSession();
 
+      // 1) 현재 선택된 에이전트의 이름을 가져옵니다.
+      const currentAgentName = UC3_AGENTS[currentUc3AgentId]?.name || 'Unknown Agent';
+
       const res = await fetch(CONFIG.UC3_END_CALL, {
-        method: 'POST', cache: 'no-store',
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' },
-        body: JSON.stringify({ callId: targetCallId })
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
+        // 2) payload에 name 필드를 추가하여 전송합니다.
+        body: JSON.stringify({
+          callId: targetCallId,
+          name: currentAgentName
+        })
       });
 
       if (!res.ok) throw new Error(`로그 데이터 수신 실패 (${res.status})`);
