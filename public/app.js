@@ -865,7 +865,7 @@ Customer: Thank you. Goodbye.`
   // ==========================================
   const UC4_SCENARIOS = {
     '1': {
-      id: '1', type: 'open_pipeline_priority_worklist', cardCode: 'OPEN_PIPELINE_PRIORITY_WORKLIST', cardShortCode: 'OPEN_PIPELINE_PRIORITY', cardTitle: '지금 가장 먼저 확인해야 할 고액 오픈 딜은?', cardDescription: '고액 · 마감 임박 · 오픈 딜 우선순위', sessionSummary: '박종명 · Open Pipeline Worklist · 고액/마감 임박 딜 우선순위',
+      id: '1', type: 'open_pipeline_priority_worklist', cardCode: 'OPEN_PIPELINE_PRIORITY_WORKLIST', cardShortCode: 'OPEN_PIPELINE_PRIORITY', cardTitle: '가장 먼저 확인해야 할 고액 오픈 딜은?', cardDescription: '고액 · 마감 임박 · 오픈 딜 우선순위', sessionSummary: '박종명 · Open Pipeline Worklist · 고액/마감 임박 딜 우선순위',
       question: '내 현재 오픈 기회 중에서 Close Date가 지나지 않은 건만 대상으로, 금액이 큰 순으로 5건을 보여줘. 각 건의 단계, 금액, Close Date를 같이 보여주고, 특히 마감이 임박한 건은 왜 먼저 봐야 하는지도 설명해줘.',
       keywords: ['고액 오픈 딜', '마감 임박', '우선순위'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2025-03-20', record_page_object: null, record_id: null, account_id: null, opportunity_id: null, owner_id: '0052x000003pHryAAE' },

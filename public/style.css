@@ -2002,6 +2002,7 @@ body {
     flex-direction: column;
     gap: 10px;
     overflow: hidden;
+    padding-top: 22px;
 }
 
 .uc4-scenario-top {
@@ -2115,7 +2116,7 @@ body {
     }
 
     .uc4-scenario-card {
-        padding: 14px;
+        padding: 20px 14px 14px;
     }
 
     .uc4-scenario-type {
