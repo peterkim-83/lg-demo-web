@@ -439,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 🎙️ Use Case 3: Voice Agent (Multi-Agent)
   // ==========================================
   const UC3_AGENTS = {
-    '123a3199-c0e5-4025-889a-d2731595aa42': {
+    'aa200fb3-13eb-4526-8cb2-e6337cb0e179': {
       type: 'I/B',
       name: '제품문의',
       description: 'B2B Inbound 상담 (영어)',
@@ -454,7 +454,7 @@ Agent: Let me look into our direct view LED signage. To power a stunning LED men
 Customer: Yes, please set that up. And send me the details on that 22-inch kiosk.
 Agent: I will arrange that consultation and email you the kiosk quote right away. Thank you for calling LG!`
     },
-    '227d0baa-3493-4bcb-b66c-16ef32f36f99': {
+    'fe2f3a22-3831-4eef-8983-93dfcca5c444': {
       type: 'O/B Lead-intake',
       name: '호주 Marriott B2B',
       description: '디지털 사이니지 (영어)',
@@ -483,7 +483,7 @@ Customer: Correct.
 Agent: Perfect. I've noted that and passed it to the team. They'll be in touch by email based on your preference. Thanks so much for your time, James — have a great day.
 Customer: Thanks, Liam. Speak soon.`
     },
-    '837b6f13-0bb3-4633-b65d-ce96b43fdb9d': {
+    '8c5900e0-eda7-4b0f-9294-0c5688f8c28c': {
       type: 'O/B Lead-intake',
       name: '브라질 Bourbon B2B',
       description: '디지털 사이니지 (포르투갈어)',
@@ -508,7 +508,7 @@ Customer: Na terça-feira à tarde, às duas horas.
 Agent: Ótimo — terça-feira à tarde, às duas horas. Já registrei tudo e passei para a equipe. Eles entrarão em contato conforme sua preferência. Muito obrigado pelo seu tempo, Carlos Eduardo — tenha um ótimo dia!
 Customer: Obrigado, bom dia.`
     },
-    'd1db20b3-88d9-4715-93fc-5cf233c8f3c4': {
+    'eb16c363-d698-4166-814b-9100afcdbb16': {
       type: 'O/B Lead-intake',
       name: '싱가포르 Pan Pacific',
       description: '디지털 사이니지 (영어)',
@@ -545,7 +545,7 @@ Customer: Thank you. Goodbye.`
   const uc3Script = document.getElementById('uc3-scriptContent');
   const uc3AgentGrid = document.getElementById('uc3-agentGrid');
 
-  let currentUc3AgentId = '123a3199-c0e5-4025-889a-d2731595aa42'; // default Agent
+  let currentUc3AgentId = 'aa200fb3-13eb-4526-8cb2-e6337cb0e179'; // default Agent
   let currentCallId = null;
   let isUC3Ending = false;
   let uc3SessionSeq = 0;
@@ -889,7 +889,7 @@ Customer: Thank you. Goodbye.`
       ]
     },
     '3': {
-      id: '3', type: 'specific_opportunity_commercial_diagnosis', cardCode: 'SPECIFIC_OPPORTUNITY_COMMERCIAL_DIAGNOSIS', cardShortCode: 'COMMERCIAL_DIAGNOSIS', cardTitle: '현재 Opportunity의 상업 구조를 진단해줘', cardDescription: 'Quote 승인/동기화 · 금액 일관성 · 라인 규모', sessionSummary: '박성주 · Opportunity Record Page · 이제너두 commercial detail',
+      id: '3', type: 'specific_opportunity_commercial_diagnosis', cardCode: 'SPECIFIC_OPPORTUNITY_COMMERCIAL_DIAGNOSIS', cardShortCode: 'COMMERCIAL_DIAGNOSIS', cardTitle: '이 Opportunity 전반을 진단해줘', cardDescription: 'Quote 승인/동기화 · 금액 일관성 · 라인 규모', sessionSummary: '박성주 · Opportunity Record Page · 이제너두 commercial detail',
       question: '이 기회의 상업 구조를 브리핑해줘. 현재 단계와 Forecast, 견적 승인/동기화 상태, 견적 금액, 라인아이템 규모, 그리고 금액 일관성(견적 소계·총액·라인 합계)이 맞는지도 함께 설명해줘.',
       keywords: ['Quote Detail', 'Appr. Quote', 'Consistency'],
       session_context: { timezone: 'Asia/Seoul', current_date: '2026-04-16', record_page_object: 'Opportunity', record_id: '006Ih000003oU96IAE', account_id: '0012x00000cVyjMAAS', opportunity_id: '006Ih000003oU96IAE', owner_id: '005Ih000000xfxcIAA' },
