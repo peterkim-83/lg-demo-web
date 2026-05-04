@@ -14,14 +14,18 @@ const CONFIG = {
     START_REALTIME_WEBHOOK: "https://peter-n8n.duckdns.org/webhook/meeting-ai/start-realtime",
     END_REALTIME_WEBHOOK: "https://peter-n8n.duckdns.org/webhook/meeting-ai/end-realtime",
 
-    OPENAI_REALTIME_SDP_URL: "https://api.openai.com/v1/realtime",
-    DEFAULT_REALTIME_MODEL: "gpt-realtime",
+    // OpenAI Realtime WebRTC SDP exchange endpoint
+    OPENAI_REALTIME_SDP_URL: "https://api.openai.com/v1/realtime/calls",
+
+    // n8n response의 realtime.model이 우선 사용됨.
+    // 이 값은 fallback 용도.
+    DEFAULT_REALTIME_MODEL: "gpt-realtime-mini",
 
     START_TIMEOUT_MS: 45000,
     END_TIMEOUT_MS: 10000
 };
 
-const APP_VERSION = "meeting-ai-voice-session.mobile.v2.1";
+const APP_VERSION = "meeting-ai-voice-session.mobile.v2.2-cors-simple-request";
 console.log(APP_VERSION);
 
 // ------------------------------------------------------
@@ -240,6 +244,13 @@ function extractFirstUtterance(data) {
     );
 }
 
+// ------------------------------------------------------
+// Network
+// ------------------------------------------------------
+// n8n webhook 호출은 CORS preflight 가능성을 낮추기 위해
+// application/json 대신 text/plain;charset=UTF-8로 JSON string을 전송한다.
+// n8n C01_Validate_Start_Request는 string body를 JSON.parse하도록 구성되어 있어야 한다.
+
 async function postJson(url, payload, { timeoutMs = 30000 } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -247,13 +258,12 @@ async function postJson(url, payload, { timeoutMs = 30000 } = {}) {
     try {
         const res = await fetch(url, {
             method: "POST",
-            cache: "no-store",
+            mode: "cors",
+            credentials: "omit",
             signal: controller.signal,
             headers: {
                 "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache"
+                "Content-Type": "text/plain;charset=UTF-8"
             },
             body: JSON.stringify(payload)
         });
@@ -446,17 +456,21 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
     };
 
     channel.onmessage = (messageEvent) => {
-        if (!debugMode) return;
-
         const event = safeJsonParse(messageEvent.data);
 
-        if (event) {
+        if (debugMode && event) {
             console.log("[Realtime Event]", event.type, event);
         }
     };
 
     channel.onerror = (event) => {
         console.error("[Meeting AI] DataChannel error:", event);
+    };
+
+    channel.onclose = () => {
+        if (debugMode) {
+            console.log("[Meeting AI] DataChannel closed");
+        }
     };
 
     return channel;
@@ -469,7 +483,8 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${clientSecret}`,
-            "Content-Type": "application/sdp"
+            "Content-Type": "application/sdp",
+            "Accept": "application/sdp"
         },
         body: offerSdp
     });
@@ -477,7 +492,7 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
     const answerSdp = await res.text();
 
     if (!res.ok) {
-        throw new Error(`OpenAI SDP 교환 실패 (${res.status}): ${answerSdp.slice(0, 200)}`);
+        throw new Error(`OpenAI SDP 교환 실패 (${res.status}): ${answerSdp.slice(0, 300)}`);
     }
 
     if (!answerSdp || !answerSdp.includes("v=0")) {
@@ -556,6 +571,10 @@ async function startCall() {
             { timeoutMs: CONFIG.START_TIMEOUT_MS }
         );
 
+        if (debugMode) {
+            console.log("[Meeting AI] start-realtime response:", startData);
+        }
+
         if (sessionSeq !== activeSessionSeq) return;
 
         if (!startData?.ok) {
@@ -574,6 +593,16 @@ async function startCall() {
 
         if (!clientSecret) {
             throw new Error("n8n start-realtime 응답에서 client_secret을 받지 못했습니다.");
+        }
+
+        if (debugMode) {
+            console.log("[Meeting AI] extracted realtime contract:", {
+                model,
+                hasClientSecret: Boolean(clientSecret),
+                realtimeSessionId: currentRealtimeSessionId,
+                voiceSessionId: currentVoiceSessionId,
+                firstUtterance
+            });
         }
 
         setCallState("microphone");
@@ -699,7 +728,7 @@ function bestEffortEndOnPageHide() {
 
     try {
         const blob = new Blob([JSON.stringify(payload)], {
-            type: "application/json"
+            type: "text/plain;charset=UTF-8"
         });
 
         navigator.sendBeacon?.(CONFIG.END_REALTIME_WEBHOOK, blob);
@@ -734,7 +763,10 @@ function initialize() {
     console.log("[Meeting AI] initialized", {
         version: APP_VERSION,
         hasSessionToken: Boolean(sessionToken),
-        debugMode
+        debugMode,
+        startWebhook: CONFIG.START_REALTIME_WEBHOOK,
+        sdpUrl: CONFIG.OPENAI_REALTIME_SDP_URL,
+        fallbackModel: CONFIG.DEFAULT_REALTIME_MODEL
     });
 }
 
