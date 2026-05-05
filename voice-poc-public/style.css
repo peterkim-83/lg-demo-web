@@ -388,6 +388,7 @@ button {
     overflow-wrap: break-word;
     max-width: 24ch;
     text-align: center;
+    white-space: pre-line;
 }
 
 /* ── INFO ROW ── */
