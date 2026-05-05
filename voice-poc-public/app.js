@@ -25,7 +25,7 @@ const CONFIG = {
     END_TIMEOUT_MS: 10000
 };
 
-const APP_VERSION = "meeting-ai-voice-session.mobile.v2.4-ui-refresh-glow";
+const APP_VERSION = "meeting-ai-voice-session.mobile.v2.5-end-contract";
 console.log(APP_VERSION);
 
 // ------------------------------------------------------
@@ -70,6 +70,7 @@ let startedAt = null;
 let currentStartResponse = null;
 let currentVoiceSessionId = null;
 let currentRealtimeSessionId = null;
+let currentOpenAICallId = null;
 
 let timerInterval = null;
 let seconds = 0;
@@ -378,6 +379,22 @@ function buildEndPayload({ endedBy = "user_button", finalState = "ended" } = {})
         ))
         : 0;
 
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+
+    const diagnostics = {
+        userAgent: navigator.userAgent,
+        url: window.location.href,
+        timezone,
+        appVersion: APP_VERSION,
+        callState,
+        debugMode,
+        connectionState: pc ? pc.connectionState : null,
+        iceConnectionState: pc ? pc.iceConnectionState : null,
+        dataChannelState: dataChannel ? dataChannel.readyState : null,
+        hasLocalStream: Boolean(localStream),
+        hasRemoteAudio: Boolean(remoteAudio?.srcObject)
+    };
+
     return {
         sessionToken,
         sessionId: currentStartResponse?.sessionId || null,
@@ -386,6 +403,11 @@ function buildEndPayload({ endedBy = "user_button", finalState = "ended" } = {})
 
         voiceSessionId: currentVoiceSessionId,
         realtimeSessionId: currentRealtimeSessionId,
+        openaiCallId:
+            currentOpenAICallId ||
+            currentStartResponse?.openaiCallId ||
+            currentStartResponse?.realtime?.callId ||
+            null,
 
         startedAt,
         endedAt,
@@ -393,11 +415,11 @@ function buildEndPayload({ endedBy = "user_button", finalState = "ended" } = {})
         endedBy,
         finalState,
 
-        browser: {
-            userAgent: navigator.userAgent,
-            url: window.location.href,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null
-        },
+        // New canonical field for n8n C01
+        client: diagnostics,
+
+        // Backward-compatible alias. Keep this until n8n contract is fully stable.
+        browser: diagnostics,
 
         submittedAt: nowIso()
     };
@@ -526,6 +548,18 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
     return channel;
 }
 
+function extractOpenAICallIdFromLocation(locationValue) {
+    if (!locationValue) return null;
+
+    const text = String(locationValue);
+
+    // Examples we want to tolerate:
+    // /v1/realtime/calls/rtc_xxx
+    // https://api.openai.com/v1/realtime/calls/rtc_xxx
+    const match = text.match(/\/realtime\/calls\/([^/?#]+)/);
+    return match ? match[1] : null;
+}
+
 async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
     const url = `${CONFIG.OPENAI_REALTIME_SDP_URL}?model=${encodeURIComponent(model)}`;
 
@@ -539,6 +573,9 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
         body: offerSdp
     });
 
+    const locationHeader = res.headers.get("Location") || res.headers.get("location");
+    const openaiCallId = extractOpenAICallIdFromLocation(locationHeader);
+
     const answerSdp = await res.text();
 
     if (!res.ok) {
@@ -549,7 +586,10 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
         throw new Error("OpenAI SDP answer가 유효하지 않습니다.");
     }
 
-    return answerSdp;
+    return {
+        answerSdp,
+        openaiCallId
+    };
 }
 
 async function cleanupRealtimeObjects() {
@@ -590,6 +630,7 @@ async function startCall() {
     currentStartResponse = null;
     currentVoiceSessionId = null;
     currentRealtimeSessionId = null;
+    currentOpenAICallId = null;
 
     try {
         setCallState("validating");
@@ -656,7 +697,7 @@ async function startCall() {
 
         await pc.setLocalDescription(offer);
 
-        const answerSdp = await exchangeSdpWithOpenAI({
+        const sdpResult = await exchangeSdpWithOpenAI({
             offerSdp: offer.sdp,
             clientSecret,
             model
@@ -664,7 +705,19 @@ async function startCall() {
 
         if (sessionSeq !== activeSessionSeq) return;
 
-        await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+        currentOpenAICallId = sdpResult.openaiCallId || null;
+
+        if (debugMode) {
+            console.log("[Meeting AI] SDP exchange result:", {
+                hasAnswerSdp: Boolean(sdpResult.answerSdp),
+                openaiCallId: currentOpenAICallId
+            });
+        }
+
+        await pc.setRemoteDescription({
+            type: "answer",
+            sdp: sdpResult.answerSdp
+        });
 
         startedAt = nowIso();
 
@@ -688,6 +741,7 @@ async function startCall() {
         currentStartResponse = null;
         currentVoiceSessionId = null;
         currentRealtimeSessionId = null;
+        currentOpenAICallId = null;
         startedAt = null;
 
         setCallState("error", "연결 실패");
@@ -733,6 +787,7 @@ async function endCall({ endedBy = "user_button", auto = false } = {}) {
         currentStartResponse = null;
         currentVoiceSessionId = null;
         currentRealtimeSessionId = null;
+        currentOpenAICallId = null;
         startedAt = null;
     }
 }
