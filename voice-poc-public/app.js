@@ -6,7 +6,8 @@
 // - Salesforce URL에서 sessionToken 수신
 // - n8n start-realtime webhook 호출
 // - n8n이 조립한 OpenAI Realtime session/client_secret으로 WebRTC 연결
-// - 사용자가 종료하면 WebRTC close + n8n end-realtime 종료 시그널 전송
+// - 사용자가 종료하거나 브라우저/모바일 이탈/연결 끊김이 발생하면
+//   n8n end-realtime 종료 시그널 전송
 // - 통화 결과/요약/로그는 모바일에 표시하지 않음
 // ======================================================
 
@@ -22,10 +23,18 @@ const CONFIG = {
     DEFAULT_REALTIME_MODEL: "gpt-realtime-mini",
 
     START_TIMEOUT_MS: 45000,
-    END_TIMEOUT_MS: 10000
+    END_TIMEOUT_MS: 10000,
+
+    // WebRTC disconnected는 일시적 네트워크 흔들림일 수 있으므로
+    // 즉시 종료하지 않고 짧은 grace window를 둔다.
+    DISCONNECT_GRACE_MS: 8000,
+
+    // DataChannel close는 provider/session 종료 신호일 수 있으므로
+    // 짧게 확인한 뒤 종료 처리한다.
+    DATA_CHANNEL_CLOSE_GRACE_MS: 1500
 };
 
-const APP_VERSION = "meeting-ai-voice-session.mobile.v2.5-end-contract";
+const APP_VERSION = "meeting-ai-voice-session.mobile.v2.6-end-reason-classifier";
 console.log(APP_VERSION);
 
 // ------------------------------------------------------
@@ -71,9 +80,18 @@ let currentStartResponse = null;
 let currentVoiceSessionId = null;
 let currentRealtimeSessionId = null;
 let currentOpenAICallId = null;
+let currentClientCallId = null;
 
 let timerInterval = null;
 let seconds = 0;
+
+let disconnectGraceTimer = null;
+let dataChannelCloseTimer = null;
+
+let lastUserAction = null;
+let lastUserActionAt = null;
+let lifecycleEvents = [];
+let rtcStateEvents = [];
 
 // ------------------------------------------------------
 // Session Token UI Branch
@@ -268,6 +286,171 @@ function maskToken(token) {
     return `${token.slice(0, 8)}...${token.slice(-6)}`;
 }
 
+function safeErrorMessage(error) {
+    return String(error?.message || error || "Unknown error").slice(0, 500);
+}
+
+function createClientCallId() {
+    try {
+        if (crypto?.randomUUID) return crypto.randomUUID();
+    } catch (_) { }
+
+    return `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function pushLimited(list, item, max = 20) {
+    list.push(item);
+    while (list.length > max) list.shift();
+}
+
+function recordUserAction(action) {
+    lastUserAction = action;
+    lastUserActionAt = nowIso();
+
+    if (debugMode) {
+        console.log("[Meeting AI] user action:", {
+            action,
+            at: lastUserActionAt
+        });
+    }
+}
+
+function recordLifecycleEvent(type, extra = {}) {
+    const event = {
+        type,
+        at: nowIso(),
+        visibilityState: document.visibilityState || null,
+        documentHidden: Boolean(document.hidden),
+        online: typeof navigator.onLine === "boolean" ? navigator.onLine : null,
+        callState,
+        ...extra
+    };
+
+    pushLimited(lifecycleEvents, event, 20);
+
+    if (debugMode) console.log("[Meeting AI] lifecycle:", event);
+
+    return event;
+}
+
+function recordRtcState(type, extra = {}) {
+    const event = {
+        type,
+        at: nowIso(),
+        callState,
+        connectionState: pc ? pc.connectionState : null,
+        iceConnectionState: pc ? pc.iceConnectionState : null,
+        signalingState: pc ? pc.signalingState : null,
+        dataChannelState: dataChannel ? dataChannel.readyState : null,
+        ...extra
+    };
+
+    pushLimited(rtcStateEvents, event, 30);
+
+    if (debugMode) console.log("[Meeting AI] rtc state:", event);
+
+    return event;
+}
+
+function getLastUserActionAgeMs() {
+    if (!lastUserActionAt) return null;
+    return Math.max(0, Date.now() - new Date(lastUserActionAt).getTime());
+}
+
+function getDurationSecUntil(endedAt) {
+    if (!startedAt) return 0;
+
+    return Math.max(0, Math.round(
+        (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000
+    ));
+}
+
+function getLocalAudioTrackDiagnostics() {
+    try {
+        const tracks = localStream ? localStream.getAudioTracks() : [];
+        return tracks.map((track) => ({
+            id: track.id || null,
+            kind: track.kind || null,
+            labelPresent: Boolean(track.label),
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState
+        }));
+    } catch (_) {
+        return [];
+    }
+}
+
+function isActiveVoiceState() {
+    return ["microphone", "connecting", "in_call"].includes(callState);
+}
+
+function clearDisconnectGraceTimer() {
+    if (disconnectGraceTimer) {
+        clearTimeout(disconnectGraceTimer);
+        disconnectGraceTimer = null;
+    }
+}
+
+function clearDataChannelCloseTimer() {
+    if (dataChannelCloseTimer) {
+        clearTimeout(dataChannelCloseTimer);
+        dataChannelCloseTimer = null;
+    }
+}
+
+function clearExitTimers() {
+    clearDisconnectGraceTimer();
+    clearDataChannelCloseTimer();
+}
+
+function resetRuntimeSessionMetadata() {
+    currentStartResponse = null;
+    currentVoiceSessionId = null;
+    currentRealtimeSessionId = null;
+    currentOpenAICallId = null;
+    currentClientCallId = null;
+    startedAt = null;
+}
+
+function buildExitEvidence({ trigger = null, extra = {} } = {}) {
+    return {
+        trigger,
+        clientTimestamp: nowIso(),
+
+        visibilityState: document.visibilityState || null,
+        documentHidden: Boolean(document.hidden),
+        online: typeof navigator.onLine === "boolean" ? navigator.onLine : null,
+
+        pageUrl: window.location.href,
+        userAgent: navigator.userAgent,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+        appVersion: APP_VERSION,
+        debugMode,
+
+        callState,
+        clientCallId: currentClientCallId,
+
+        connectionState: pc ? pc.connectionState : null,
+        iceConnectionState: pc ? pc.iceConnectionState : null,
+        signalingState: pc ? pc.signalingState : null,
+        dataChannelState: dataChannel ? dataChannel.readyState : null,
+
+        hasLocalStream: Boolean(localStream),
+        hasRemoteAudio: Boolean(remoteAudio?.srcObject),
+        localAudioTracks: getLocalAudioTrackDiagnostics(),
+
+        lastUserAction,
+        lastUserActionAt,
+        lastUserActionAgeMs: getLastUserActionAgeMs(),
+
+        recentLifecycleEvents: lifecycleEvents.slice(-8),
+        recentRtcStateEvents: rtcStateEvents.slice(-10),
+
+        ...extra
+    };
+}
+
 function extractClientSecret(data) {
     return (
         data?.realtime?.client_secret?.value ||
@@ -314,6 +497,28 @@ function extractFirstUtterance(data) {
         data?.agentInput?.briefing_package?.first_utterance ||
         ""
     );
+}
+
+function classifyStartError(error) {
+    const message = safeErrorMessage(error).toLowerCase();
+
+    if (message.includes("permission") || message.includes("notallowed") || message.includes("denied")) {
+        return "microphone_permission_denied_or_lost";
+    }
+
+    if (message.includes("client_secret")) {
+        return "missing_realtime_client_secret";
+    }
+
+    if (message.includes("sdp")) {
+        return "sdp_exchange_failed";
+    }
+
+    if (message.includes("network") || message.includes("fetch") || message.includes("abort")) {
+        return "start_network_or_timeout_error";
+    }
+
+    return "client_start_error";
 }
 
 // ------------------------------------------------------
@@ -363,6 +568,7 @@ function buildStartPayload() {
         sessionToken,
         client: "firebase-mobile-web",
         provider: "openai_realtime",
+        clientCallId: currentClientCallId,
         pageUrl: window.location.href,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
         userAgent: navigator.userAgent,
@@ -370,16 +576,22 @@ function buildStartPayload() {
     };
 }
 
-function buildEndPayload({ endedBy = "user_button", finalState = "ended" } = {}) {
+function buildEndPayload({
+    endedBy = "user_button",
+    finalState = "ended",
+    exitReason = "explicit_user_end",
+    exitConfidence = "high",
+    trigger = "manual",
+    exitEvidence = {}
+} = {}) {
     const endedAt = nowIso();
-
-    const durationSec = startedAt
-        ? Math.max(0, Math.round(
-            (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000
-        ))
-        : 0;
-
+    const durationSec = getDurationSecUntil(endedAt);
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+
+    const evidence = buildExitEvidence({
+        trigger,
+        extra: exitEvidence
+    });
 
     const diagnostics = {
         userAgent: navigator.userAgent,
@@ -388,11 +600,24 @@ function buildEndPayload({ endedBy = "user_button", finalState = "ended" } = {})
         appVersion: APP_VERSION,
         callState,
         debugMode,
+
+        clientCallId: currentClientCallId,
+        endTrigger: trigger,
+        exitReason,
+        exitConfidence,
+
         connectionState: pc ? pc.connectionState : null,
         iceConnectionState: pc ? pc.iceConnectionState : null,
+        signalingState: pc ? pc.signalingState : null,
         dataChannelState: dataChannel ? dataChannel.readyState : null,
+
+        visibilityState: document.visibilityState || null,
+        documentHidden: Boolean(document.hidden),
+        online: typeof navigator.onLine === "boolean" ? navigator.onLine : null,
+
         hasLocalStream: Boolean(localStream),
-        hasRemoteAudio: Boolean(remoteAudio?.srcObject)
+        hasRemoteAudio: Boolean(remoteAudio?.srcObject),
+        localAudioTracks: getLocalAudioTrackDiagnostics()
     };
 
     return {
@@ -409,17 +634,28 @@ function buildEndPayload({ endedBy = "user_button", finalState = "ended" } = {})
             currentStartResponse?.realtime?.callId ||
             null,
 
+        clientCallId: currentClientCallId,
+        endIdempotencyKey: `${currentClientCallId || "no-client-call-id"}:end`,
+
         startedAt,
         endedAt,
         durationSec,
         endedBy,
         finalState,
 
-        // New canonical field for n8n C01
+        // v2.6 canonical end classification
+        exitReason,
+        exitConfidence,
+        exitEvidence: evidence,
+
+        // Existing canonical field for n8n C01
         client: diagnostics,
 
-        // Backward-compatible alias. Keep this until n8n contract is fully stable.
-        browser: diagnostics,
+        // Backward-compatible alias.
+        browser: {
+            sameAsClient: true,
+            ...diagnostics
+        },
 
         submittedAt: nowIso()
     };
@@ -435,6 +671,92 @@ function notifyEndBestEffort(payload) {
     } catch (error) {
         console.warn("[Meeting AI] best-effort end signal failed:", error);
     }
+}
+
+function sendEndPayload(payload, { preferBeacon = false } = {}) {
+    let beaconSent = false;
+
+    if (preferBeacon && navigator.sendBeacon) {
+        try {
+            const blob = new Blob([JSON.stringify(payload)], {
+                type: "text/plain;charset=UTF-8"
+            });
+            beaconSent = navigator.sendBeacon(CONFIG.END_REALTIME_WEBHOOK, blob);
+        } catch (error) {
+            console.warn("[Meeting AI] sendBeacon end signal failed:", error);
+        }
+    }
+
+    if (!beaconSent) {
+        notifyEndBestEffort(payload);
+    }
+
+    return {
+        beaconSent,
+        fallbackFetchStarted: !beaconSent
+    };
+}
+
+async function submitEndOnce({
+    endedBy = "user_button",
+    finalState = "ended",
+    exitReason = "explicit_user_end",
+    exitConfidence = "high",
+    trigger = "manual",
+    exitEvidence = {}
+} = {}, {
+    preferBeacon = false,
+    auto = false,
+    updateUi = true,
+    resetRuntime = true
+} = {}) {
+    if (!sessionToken) return false;
+    if (endSubmitted) return false;
+
+    const payload = buildEndPayload({
+        endedBy,
+        finalState,
+        exitReason,
+        exitConfidence,
+        trigger,
+        exitEvidence
+    });
+
+    endSubmitted = true;
+    clearExitTimers();
+
+    const sendResult = sendEndPayload(payload, { preferBeacon });
+
+    if (debugMode) {
+        console.log("[Meeting AI] end submitted:", {
+            endedBy,
+            finalState,
+            exitReason,
+            exitConfidence,
+            trigger,
+            sendResult,
+            payload
+        });
+    }
+
+    try {
+        await cleanupRealtimeObjects();
+    } catch (error) {
+        console.warn("[Meeting AI] cleanup after end failed:", error);
+    }
+
+    document.documentElement.classList.remove("call-live");
+
+    if (updateUi) {
+        setCallState("ended", "통화 종료됨");
+        setButtons({ startDisabled: false, endDisabled: true });
+    }
+
+    if (resetRuntime) {
+        resetRuntimeSessionMetadata();
+    }
+
+    return true;
 }
 
 // ------------------------------------------------------
@@ -456,6 +778,100 @@ async function requestMicrophone() {
     });
 }
 
+function scheduleDisconnectGraceTimer({ reason = "webrtc_connection_disconnected", trigger = "rtc_state" } = {}) {
+    if (disconnectGraceTimer) return;
+    if (endSubmitted) return;
+    if (!isActiveVoiceState()) return;
+
+    disconnectGraceTimer = setTimeout(() => {
+        disconnectGraceTimer = null;
+
+        if (endSubmitted) return;
+        if (!isActiveVoiceState()) return;
+
+        const connectionState = pc ? pc.connectionState : null;
+        const iceConnectionState = pc ? pc.iceConnectionState : null;
+
+        const stillDisconnected = (
+            ["disconnected", "failed", "closed"].includes(connectionState) ||
+            ["disconnected", "failed", "closed"].includes(iceConnectionState)
+        );
+
+        if (!stillDisconnected) return;
+
+        submitEndOnce({
+            endedBy: "error",
+            finalState: connectionState === "failed" || iceConnectionState === "failed" ? "failed" : "disconnected",
+            exitReason: `${reason}_timeout`,
+            exitConfidence: "medium",
+            trigger: "disconnect_grace_timer",
+            exitEvidence: {
+                graceMs: CONFIG.DISCONNECT_GRACE_MS,
+                connectionState,
+                iceConnectionState,
+                originalTrigger: trigger
+            }
+        }, {
+            preferBeacon: false,
+            auto: true,
+            updateUi: true,
+            resetRuntime: true
+        });
+    }, CONFIG.DISCONNECT_GRACE_MS);
+}
+
+function setupLocalAudioTrackMonitors(stream, sessionSeq) {
+    try {
+        const tracks = stream ? stream.getAudioTracks() : [];
+
+        tracks.forEach((track) => {
+            track.addEventListener("ended", () => {
+                if (sessionSeq !== activeSessionSeq) return;
+                if (endSubmitted) return;
+                if (!isActiveVoiceState()) return;
+
+                recordRtcState("local_audio_track_ended", {
+                    trackId: track.id || null,
+                    trackReadyState: track.readyState
+                });
+
+                submitEndOnce({
+                    endedBy: "error",
+                    finalState: "disconnected",
+                    exitReason: "local_audio_track_ended",
+                    exitConfidence: "medium",
+                    trigger: "local_audio_track_ended",
+                    exitEvidence: {
+                        trackId: track.id || null,
+                        trackReadyState: track.readyState
+                    }
+                }, {
+                    preferBeacon: false,
+                    auto: true,
+                    updateUi: true,
+                    resetRuntime: true
+                });
+            });
+
+            track.addEventListener("mute", () => {
+                if (sessionSeq !== activeSessionSeq) return;
+                recordRtcState("local_audio_track_mute", {
+                    trackId: track.id || null
+                });
+            });
+
+            track.addEventListener("unmute", () => {
+                if (sessionSeq !== activeSessionSeq) return;
+                recordRtcState("local_audio_track_unmute", {
+                    trackId: track.id || null
+                });
+            });
+        });
+    } catch (error) {
+        console.warn("[Meeting AI] local audio track monitor setup failed:", error);
+    }
+}
+
 function setupPeerConnection(sessionSeq) {
     const peer = new RTCPeerConnection();
 
@@ -471,26 +887,127 @@ function setupPeerConnection(sessionSeq) {
 
     peer.onconnectionstatechange = () => {
         if (sessionSeq !== activeSessionSeq) return;
-        const state = peer.connectionState;
 
-        if (debugMode) console.log("[Meeting AI] connectionState:", state);
+        const state = peer.connectionState;
+        recordRtcState("connectionstatechange", { connectionState: state });
 
         if (state === "connected") {
+            clearDisconnectGraceTimer();
             setCallState("in_call", "통화 중");
             setButtons({ startDisabled: true, endDisabled: false });
+            return;
         }
 
-        if (["failed", "disconnected"].includes(state) && !endSubmitted) {
-            setStatus("연결이 끊어졌습니다", "error");
+        if (state === "disconnected") {
+            setStatus("연결이 불안정합니다", "error");
+            scheduleDisconnectGraceTimer({
+                reason: "webrtc_connection_disconnected",
+                trigger: "connectionstatechange"
+            });
+            return;
         }
 
-        if (state === "closed" && !endSubmitted) {
+        if (state === "failed" && !endSubmitted && isActiveVoiceState()) {
+            setStatus("연결 실패", "error");
+
+            submitEndOnce({
+                endedBy: "error",
+                finalState: "failed",
+                exitReason: "webrtc_connection_failed",
+                exitConfidence: "high",
+                trigger: "connectionstatechange",
+                exitEvidence: {
+                    connectionState: state,
+                    iceConnectionState: peer.iceConnectionState || null
+                }
+            }, {
+                preferBeacon: false,
+                auto: true,
+                updateUi: true,
+                resetRuntime: true
+            });
+            return;
+        }
+
+        if (state === "closed" && !endSubmitted && isActiveVoiceState()) {
             setStatus("연결 종료됨", "ready");
+
+            submitEndOnce({
+                endedBy: "provider_ended",
+                finalState: "disconnected",
+                exitReason: "peer_connection_closed_without_user_button",
+                exitConfidence: "medium",
+                trigger: "connectionstatechange",
+                exitEvidence: {
+                    connectionState: state,
+                    iceConnectionState: peer.iceConnectionState || null
+                }
+            }, {
+                preferBeacon: false,
+                auto: true,
+                updateUi: true,
+                resetRuntime: true
+            });
         }
     };
 
     peer.oniceconnectionstatechange = () => {
-        if (debugMode) console.log("[Meeting AI] iceConnectionState:", peer.iceConnectionState);
+        if (sessionSeq !== activeSessionSeq) return;
+
+        const state = peer.iceConnectionState;
+        recordRtcState("iceconnectionstatechange", { iceConnectionState: state });
+
+        if (["connected", "completed"].includes(state)) {
+            clearDisconnectGraceTimer();
+            return;
+        }
+
+        if (state === "disconnected") {
+            setStatus("네트워크 연결 불안정", "error");
+            scheduleDisconnectGraceTimer({
+                reason: "ice_connection_disconnected",
+                trigger: "iceconnectionstatechange"
+            });
+            return;
+        }
+
+        if (state === "failed" && !endSubmitted && isActiveVoiceState()) {
+            submitEndOnce({
+                endedBy: "error",
+                finalState: "failed",
+                exitReason: "ice_connection_failed",
+                exitConfidence: "high",
+                trigger: "iceconnectionstatechange",
+                exitEvidence: {
+                    connectionState: peer.connectionState || null,
+                    iceConnectionState: state
+                }
+            }, {
+                preferBeacon: false,
+                auto: true,
+                updateUi: true,
+                resetRuntime: true
+            });
+        }
+
+        if (state === "closed" && !endSubmitted && isActiveVoiceState()) {
+            submitEndOnce({
+                endedBy: "provider_ended",
+                finalState: "disconnected",
+                exitReason: "ice_connection_closed_without_user_button",
+                exitConfidence: "medium",
+                trigger: "iceconnectionstatechange",
+                exitEvidence: {
+                    connectionState: peer.connectionState || null,
+                    iceConnectionState: state
+                }
+            }, {
+                preferBeacon: false,
+                auto: true,
+                updateUi: true,
+                resetRuntime: true
+            });
+        }
     };
 
     return peer;
@@ -507,6 +1024,9 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
 
     channel.onopen = () => {
         if (sessionSeq !== activeSessionSeq) return;
+
+        clearDataChannelCloseTimer();
+        recordRtcState("data_channel_open");
 
         const instructions = firstUtterance
             ? [
@@ -538,11 +1058,52 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
     };
 
     channel.onerror = (event) => {
+        recordRtcState("data_channel_error", {
+            dataChannelState: channel.readyState
+        });
+
         console.error("[Meeting AI] DataChannel error:", event);
     };
 
     channel.onclose = () => {
+        if (sessionSeq !== activeSessionSeq) return;
+
+        recordRtcState("data_channel_closed", {
+            dataChannelState: channel.readyState
+        });
+
         if (debugMode) console.log("[Meeting AI] DataChannel closed");
+
+        if (endSubmitted) return;
+        if (!isActiveVoiceState()) return;
+
+        clearDataChannelCloseTimer();
+
+        dataChannelCloseTimer = setTimeout(() => {
+            dataChannelCloseTimer = null;
+
+            if (endSubmitted) return;
+            if (!isActiveVoiceState()) return;
+
+            submitEndOnce({
+                endedBy: "provider_ended",
+                finalState: "disconnected",
+                exitReason: "data_channel_closed",
+                exitConfidence: "medium",
+                trigger: "data_channel_close_timer",
+                exitEvidence: {
+                    graceMs: CONFIG.DATA_CHANNEL_CLOSE_GRACE_MS,
+                    dataChannelState: channel.readyState,
+                    connectionState: pc ? pc.connectionState : null,
+                    iceConnectionState: pc ? pc.iceConnectionState : null
+                }
+            }, {
+                preferBeacon: false,
+                auto: true,
+                updateUi: true,
+                resetRuntime: true
+            });
+        }, CONFIG.DATA_CHANNEL_CLOSE_GRACE_MS);
     };
 
     return channel;
@@ -593,6 +1154,8 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
 }
 
 async function cleanupRealtimeObjects() {
+    clearExitTimers();
+
     try {
         if (dataChannel && dataChannel.readyState !== "closed") dataChannel.close();
     } catch (_) { }
@@ -624,13 +1187,21 @@ async function startCall() {
         return;
     }
 
+    recordUserAction("start_button");
+
     const sessionSeq = ++activeSessionSeq;
     endSubmitted = false;
+    clearExitTimers();
+
     startedAt = null;
     currentStartResponse = null;
     currentVoiceSessionId = null;
     currentRealtimeSessionId = null;
     currentOpenAICallId = null;
+    currentClientCallId = createClientCallId();
+
+    lifecycleEvents = [];
+    rtcStateEvents = [];
 
     try {
         setCallState("validating");
@@ -672,12 +1243,14 @@ async function startCall() {
                 hasClientSecret: Boolean(clientSecret),
                 realtimeSessionId: currentRealtimeSessionId,
                 voiceSessionId: currentVoiceSessionId,
+                clientCallId: currentClientCallId,
                 firstUtterance
             });
         }
 
         setCallState("microphone");
         localStream = await requestMicrophone();
+        setupLocalAudioTrackMonitors(localStream, sessionSeq);
 
         if (sessionSeq !== activeSessionSeq) return;
 
@@ -727,22 +1300,34 @@ async function startCall() {
     } catch (error) {
         console.error("[Meeting AI] start failed:", error);
 
-        await cleanupRealtimeObjects();
+        const canNotifyEnd = Boolean(
+            currentStartResponse ||
+            currentVoiceSessionId ||
+            currentRealtimeSessionId
+        );
 
-        document.documentElement.classList.remove("call-live");
-
-        if (currentStartResponse || currentVoiceSessionId || currentRealtimeSessionId) {
-            notifyEndBestEffort(buildEndPayload({
+        if (canNotifyEnd && !endSubmitted) {
+            await submitEndOnce({
                 endedBy: "client_start_error",
-                finalState: "start_failed"
-            }));
+                finalState: "start_failed",
+                exitReason: classifyStartError(error),
+                exitConfidence: "high",
+                trigger: "start_call_catch",
+                exitEvidence: {
+                    errorMessage: safeErrorMessage(error)
+                }
+            }, {
+                preferBeacon: false,
+                auto: true,
+                updateUi: false,
+                resetRuntime: true
+            });
+        } else {
+            await cleanupRealtimeObjects();
+            resetRuntimeSessionMetadata();
         }
 
-        currentStartResponse = null;
-        currentVoiceSessionId = null;
-        currentRealtimeSessionId = null;
-        currentOpenAICallId = null;
-        startedAt = null;
+        document.documentElement.classList.remove("call-live");
 
         setCallState("error", "연결 실패");
         setButtons({ startDisabled: false, endDisabled: true });
@@ -752,24 +1337,26 @@ async function startCall() {
 }
 
 async function endCall({ endedBy = "user_button", auto = false } = {}) {
-    if (endSubmitted) return;
+    recordUserAction("end_button");
 
-    endSubmitted = true;
+    if (endSubmitted) return;
 
     try {
         setCallState("ending");
         setButtons({ startDisabled: true, endDisabled: true });
 
-        const payload = buildEndPayload({ endedBy, finalState: "ended" });
-
-        await cleanupRealtimeObjects();
-
-        notifyEndBestEffort(payload);
-
-        document.documentElement.classList.remove("call-live");
-
-        setCallState("ended", "통화 종료됨");
-        setButtons({ startDisabled: false, endDisabled: true });
+        await submitEndOnce({
+            endedBy,
+            finalState: "ended",
+            exitReason: "explicit_user_end",
+            exitConfidence: "high",
+            trigger: "end_button_click"
+        }, {
+            preferBeacon: false,
+            auto,
+            updateUi: true,
+            resetRuntime: true
+        });
 
     } catch (error) {
         console.error("[Meeting AI] end failed:", error);
@@ -782,13 +1369,6 @@ async function endCall({ endedBy = "user_button", auto = false } = {}) {
         setButtons({ startDisabled: false, endDisabled: true });
 
         if (!auto) alert(error?.message || "통화 종료 중 오류가 발생했습니다.");
-
-    } finally {
-        currentStartResponse = null;
-        currentVoiceSessionId = null;
-        currentRealtimeSessionId = null;
-        currentOpenAICallId = null;
-        startedAt = null;
     }
 }
 
@@ -796,29 +1376,88 @@ async function endCall({ endedBy = "user_button", auto = false } = {}) {
 // Browser lifecycle
 // ------------------------------------------------------
 
-function bestEffortEndOnPageHide() {
-    if (!sessionToken || endSubmitted) return;
-    if (!["connecting", "in_call", "microphone"].includes(callState)) return;
-
-    endSubmitted = true;
-
-    const payload = buildEndPayload({
-        endedBy: "page_hidden",
-        finalState: "interrupted"
+function handleVisibilityChange() {
+    recordLifecycleEvent("visibilitychange", {
+        visibilityState: document.visibilityState || null
     });
 
-    try {
-        const blob = new Blob([JSON.stringify(payload)], {
-            type: "text/plain;charset=UTF-8"
-        });
-        navigator.sendBeacon?.(CONFIG.END_REALTIME_WEBHOOK, blob);
-    } catch (_) { }
+    if (document.visibilityState !== "hidden") return;
+    if (!sessionToken || endSubmitted) return;
+    if (!isActiveVoiceState()) return;
 
-    cleanupRealtimeObjects();
-    document.documentElement.classList.remove("call-live");
+    submitEndOnce({
+        endedBy: "page_hidden",
+        finalState: "interrupted",
+        exitReason: "document_visibility_hidden",
+        exitConfidence: "medium",
+        trigger: "visibilitychange",
+        exitEvidence: {
+            visibilityState: document.visibilityState || null,
+            documentHidden: Boolean(document.hidden)
+        }
+    }, {
+        preferBeacon: true,
+        auto: true,
+        updateUi: true,
+        resetRuntime: true
+    });
 }
 
-window.addEventListener("pagehide", bestEffortEndOnPageHide);
+function handlePageHide(event) {
+    recordLifecycleEvent("pagehide", {
+        persisted: Boolean(event?.persisted)
+    });
+
+    if (!sessionToken || endSubmitted) return;
+    if (!isActiveVoiceState()) return;
+
+    const persisted = Boolean(event?.persisted);
+
+    submitEndOnce({
+        endedBy: persisted ? "page_hidden" : "browser_closed",
+        finalState: "interrupted",
+        exitReason: persisted ? "pagehide_bfcache_or_history_navigation" : "pagehide_unload_or_navigation",
+        exitConfidence: "medium",
+        trigger: "pagehide",
+        exitEvidence: {
+            eventPersisted: persisted
+        }
+    }, {
+        preferBeacon: true,
+        auto: true,
+        updateUi: false,
+        resetRuntime: true
+    });
+}
+
+function handleOffline() {
+    recordLifecycleEvent("offline");
+
+    if (!sessionToken || endSubmitted) return;
+    if (!isActiveVoiceState()) return;
+
+    setStatus("네트워크 연결 불안정", "error");
+
+    scheduleDisconnectGraceTimer({
+        reason: "network_offline_during_call",
+        trigger: "offline"
+    });
+}
+
+function handleOnline() {
+    recordLifecycleEvent("online");
+
+    if (!sessionToken || endSubmitted) return;
+    if (!isActiveVoiceState()) return;
+
+    clearDisconnectGraceTimer();
+    setStatus(callState === "in_call" ? "통화 중" : "통화 연결 중", callState === "in_call" ? "active" : "pending");
+}
+
+document.addEventListener("visibilitychange", handleVisibilityChange);
+window.addEventListener("pagehide", handlePageHide);
+window.addEventListener("offline", handleOffline);
+window.addEventListener("online", handleOnline);
 
 // ------------------------------------------------------
 // Init
@@ -844,11 +1483,14 @@ function initialize() {
     setCallState("idle");
     setButtons({ startDisabled: false, endDisabled: true });
 
+    recordLifecycleEvent("initialize");
+
     console.log("[Meeting AI] initialized", {
         version: APP_VERSION,
         hasSessionToken: Boolean(sessionToken),
         debugMode,
         startWebhook: CONFIG.START_REALTIME_WEBHOOK,
+        endWebhook: CONFIG.END_REALTIME_WEBHOOK,
         sdpUrl: CONFIG.OPENAI_REALTIME_SDP_URL,
         fallbackModel: CONFIG.DEFAULT_REALTIME_MODEL
     });
