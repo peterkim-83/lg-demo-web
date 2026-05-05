@@ -2,12 +2,12 @@
 <html lang="ko" data-theme="dark">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Meeting AI — Voice Session</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&display=swap" rel="stylesheet" />
 
     <!-- 외부 CSS 연결 -->
     <link rel="stylesheet" href="/style.css" />
@@ -17,11 +17,6 @@
     <div class="ambient" aria-hidden="true"></div>
 
     <main class="card" role="main">
-        <!-- UI 코드는 이전과 동일하게 유지 -->
-        <header class="header">
-            <span class="badge" aria-label="Meeting AI">Meeting AI</span>
-        </header>
-
         <section class="visualizer-wrap" aria-label="음성 상태">
             <div class="mic-ring" id="micRing">
                 <div class="mic-ring-inner" id="micInner">
@@ -34,6 +29,7 @@
                     </svg>
                 </div>
             </div>
+
             <div class="waveform" id="waveform" aria-hidden="true">
                 <div class="bar"></div>
                 <div class="bar"></div>
@@ -42,21 +38,27 @@
                 <div class="bar"></div>
                 <div class="bar"></div>
                 <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
             </div>
-            <div>
+
+            <div class="title-block">
                 <h1 class="page-title">Voice Session</h1>
                 <p class="page-subtitle">Salesforce 알림에서 전달된 세션으로 음성 브리핑을 시작합니다.</p>
             </div>
         </section>
 
         <div class="info-row" role="group" aria-label="세션 정보">
-            <div class="info-chip">
-                <span class="info-chip-label">Session Token</span>
+            <div class="info-chip info-chip--subject">
+                <span class="info-chip-label">SUBJECT</span>
                 <span class="info-chip-value" id="tokenValue">Checking...</span>
             </div>
-            <div class="info-chip">
-                <span class="info-chip-label">Status</span>
-                <span class="info-chip-value status-dot ready" id="statusDot" role="status">Ready</span>
+
+            <div class="info-chip info-chip--status">
+                <span class="info-chip-label">STATUS</span>
+                <span class="info-chip-value status-dot ready" id="statusDot" role="status">
+                    <span class="status-text">Ready</span>
+                </span>
             </div>
         </div>
 
