@@ -84,13 +84,13 @@ const SESSION_TYPE_CONFIG = {
     pre: {
         badge: "SMART COACH",
         title: "Smart Coach",
-        subtitle: "Agent가 조사한 정보를 기반으로\n미팅 준비를 도와 드릴게요!🤖🔎",
+        subtitle: "🤖🔎 Agent가 조사한 정보를 기반으로\n미팅 준비를 도와 드릴게요!",
         chipLabel: "SUBJECT"
     },
     post: {
         badge: "MEETING SUPPORT",
         title: "Meeting Support",
-        subtitle: "Agent와 오늘의 미팅을 요약하고,\n후속 아이템을 정리해 드릴게요!🤖✍️",
+        subtitle: "🤖✍️ Agent와 오늘의 미팅을 요약하고,\n후속 아이템을 정리해 드릴게요!",
         chipLabel: "SUBJECT"
     },
     default: {
