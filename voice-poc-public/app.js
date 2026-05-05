@@ -25,7 +25,7 @@ const CONFIG = {
     END_TIMEOUT_MS: 10000
 };
 
-const APP_VERSION = "meeting-ai-voice-session.mobile.v2.2-cors-simple-request";
+const APP_VERSION = "meeting-ai-voice-session.mobile.v2.3-token-ui-branch";
 console.log(APP_VERSION);
 
 // ------------------------------------------------------
@@ -75,6 +75,80 @@ let timerInterval = null;
 let seconds = 0;
 
 // ------------------------------------------------------
+// Session Token UI Branch
+// ------------------------------------------------------
+// 토큰 형식: {prefix}-{subjectHint(최대10자, 공백→_)}-{EventId}
+// prefix: "pre" | "post" | 그 외(default/test)
+
+const SESSION_TYPE_CONFIG = {
+    pre: {
+        badge: "SMART COACH",
+        title: "Smart Coach",
+        subtitle: "Agent가 조사한 정보를 기반으로 미팅 준비를 도와 드릴게요!",
+        chipLabel: "SUBJECT"
+    },
+    post: {
+        badge: "MEETING SUPPORT",
+        title: "Meeting Support",
+        subtitle: "Agent와 오늘의 미팅을 요약하고, 후속 아이템을 정리해 드릴게요!",
+        chipLabel: "SUBJECT"
+    },
+    default: {
+        badge: "MEETING AI",
+        title: "Voice Session",
+        subtitle: "Salesforce 알림에서 전달된 세션으로 음성 브리핑을 시작합니다.",
+        chipLabel: "SESSION TOKEN"
+    }
+};
+
+const SUBJECT_DISPLAY_MAX = 12; // 칩에서 truncate할 최대 글자 수
+
+function parseSessionToken(token) {
+    if (!token) return { type: "default", subjectHint: null };
+
+    const lower = token.toLowerCase();
+    let type = "default";
+
+    if (lower.startsWith("pre-")) type = "pre";
+    if (lower.startsWith("post-")) type = "post";
+
+    if (type === "default") return { type, subjectHint: null };
+
+    // 형식: "pre-GS건설_차세대-00U..." → prefix 이후 첫 "-" 까지가 subjectHint
+    const prefixLen = type === "pre" ? 4 : 5;        // "pre-"=4, "post-"=5
+    const withoutPrefix = token.slice(prefixLen);          // "GS건설_차세대-00U..."
+    const dashIdx = withoutPrefix.indexOf("-");
+    const rawHint = dashIdx !== -1 ? withoutPrefix.slice(0, dashIdx) : withoutPrefix;
+    const subjectHint = rawHint.replace(/_/g, " ");      // "_" → 공백 복원
+
+    return { type, subjectHint: subjectHint || null };
+}
+
+function applySessionTypeUI() {
+    const { type, subjectHint } = parseSessionToken(sessionToken);
+    const cfg = SESSION_TYPE_CONFIG[type];
+
+    const badgeEl = document.querySelector(".badge");
+    const titleEl = document.querySelector(".page-title");
+    const subtitleEl = document.querySelector(".page-subtitle");
+    const chipLabelEl = document.querySelector(".info-chip-label");
+
+    if (badgeEl) badgeEl.textContent = cfg.badge;
+    if (titleEl) titleEl.textContent = cfg.title;
+    if (subtitleEl) subtitleEl.textContent = cfg.subtitle;
+    if (chipLabelEl) chipLabelEl.textContent = cfg.chipLabel;
+
+    // subject hint가 있으면 칩 값에 표시 (최대 12자 truncate)
+    if (subjectHint && tokenValue) {
+        const display = subjectHint.length > SUBJECT_DISPLAY_MAX
+            ? subjectHint.slice(0, SUBJECT_DISPLAY_MAX) + "\u2026"
+            : subjectHint;
+        tokenValue.textContent = display;
+    }
+    // subjectHint 없는 default 케이스는 initialize()의 maskToken 로직이 처리
+}
+
+// ------------------------------------------------------
 // UI Helpers
 // ------------------------------------------------------
 
@@ -93,13 +167,9 @@ function startTimer() {
 
     timerInterval = setInterval(() => {
         seconds += 1;
-
         const m = Math.floor(seconds / 60);
         const s = seconds % 60;
-
-        if (timerEl) {
-            timerEl.textContent = `${padZ(m)}:${padZ(s)}`;
-        }
+        if (timerEl) timerEl.textContent = `${padZ(m)}:${padZ(s)}`;
     }, 1000);
 }
 
@@ -121,7 +191,6 @@ function setButtons({ startDisabled, endDisabled }) {
 
 function setStatus(message, stateClass = "ready") {
     if (!statusDot) return;
-
     statusDot.textContent = message;
     statusDot.className = `info-chip-value status-dot ${stateClass}`;
 }
@@ -136,14 +205,14 @@ function setCallState(nextState, message) {
 
     const defaultMessage = {
         idle: "Ready",
-        validating: "세션 확인 중",
-        microphone: "마이크 확인 중",
-        connecting: "통화 연결 중",
-        in_call: "통화 중",
-        ending: "통화 종료 중",
-        ended: "통화 종료됨",
-        blocked: "시작 불가",
-        error: "오류 발생"
+        validating: "\uc138\uc158 \ud655\uc778 \uc911",
+        microphone: "\ub9c8\uc774\ud06c \ud655\uc778 \uc911",
+        connecting: "\ud1b5\ud654 \uc5f0\uacb0 \uc911",
+        in_call: "\ud1b5\ud654 \uc911",
+        ending: "\ud1b5\ud654 \uc885\ub8cc \uc911",
+        ended: "\ud1b5\ud654 \uc885\ub8cc\ub428",
+        blocked: "\uc2dc\uc791 \ubd88\uac00",
+        error: "\uc624\ub958 \ubc1c\uc0dd"
     }[nextState] || nextState;
 
     let stateClass = "ready";
@@ -160,11 +229,7 @@ function setCallState(nextState, message) {
 
     if (nextState === "in_call") {
         setVisualizerActive(true);
-
-        if (!timerInterval) {
-            startTimer();
-        }
-
+        if (!timerInterval) startTimer();
         return;
     }
 
@@ -183,11 +248,7 @@ function nowIso() {
 }
 
 function safeJsonParse(text) {
-    try {
-        return JSON.parse(text);
-    } catch (_) {
-        return null;
-    }
+    try { return JSON.parse(text); } catch (_) { return null; }
 }
 
 function maskToken(token) {
@@ -273,14 +334,11 @@ async function postJson(url, payload, { timeoutMs = 30000 } = {}) {
 
         if (rawText) {
             data = safeJsonParse(rawText);
-
-            if (!data) {
-                throw new Error(`JSON 응답 파싱 실패: ${rawText.slice(0, 160)}`);
-            }
+            if (!data) throw new Error(`JSON \uc751\ub2f5 \ud30c\uc2f1 \uc2e4\ud328: ${rawText.slice(0, 160)}`);
         }
 
         if (!res.ok) {
-            throw new Error(data?.message || data?.error || `서버 응답 오류 (${res.status})`);
+            throw new Error(data?.message || data?.error || `\uc11c\ubc84 \uc751\ub2f5 \uc624\ub958 (${res.status})`);
         }
 
         return data;
@@ -305,12 +363,9 @@ function buildEndPayload({ endedBy = "user_button", finalState = "ended" } = {})
     const endedAt = nowIso();
 
     const durationSec = startedAt
-        ? Math.max(
-            0,
-            Math.round(
-                (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000
-            )
-        )
+        ? Math.max(0, Math.round(
+            (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000
+        ))
         : 0;
 
     return {
@@ -356,7 +411,7 @@ function notifyEndBestEffort(payload) {
 
 async function requestMicrophone() {
     if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("이 브라우저는 마이크 입력을 지원하지 않습니다.");
+        throw new Error("\uc774 \ube0c\ub77c\uc6b0\uc800\ub294 \ub9c8\uc774\ud06c \uc785\ub825\uc744 \uc9c0\uc6d0\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.");
     }
 
     return navigator.mediaDevices.getUserMedia({
@@ -374,10 +429,8 @@ function setupPeerConnection(sessionSeq) {
 
     peer.ontrack = (event) => {
         if (sessionSeq !== activeSessionSeq) return;
-
         const [stream] = event.streams || [];
         if (!stream) return;
-
         remoteAudio.srcObject = stream;
         remoteAudio.play().catch((err) => {
             console.warn("[Meeting AI] remote audio autoplay failed:", err);
@@ -386,41 +439,33 @@ function setupPeerConnection(sessionSeq) {
 
     peer.onconnectionstatechange = () => {
         if (sessionSeq !== activeSessionSeq) return;
-
         const state = peer.connectionState;
 
-        if (debugMode) {
-            console.log("[Meeting AI] connectionState:", state);
-        }
+        if (debugMode) console.log("[Meeting AI] connectionState:", state);
 
         if (state === "connected") {
-            setCallState("in_call", "통화 중");
+            setCallState("in_call", "\ud1b5\ud654 \uc911");
             setButtons({ startDisabled: true, endDisabled: false });
         }
 
         if (["failed", "disconnected"].includes(state) && !endSubmitted) {
-            setStatus("연결이 끊어졌습니다", "error");
+            setStatus("\uc5f0\uacb0\uc774 \ub04a\uc5b4\uc84c\uc2b5\ub2c8\ub2e4", "error");
         }
 
         if (state === "closed" && !endSubmitted) {
-            setStatus("연결 종료됨", "ready");
+            setStatus("\uc5f0\uacb0 \uc885\ub8cc\ub428", "ready");
         }
     };
 
     peer.oniceconnectionstatechange = () => {
-        if (debugMode) {
-            console.log("[Meeting AI] iceConnectionState:", peer.iceConnectionState);
-        }
+        if (debugMode) console.log("[Meeting AI] iceConnectionState:", peer.iceConnectionState);
     };
 
     return peer;
 }
 
 function sendRealtimeEvent(event) {
-    if (!dataChannel || dataChannel.readyState !== "open") {
-        return false;
-    }
-
+    if (!dataChannel || dataChannel.readyState !== "open") return false;
     dataChannel.send(JSON.stringify(event));
     return true;
 }
@@ -457,10 +502,7 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
 
     channel.onmessage = (messageEvent) => {
         const event = safeJsonParse(messageEvent.data);
-
-        if (debugMode && event) {
-            console.log("[Realtime Event]", event.type, event);
-        }
+        if (debugMode && event) console.log("[Realtime Event]", event.type, event);
     };
 
     channel.onerror = (event) => {
@@ -468,9 +510,7 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
     };
 
     channel.onclose = () => {
-        if (debugMode) {
-            console.log("[Meeting AI] DataChannel closed");
-        }
+        if (debugMode) console.log("[Meeting AI] DataChannel closed");
     };
 
     return channel;
@@ -492,11 +532,11 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
     const answerSdp = await res.text();
 
     if (!res.ok) {
-        throw new Error(`OpenAI SDP 교환 실패 (${res.status}): ${answerSdp.slice(0, 300)}`);
+        throw new Error(`OpenAI SDP \uad50\ud658 \uc2e4\ud328 (${res.status}): ${answerSdp.slice(0, 300)}`);
     }
 
     if (!answerSdp || !answerSdp.includes("v=0")) {
-        throw new Error("OpenAI SDP answer가 유효하지 않습니다.");
+        throw new Error("OpenAI SDP answer\uac00 \uc720\ud6a8\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.");
     }
 
     return answerSdp;
@@ -504,41 +544,24 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
 
 async function cleanupRealtimeObjects() {
     try {
-        if (dataChannel && dataChannel.readyState !== "closed") {
-            dataChannel.close();
-        }
-    } catch (_) {
-        // noop
-    }
-
+        if (dataChannel && dataChannel.readyState !== "closed") dataChannel.close();
+    } catch (_) { }
     dataChannel = null;
 
     try {
-        if (pc && pc.signalingState !== "closed") {
-            pc.close();
-        }
-    } catch (_) {
-        // noop
-    }
-
+        if (pc && pc.signalingState !== "closed") pc.close();
+    } catch (_) { }
     pc = null;
 
     try {
-        if (localStream) {
-            localStream.getTracks().forEach((track) => track.stop());
-        }
-    } catch (_) {
-        // noop
-    }
-
+        if (localStream) localStream.getTracks().forEach((track) => track.stop());
+    } catch (_) { }
     localStream = null;
 
     try {
         remoteAudio.pause();
         remoteAudio.srcObject = null;
-    } catch (_) {
-        // noop
-    }
+    } catch (_) { }
 }
 
 // ------------------------------------------------------
@@ -547,12 +570,11 @@ async function cleanupRealtimeObjects() {
 
 async function startCall() {
     if (!sessionToken) {
-        alert("sessionToken이 없습니다. Salesforce 링크를 통해 다시 접속하세요.");
+        alert("sessionToken\uc774 \uc5c6\uc2b5\ub2c8\ub2e4. Salesforce \ub9c1\ud06c\ub97c \ud1b5\ud574 \ub2e4\uc2dc \uc811\uc18d\ud558\uc138\uc694.");
         return;
     }
 
     const sessionSeq = ++activeSessionSeq;
-
     endSubmitted = false;
     startedAt = null;
     currentStartResponse = null;
@@ -571,14 +593,12 @@ async function startCall() {
             { timeoutMs: CONFIG.START_TIMEOUT_MS }
         );
 
-        if (debugMode) {
-            console.log("[Meeting AI] start-realtime response:", startData);
-        }
+        if (debugMode) console.log("[Meeting AI] start-realtime response:", startData);
 
         if (sessionSeq !== activeSessionSeq) return;
 
         if (!startData?.ok) {
-            setCallState("blocked", startData?.message || "시작할 수 없음");
+            setCallState("blocked", startData?.message || "\uc2dc\uc791\ud560 \uc218 \uc5c6\uc74c");
             setButtons({ startDisabled: false, endDisabled: true });
             return;
         }
@@ -592,7 +612,7 @@ async function startCall() {
         const firstUtterance = extractFirstUtterance(startData);
 
         if (!clientSecret) {
-            throw new Error("n8n start-realtime 응답에서 client_secret을 받지 못했습니다.");
+            throw new Error("n8n start-realtime \uc751\ub2f5\uc5d0\uc11c client_secret\uc744 \ubc1b\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.");
         }
 
         if (debugMode) {
@@ -617,10 +637,7 @@ async function startCall() {
             pc.addTrack(track, localStream);
         });
 
-        dataChannel = setupDataChannel(pc, {
-            firstUtterance,
-            sessionSeq
-        });
+        dataChannel = setupDataChannel(pc, { firstUtterance, sessionSeq });
 
         const offer = await pc.createOffer({
             offerToReceiveAudio: true,
@@ -637,27 +654,23 @@ async function startCall() {
 
         if (sessionSeq !== activeSessionSeq) return;
 
-        await pc.setRemoteDescription({
-            type: "answer",
-            sdp: answerSdp
-        });
+        await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
         startedAt = nowIso();
 
-        setCallState("connecting", "응답 준비 중");
+        setCallState("connecting", "\uc751\ub2f5 \uc900\ube44 \uc911");
         setButtons({ startDisabled: true, endDisabled: false });
+
     } catch (error) {
         console.error("[Meeting AI] start failed:", error);
 
         await cleanupRealtimeObjects();
 
         if (currentStartResponse || currentVoiceSessionId || currentRealtimeSessionId) {
-            notifyEndBestEffort(
-                buildEndPayload({
-                    endedBy: "client_start_error",
-                    finalState: "start_failed"
-                })
-            );
+            notifyEndBestEffort(buildEndPayload({
+                endedBy: "client_start_error",
+                finalState: "start_failed"
+            }));
         }
 
         currentStartResponse = null;
@@ -665,10 +678,10 @@ async function startCall() {
         currentRealtimeSessionId = null;
         startedAt = null;
 
-        setCallState("error", "연결 실패");
+        setCallState("error", "\uc5f0\uacb0 \uc2e4\ud328");
         setButtons({ startDisabled: false, endDisabled: true });
 
-        alert(error?.message || "통화 시작 중 오류가 발생했습니다.");
+        alert(error?.message || "\ud1b5\ud654 \uc2dc\uc791 \uc911 \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.");
     }
 }
 
@@ -681,28 +694,25 @@ async function endCall({ endedBy = "user_button", auto = false } = {}) {
         setCallState("ending");
         setButtons({ startDisabled: true, endDisabled: true });
 
-        const payload = buildEndPayload({
-            endedBy,
-            finalState: "ended"
-        });
+        const payload = buildEndPayload({ endedBy, finalState: "ended" });
 
         await cleanupRealtimeObjects();
 
         notifyEndBestEffort(payload);
 
-        setCallState("ended", "통화 종료됨");
+        setCallState("ended", "\ud1b5\ud654 \uc885\ub8cc\ub428");
         setButtons({ startDisabled: false, endDisabled: true });
+
     } catch (error) {
         console.error("[Meeting AI] end failed:", error);
 
         await cleanupRealtimeObjects();
 
-        setCallState("ended", "통화 종료됨");
+        setCallState("ended", "\ud1b5\ud654 \uc885\ub8cc\ub428");
         setButtons({ startDisabled: false, endDisabled: true });
 
-        if (!auto) {
-            alert(error?.message || "통화 종료 중 오류가 발생했습니다.");
-        }
+        if (!auto) alert(error?.message || "\ud1b5\ud654 \uc885\ub8cc \uc911 \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.");
+
     } finally {
         currentStartResponse = null;
         currentVoiceSessionId = null;
@@ -730,11 +740,8 @@ function bestEffortEndOnPageHide() {
         const blob = new Blob([JSON.stringify(payload)], {
             type: "text/plain;charset=UTF-8"
         });
-
         navigator.sendBeacon?.(CONFIG.END_REALTIME_WEBHOOK, blob);
-    } catch (_) {
-        // noop
-    }
+    } catch (_) { }
 
     cleanupRealtimeObjects();
 }
@@ -748,14 +755,19 @@ window.addEventListener("pagehide", bestEffortEndOnPageHide);
 function initialize() {
     if (!sessionToken) {
         if (tokenValue) tokenValue.textContent = "Missing Token";
-
-        setCallState("blocked", "Salesforce로 접속하세요");
+        setCallState("blocked", "Salesforce\ub85c \uc811\uc18d\ud558\uc138\uc694");
         setButtons({ startDisabled: true, endDisabled: true });
-
         return;
     }
 
-    if (tokenValue) tokenValue.textContent = maskToken(sessionToken);
+    // 토큰 파싱 → UI 분기 (badge / title / subtitle / chipLabel / subjectHint)
+    applySessionTypeUI();
+
+    // subjectHint가 없는 default 케이스는 maskToken으로 표시
+    const { type } = parseSessionToken(sessionToken);
+    if (type === "default" && tokenValue) {
+        tokenValue.textContent = maskToken(sessionToken);
+    }
 
     setCallState("idle");
     setButtons({ startDisabled: false, endDisabled: true });
@@ -773,10 +785,7 @@ function initialize() {
 btnStart?.addEventListener("click", startCall);
 
 btnEnd?.addEventListener("click", () => {
-    endCall({
-        endedBy: "user_button",
-        auto: false
-    });
+    endCall({ endedBy: "user_button", auto: false });
 });
 
 initialize();

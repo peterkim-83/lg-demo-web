@@ -291,11 +291,16 @@ button {
 }
 
 /* ── TITLE ── */
+/* 기존 흰색(var(--text)) 상속에서 accent 그라디언트로 교체 — 가독성 개선 */
 .page-title {
     font-size: var(--text-xl);
     font-weight: 700;
     letter-spacing: -0.02em;
     line-height: 1.1;
+    background: linear-gradient(135deg, var(--accent) 0%, #67e8f9 60%, #a5f3fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .page-subtitle {
