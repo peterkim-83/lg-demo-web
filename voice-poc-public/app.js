@@ -1054,7 +1054,93 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
 
     channel.onmessage = (messageEvent) => {
         const event = safeJsonParse(messageEvent.data);
-        if (debugMode && event) console.log("[Realtime Event]", event.type, event);
+        if (!event) {
+            if (debugMode) {
+                console.warn("[Realtime Event] non-json message:", messageEvent.data);
+            }
+            return;
+        }
+
+        if (debugMode) {
+            console.log("[Realtime Event]", event.type, event);
+        }
+
+        // ------------------------------------------------------
+        // Smoke Test A:
+        // Verify whether OpenAI Realtime sends usable transcript events.
+        //
+        // Important:
+        // - This does NOT buffer or send transcript chunks to n8n yet.
+        // - This only prints candidate transcript events to the browser console.
+        // - 15-second chunking must be added only after this smoke test passes.
+        // ------------------------------------------------------
+
+        const type = event.type || "";
+
+        const isTranscriptCandidate =
+            type === "conversation.item.input_audio_transcription.completed" ||
+            type === "conversation.item.input_audio_transcription.failed" ||
+            type === "response.output_audio_transcript.done" ||
+            type === "response.output_text.done" ||
+            type === "response.done";
+
+        if (!debugMode || !isTranscriptCandidate) return;
+
+        let role = "unknown";
+
+        if (type === "conversation.item.input_audio_transcription.completed") {
+            role = "user";
+        } else if (type === "conversation.item.input_audio_transcription.failed") {
+            role = "user";
+        } else if (type === "response.output_audio_transcript.done") {
+            role = "assistant";
+        } else if (type === "response.output_text.done") {
+            role = "assistant";
+        } else if (type === "response.done") {
+            role = "assistant_or_mixed";
+        }
+
+        let transcript =
+            event.transcript ||
+            event.text ||
+            event.delta ||
+            null;
+
+        // Some Realtime events may carry text/transcript inside item.content.
+        if (!transcript && Array.isArray(event.item?.content)) {
+            const contentWithText = event.item.content.find((content) => {
+                return (
+                    typeof content?.transcript === "string" ||
+                    typeof content?.text === "string"
+                );
+            });
+
+            transcript =
+                contentWithText?.transcript ||
+                contentWithText?.text ||
+                null;
+        }
+
+        // Some response.done events can contain nested output content.
+        // For Smoke A, do not attempt complex parsing. Log the full event.
+        // We only need to confirm whether usable transcript fields exist.
+        console.log("[Transcript Candidate]", {
+            type,
+            role,
+            itemId:
+                event.item_id ||
+                event.itemId ||
+                event.item?.id ||
+                null,
+            responseId:
+                event.response_id ||
+                event.responseId ||
+                event.response?.id ||
+                null,
+            transcript,
+            hasTranscript: Boolean(transcript),
+            event
+        });
     };
 
     channel.onerror = (event) => {
