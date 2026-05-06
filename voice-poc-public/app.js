@@ -15,6 +15,11 @@ const CONFIG = {
     START_REALTIME_WEBHOOK: "https://peter-n8n.duckdns.org/webhook/meeting-ai/start-realtime",
     END_REALTIME_WEBHOOK: "https://peter-n8n.duckdns.org/webhook/meeting-ai/end-realtime",
 
+    // Browser-to-n8n transcript chunk staging endpoint
+    TRANSCRIPT_CHUNK_WEBHOOK: "https://peter-n8n.duckdns.org/webhook/meeting-ai/transcript-chunk",
+    TRANSCRIPT_CHUNK_INTERVAL_MS: 15000,
+    TRANSCRIPT_CHUNK_TIMEOUT_MS: 8000,
+
     // OpenAI Realtime WebRTC SDP exchange endpoint
     OPENAI_REALTIME_SDP_URL: "https://api.openai.com/v1/realtime/calls",
 
@@ -34,7 +39,7 @@ const CONFIG = {
     DATA_CHANNEL_CLOSE_GRACE_MS: 1500
 };
 
-const APP_VERSION = "meeting-ai-voice-session.mobile.v2.6-end-reason-classifier";
+const APP_VERSION = "meeting-ai-voice-session.mobile.v2.7-realtime-transcript-chunks";
 console.log(APP_VERSION);
 
 // ------------------------------------------------------
@@ -92,6 +97,12 @@ let lastUserAction = null;
 let lastUserActionAt = null;
 let lifecycleEvents = [];
 let rtcStateEvents = [];
+
+let transcriptChunkTimer = null;
+let transcriptChunkSeq = 0;
+let transcriptTurnBuffer = [];
+let transcriptSeenTurnKeys = new Set();
+let transcriptFlushInFlight = false;
 
 // ------------------------------------------------------
 // Session Token UI Branch
@@ -405,6 +416,9 @@ function clearExitTimers() {
 }
 
 function resetRuntimeSessionMetadata() {
+    stopTranscriptChunkTimer();
+    resetTranscriptChunkState();
+
     currentStartResponse = null;
     currentVoiceSessionId = null;
     currentRealtimeSessionId = null;
@@ -563,6 +577,311 @@ async function postJson(url, payload, { timeoutMs = 30000 } = {}) {
     }
 }
 
+
+// ------------------------------------------------------
+// Realtime Transcript Chunk Collection
+// ------------------------------------------------------
+// Source policy:
+// - user/sales rep turns come from OpenAI Realtime input transcription:
+//   conversation.item.input_audio_transcription.completed
+// - assistant/agent turns come from OpenAI Realtime output transcript:
+//   response.output_audio_transcript.done
+// - 15 seconds is only a batch/flush interval, not a turn boundary.
+
+function normalizeTranscriptText(value) {
+    if (value === undefined || value === null) return "";
+
+    return String(value)
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function stopTranscriptChunkTimer() {
+    if (transcriptChunkTimer) {
+        clearInterval(transcriptChunkTimer);
+        transcriptChunkTimer = null;
+    }
+}
+
+function resetTranscriptChunkState() {
+    stopTranscriptChunkTimer();
+    transcriptChunkSeq = 0;
+    transcriptTurnBuffer = [];
+    transcriptSeenTurnKeys = new Set();
+    transcriptFlushInFlight = false;
+}
+
+function getTranscriptSessionId() {
+    return currentStartResponse?.sessionId || null;
+}
+
+function getTranscriptSessionType() {
+    return currentStartResponse?.sessionType || null;
+}
+
+function buildTranscriptTurnKey(turn) {
+    return [
+        turn?.source || "unknown_source",
+        turn?.itemId || "no_item",
+        turn?.responseId || "no_response",
+        turn?.text || ""
+    ].join("|");
+}
+
+function addTranscriptTurn(turn) {
+    const text = normalizeTranscriptText(turn?.text);
+    if (!text) return false;
+
+    const normalizedTurn = {
+        role: turn.role,
+        text,
+        source: turn.source,
+        itemId: turn.itemId || null,
+        responseId: turn.responseId || null,
+        at: turn.at || nowIso()
+    };
+
+    const key = buildTranscriptTurnKey(normalizedTurn);
+    if (transcriptSeenTurnKeys.has(key)) return false;
+
+    transcriptSeenTurnKeys.add(key);
+    transcriptTurnBuffer.push(normalizedTurn);
+
+    // Keep the browser-side buffer bounded. The n8n Data Table is the staging store.
+    if (transcriptTurnBuffer.length > 200) {
+        transcriptTurnBuffer = transcriptTurnBuffer.slice(-200);
+    }
+
+    if (transcriptSeenTurnKeys.size > 1000) {
+        transcriptSeenTurnKeys = new Set(Array.from(transcriptSeenTurnKeys).slice(-500));
+    }
+
+    if (debugMode) {
+        console.log("[Transcript Turn Buffered]", normalizedTurn);
+    }
+
+    return true;
+}
+
+function collectRealtimeTranscriptTurn(event) {
+    const type = event?.type || "";
+
+    if (type === "conversation.item.input_audio_transcription.completed") {
+        const text = normalizeTranscriptText(event.transcript || event.text || "");
+
+        const turn = {
+            role: "user",
+            text,
+            source: type,
+            itemId: event.item_id || event.itemId || event.item?.id || null,
+            responseId: event.response_id || event.responseId || event.response?.id || null,
+            at: nowIso()
+        };
+
+        const added = addTranscriptTurn(turn);
+
+        if (debugMode) {
+            console.log("[Transcript Candidate]", {
+                type,
+                role: "user",
+                itemId: turn.itemId,
+                responseId: turn.responseId,
+                transcript: text,
+                hasTranscript: Boolean(text),
+                buffered: added,
+                event
+            });
+        }
+
+        return added;
+    }
+
+    if (type === "conversation.item.input_audio_transcription.failed") {
+        if (debugMode) {
+            console.warn("[Transcript Candidate] user transcription failed", {
+                type,
+                itemId: event.item_id || event.itemId || null,
+                error: event.error || null,
+                event
+            });
+        }
+
+        return false;
+    }
+
+    if (type === "response.output_audio_transcript.done") {
+        const text = normalizeTranscriptText(event.transcript || event.text || "");
+
+        const turn = {
+            role: "assistant",
+            text,
+            source: type,
+            itemId: event.item_id || event.itemId || event.item?.id || null,
+            responseId: event.response_id || event.responseId || event.response?.id || null,
+            at: nowIso()
+        };
+
+        const added = addTranscriptTurn(turn);
+
+        if (debugMode) {
+            console.log("[Transcript Candidate]", {
+                type,
+                role: "assistant",
+                itemId: turn.itemId,
+                responseId: turn.responseId,
+                transcript: text,
+                hasTranscript: Boolean(text),
+                buffered: added,
+                event
+            });
+        }
+
+        return added;
+    }
+
+    return false;
+}
+
+function buildTranscriptChunkPayload({ turns, final = false, reason = "interval" } = {}) {
+    const sessionId = getTranscriptSessionId();
+    const sessionType = getTranscriptSessionType();
+    const callId = currentClientCallId;
+
+    if (!sessionId || !callId) return null;
+
+    transcriptChunkSeq += 1;
+
+    const chunkSeq = transcriptChunkSeq;
+    const chunkId = `${callId}:${String(chunkSeq).padStart(6, "0")}`;
+
+    return {
+        schema: "meeting_ai_transcript_chunk_v1",
+        sessionId,
+        sessionType,
+        callId,
+        chunkSeq,
+        chunkId,
+        final: Boolean(final),
+        turns: Array.isArray(turns) ? turns : [],
+        submittedAt: nowIso(),
+        flushReason: reason
+    };
+}
+
+function sendTranscriptChunkBeacon(payload) {
+    if (!navigator.sendBeacon) return false;
+
+    try {
+        const blob = new Blob([JSON.stringify(payload)], {
+            type: "text/plain;charset=UTF-8"
+        });
+
+        return navigator.sendBeacon(CONFIG.TRANSCRIPT_CHUNK_WEBHOOK, blob);
+    } catch (error) {
+        console.warn("[Transcript Chunk] sendBeacon failed:", error);
+        return false;
+    }
+}
+
+async function flushTranscriptChunk({ final = false, reason = "interval", preferBeacon = false } = {}) {
+    if (!CONFIG.TRANSCRIPT_CHUNK_WEBHOOK) return false;
+    if (!getTranscriptSessionId() || !currentClientCallId) return false;
+
+    if (transcriptFlushInFlight && !final) return false;
+
+    const turns = transcriptTurnBuffer.splice(0, transcriptTurnBuffer.length);
+
+    // Do not create empty interval rows. A final marker is allowed because it helps
+    // the downstream assembler know that the browser attempted a final flush.
+    if (turns.length === 0 && !final) return false;
+
+    const payload = buildTranscriptChunkPayload({
+        turns,
+        final,
+        reason
+    });
+
+    if (!payload) {
+        if (turns.length > 0) transcriptTurnBuffer.unshift(...turns);
+        return false;
+    }
+
+    if (preferBeacon) {
+        const beaconSent = sendTranscriptChunkBeacon(payload);
+
+        if (debugMode) {
+            console.log("[Transcript Chunk] final beacon attempted", {
+                beaconSent,
+                chunkId: payload.chunkId,
+                turnCount: turns.length,
+                final,
+                reason
+            });
+        }
+
+        // sendBeacon is best-effort; do not requeue during pagehide/unload.
+        if (beaconSent) return true;
+    }
+
+    transcriptFlushInFlight = true;
+
+    try {
+        const response = await postJson(
+            CONFIG.TRANSCRIPT_CHUNK_WEBHOOK,
+            payload,
+            { timeoutMs: CONFIG.TRANSCRIPT_CHUNK_TIMEOUT_MS }
+        );
+
+        if (debugMode) {
+            console.log("[Transcript Chunk] sent", {
+                chunkId: payload.chunkId,
+                chunkSeq: payload.chunkSeq,
+                turnCount: turns.length,
+                final,
+                reason,
+                response
+            });
+        }
+
+        return true;
+    } catch (error) {
+        if (turns.length > 0) {
+            transcriptTurnBuffer.unshift(...turns);
+        }
+
+        console.warn("[Transcript Chunk] send failed:", {
+            chunkId: payload.chunkId,
+            final,
+            reason,
+            error: safeErrorMessage(error)
+        });
+
+        return false;
+    } finally {
+        transcriptFlushInFlight = false;
+    }
+}
+
+function startTranscriptChunkTimer() {
+    stopTranscriptChunkTimer();
+
+    transcriptChunkTimer = setInterval(() => {
+        flushTranscriptChunk({
+            final: false,
+            reason: "interval",
+            preferBeacon: false
+        }).catch((error) => {
+            console.warn("[Transcript Chunk] interval flush failed:", error);
+        });
+    }, CONFIG.TRANSCRIPT_CHUNK_INTERVAL_MS);
+
+    if (debugMode) {
+        console.log("[Transcript Chunk] timer started", {
+            intervalMs: CONFIG.TRANSCRIPT_CHUNK_INTERVAL_MS
+        });
+    }
+}
+
 function buildStartPayload() {
     return {
         sessionToken,
@@ -712,6 +1031,18 @@ async function submitEndOnce({
 } = {}) {
     if (!sessionToken) return false;
     if (endSubmitted) return false;
+
+    try {
+        await flushTranscriptChunk({
+            final: true,
+            reason: `end:${trigger || endedBy}`,
+            preferBeacon
+        });
+    } catch (error) {
+        console.warn("[Transcript Chunk] final flush before end failed:", error);
+    }
+
+    stopTranscriptChunkTimer();
 
     const payload = buildEndPayload({
         endedBy,
@@ -1046,7 +1377,6 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
         sendRealtimeEvent({
             type: "response.create",
             response: {
-                modalities: ["audio", "text"],
                 instructions
             }
         });
@@ -1065,82 +1395,7 @@ function setupDataChannel(peer, { firstUtterance, sessionSeq }) {
             console.log("[Realtime Event]", event.type, event);
         }
 
-        // ------------------------------------------------------
-        // Smoke Test A:
-        // Verify whether OpenAI Realtime sends usable transcript events.
-        //
-        // Important:
-        // - This does NOT buffer or send transcript chunks to n8n yet.
-        // - This only prints candidate transcript events to the browser console.
-        // - 15-second chunking must be added only after this smoke test passes.
-        // ------------------------------------------------------
-
-        const type = event.type || "";
-
-        const isTranscriptCandidate =
-            type === "conversation.item.input_audio_transcription.completed" ||
-            type === "conversation.item.input_audio_transcription.failed" ||
-            type === "response.output_audio_transcript.done" ||
-            type === "response.output_text.done" ||
-            type === "response.done";
-
-        if (!debugMode || !isTranscriptCandidate) return;
-
-        let role = "unknown";
-
-        if (type === "conversation.item.input_audio_transcription.completed") {
-            role = "user";
-        } else if (type === "conversation.item.input_audio_transcription.failed") {
-            role = "user";
-        } else if (type === "response.output_audio_transcript.done") {
-            role = "assistant";
-        } else if (type === "response.output_text.done") {
-            role = "assistant";
-        } else if (type === "response.done") {
-            role = "assistant_or_mixed";
-        }
-
-        let transcript =
-            event.transcript ||
-            event.text ||
-            event.delta ||
-            null;
-
-        // Some Realtime events may carry text/transcript inside item.content.
-        if (!transcript && Array.isArray(event.item?.content)) {
-            const contentWithText = event.item.content.find((content) => {
-                return (
-                    typeof content?.transcript === "string" ||
-                    typeof content?.text === "string"
-                );
-            });
-
-            transcript =
-                contentWithText?.transcript ||
-                contentWithText?.text ||
-                null;
-        }
-
-        // Some response.done events can contain nested output content.
-        // For Smoke A, do not attempt complex parsing. Log the full event.
-        // We only need to confirm whether usable transcript fields exist.
-        console.log("[Transcript Candidate]", {
-            type,
-            role,
-            itemId:
-                event.item_id ||
-                event.itemId ||
-                event.item?.id ||
-                null,
-            responseId:
-                event.response_id ||
-                event.responseId ||
-                event.response?.id ||
-                null,
-            transcript,
-            hasTranscript: Boolean(transcript),
-            event
-        });
+        collectRealtimeTranscriptTurn(event);
     };
 
     channel.onerror = (event) => {
@@ -1204,7 +1459,13 @@ function extractOpenAICallIdFromLocation(locationValue) {
     // /v1/realtime/calls/rtc_xxx
     // https://api.openai.com/v1/realtime/calls/rtc_xxx
     const match = text.match(/\/realtime\/calls\/([^/?#]+)/);
-    return match ? match[1] : null;
+    const candidate = match ? match[1] : null;
+
+    // Some responses may expose only the collection URL (/realtime/calls).
+    // Treat that as unavailable rather than storing a misleading "calls" value.
+    if (!candidate || candidate === "calls") return null;
+
+    return candidate;
 }
 
 async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
@@ -1241,6 +1502,7 @@ async function exchangeSdpWithOpenAI({ offerSdp, clientSecret, model }) {
 
 async function cleanupRealtimeObjects() {
     clearExitTimers();
+    stopTranscriptChunkTimer();
 
     try {
         if (dataChannel && dataChannel.readyState !== "closed") dataChannel.close();
@@ -1285,6 +1547,8 @@ async function startCall() {
     currentRealtimeSessionId = null;
     currentOpenAICallId = null;
     currentClientCallId = createClientCallId();
+
+    resetTranscriptChunkState();
 
     lifecycleEvents = [];
     rtcStateEvents = [];
@@ -1379,6 +1643,7 @@ async function startCall() {
         });
 
         startedAt = nowIso();
+        startTranscriptChunkTimer();
 
         setCallState("connecting", "응답 준비 중");
         setButtons({ startDisabled: true, endDisabled: false });
@@ -1577,6 +1842,8 @@ function initialize() {
         debugMode,
         startWebhook: CONFIG.START_REALTIME_WEBHOOK,
         endWebhook: CONFIG.END_REALTIME_WEBHOOK,
+        transcriptChunkWebhook: CONFIG.TRANSCRIPT_CHUNK_WEBHOOK,
+        transcriptChunkIntervalMs: CONFIG.TRANSCRIPT_CHUNK_INTERVAL_MS,
         sdpUrl: CONFIG.OPENAI_REALTIME_SDP_URL,
         fallbackModel: CONFIG.DEFAULT_REALTIME_MODEL
     });
