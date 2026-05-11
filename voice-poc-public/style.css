@@ -572,11 +572,28 @@ button {
     transform: scale(0.985);
 }
 
-.btn-start:disabled {
+.btn-start:disabled,
+.btn-start.is-disabled {
     background: linear-gradient(180deg, rgba(28, 33, 45, 0.95) 0%, rgba(21, 25, 35, 0.98) 100%);
-    color: var(--text-muted);
+    color: rgba(139, 144, 161, 0.58);
+    border: 1px solid rgba(255, 255, 255, 0.045);
     box-shadow: none;
+    opacity: 0.62;
     cursor: not-allowed;
+    filter: grayscale(0.35);
+}
+
+.btn-start:disabled .btn-icon,
+.btn-start.is-disabled .btn-icon {
+    opacity: 0.55;
+}
+
+.btn-start:disabled:hover,
+.btn-start.is-disabled:hover,
+.btn-start:disabled:active,
+.btn-start.is-disabled:active {
+    transform: none;
+    box-shadow: none;
 }
 
 .btn-end {

@@ -76,6 +76,9 @@ let callState = "idle";
 let activeSessionSeq = 0;
 let endSubmitted = false;
 
+let startBlockedByServer = false;
+let lastStartBlock = null;
+
 let pc = null;
 let dataChannel = null;
 let localStream = null;
@@ -215,9 +218,51 @@ function stopTimer() {
     }
 }
 
-function setButtons({ startDisabled, endDisabled }) {
-    if (btnStart) btnStart.disabled = Boolean(startDisabled);
-    if (btnEnd) btnEnd.disabled = Boolean(endDisabled);
+function setStartButtonLabel(label) {
+    if (!btnStart || !label) return;
+
+    const textNode = Array.from(btnStart.childNodes).find((node) => {
+        return node.nodeType === Node.TEXT_NODE && node.textContent.trim();
+    });
+
+    if (textNode) {
+        textNode.textContent = ` ${label}`;
+    } else {
+        btnStart.appendChild(document.createTextNode(` ${label}`));
+    }
+}
+
+function setButtons({
+    startDisabled,
+    endDisabled,
+    startLabel = null,
+    startTitle = null
+} = {}) {
+    const shouldDisableStart = Boolean(startDisabled);
+    const shouldDisableEnd = Boolean(endDisabled);
+
+    if (btnStart) {
+        btnStart.disabled = shouldDisableStart;
+        btnStart.setAttribute("aria-disabled", String(shouldDisableStart));
+        btnStart.classList.toggle("is-disabled", shouldDisableStart);
+
+        if (startLabel) {
+            setStartButtonLabel(startLabel);
+        } else if (!shouldDisableStart) {
+            setStartButtonLabel("통화 시작");
+        }
+
+        if (startTitle) {
+            btnStart.title = startTitle;
+        } else if (!shouldDisableStart) {
+            btnStart.removeAttribute("title");
+        }
+    }
+
+    if (btnEnd) {
+        btnEnd.disabled = shouldDisableEnd;
+        btnEnd.setAttribute("aria-disabled", String(shouldDisableEnd));
+    }
 }
 
 function setStatus(message, stateClass = "ready") {
@@ -277,6 +322,107 @@ function setCallState(nextState, message) {
         setVisualizerActive(false);
         stopTimer();
     }
+}
+
+function collectStartRejectReasons(data) {
+    const reasons = [];
+
+    if (Array.isArray(data?.reasons)) reasons.push(...data.reasons);
+    if (Array.isArray(data?.errors)) reasons.push(...data.errors);
+    if (Array.isArray(data?.response?.reasons)) reasons.push(...data.response.reasons);
+    if (Array.isArray(data?.response?.errors)) reasons.push(...data.response.errors);
+
+    return reasons
+        .filter(Boolean)
+        .map((reason) => String(reason));
+}
+
+function extractRejectedSessionStatus(data) {
+    return (
+        data?.currentStatus ||
+        data?.sessionStatus ||
+        data?.session?.Status__c ||
+        data?.salesforce?.session?.Status__c ||
+        data?.record?.Status__c ||
+        null
+    );
+}
+
+function buildStartBlockedUi(data) {
+    const reasons = collectStartRejectReasons(data);
+    const currentStatus = extractRejectedSessionStatus(data);
+
+    const joined = [
+        currentStatus,
+        ...reasons,
+        data?.message,
+        data?.error
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .toUpperCase();
+
+    let statusMessage = "시작할 수 없음";
+    let detailMessage = data?.message || "이 미팅 AI 세션은 현재 통화를 시작할 수 없습니다.";
+
+    if (joined.includes("CANCELLED")) {
+        statusMessage = "취소된 세션";
+        detailMessage = "이 미팅 AI 세션은 취소되었습니다.";
+    } else if (joined.includes("EXPIRED") || joined.includes("TOKEN_EXPIRED")) {
+        statusMessage = "만료된 세션";
+        detailMessage = "이 미팅 AI 세션의 시작 가능 시간이 만료되었습니다.";
+    } else if (joined.includes("COMPLETED") || joined.includes("APPLIED")) {
+        statusMessage = "완료된 세션";
+        detailMessage = "이미 완료된 미팅 AI 세션입니다.";
+    } else if (joined.includes("FAILED")) {
+        statusMessage = "실패한 세션";
+        detailMessage = "이 미팅 AI 세션은 실패 상태라 시작할 수 없습니다.";
+    } else if (joined.includes("REJECTED")) {
+        statusMessage = "거절된 세션";
+        detailMessage = "이 미팅 AI 세션은 거절된 상태입니다.";
+    } else if (joined.includes("NO_SESSION_FOUND")) {
+        statusMessage = "세션 없음";
+        detailMessage = "전달된 링크에 해당하는 미팅 AI 세션을 찾을 수 없습니다.";
+    } else if (joined.includes("DUPLICATE_SESSION_TOKEN")) {
+        statusMessage = "세션 오류";
+        detailMessage = "동일한 세션 토큰이 여러 개 발견되어 시작할 수 없습니다.";
+    } else if (joined.includes("INVALID_STATUS_")) {
+        statusMessage = "시작할 수 없음";
+        detailMessage = `현재 세션 상태에서는 통화를 시작할 수 없습니다.${currentStatus ? ` 상태: ${currentStatus}` : ""}`;
+    }
+
+    return {
+        disableStart: true,
+        statusMessage,
+        startLabel: "시작할 수 없음",
+        detailMessage,
+        reasons,
+        currentStatus
+    };
+}
+
+function applyStartBlockedUi(data) {
+    const block = buildStartBlockedUi(data);
+
+    startBlockedByServer = true;
+    lastStartBlock = block;
+
+    setCallState("blocked", block.statusMessage);
+    setButtons({
+        startDisabled: true,
+        endDisabled: true,
+        startLabel: block.startLabel,
+        startTitle: block.detailMessage
+    });
+
+    if (debugMode) {
+        console.warn("[Meeting AI] start blocked by server:", {
+            block,
+            response: data
+        });
+    }
+
+    return block;
 }
 
 // ------------------------------------------------------
@@ -1535,6 +1681,17 @@ async function startCall() {
         return;
     }
 
+    if (startBlockedByServer || btnStart?.disabled) {
+        if (debugMode) {
+            console.warn("[Meeting AI] start ignored because button/session is blocked:", {
+                startBlockedByServer,
+                lastStartBlock,
+                callState
+            });
+        }
+        return;
+    }
+
     recordUserAction("start_button");
 
     const sessionSeq = ++activeSessionSeq;
@@ -1554,6 +1711,9 @@ async function startCall() {
     rtcStateEvents = [];
 
     try {
+        startBlockedByServer = false;
+        lastStartBlock = null;
+
         setCallState("validating");
         setButtons({ startDisabled: true, endDisabled: true });
 
@@ -1570,8 +1730,7 @@ async function startCall() {
         if (sessionSeq !== activeSessionSeq) return;
 
         if (!startData?.ok) {
-            setCallState("blocked", startData?.message || "시작할 수 없음");
-            setButtons({ startDisabled: false, endDisabled: true });
+            applyStartBlockedUi(startData);
             return;
         }
 
@@ -1680,8 +1839,15 @@ async function startCall() {
 
         document.documentElement.classList.remove("call-live");
 
+        startBlockedByServer = false;
+        lastStartBlock = null;
+
         setCallState("error", "연결 실패");
-        setButtons({ startDisabled: false, endDisabled: true });
+        setButtons({
+            startDisabled: false,
+            endDisabled: true,
+            startLabel: "통화 시작"
+        });
 
         alert(error?.message || "통화 시작 중 오류가 발생했습니다.");
     }
@@ -1716,8 +1882,15 @@ async function endCall({ endedBy = "user_button", auto = false } = {}) {
 
         document.documentElement.classList.remove("call-live");
 
-        setCallState("ended", "통화 종료됨");
-        setButtons({ startDisabled: false, endDisabled: true });
+        startBlockedByServer = false;
+        lastStartBlock = null;
+
+        setCallState("idle");
+        setButtons({
+            startDisabled: false,
+            endDisabled: true,
+            startLabel: "통화 시작"
+        });
 
         if (!auto) alert(error?.message || "통화 종료 중 오류가 발생했습니다.");
     }
@@ -1818,7 +1991,12 @@ function initialize() {
     if (!sessionToken) {
         if (tokenValue) tokenValue.textContent = "Missing Token";
         setCallState("blocked", "Salesforce로 접속하세요");
-        setButtons({ startDisabled: true, endDisabled: true });
+        setButtons({
+            startDisabled: true,
+            endDisabled: true,
+            startLabel: "시작할 수 없음",
+            startTitle: "Salesforce 알림 링크를 통해 접속해야 합니다."
+        });
         return;
     }
 
