@@ -137,24 +137,50 @@ const SESSION_TYPE_CONFIG = {
 const SUBJECT_DISPLAY_MAX = 12; // 칩에서 truncate할 최대 글자 수
 
 function parseSessionToken(token) {
-    if (!token) return { type: "default", subjectHint: null };
+    if (!token) return { type: "default", subjectHint: null, sourceEventId: null };
 
-    const lower = token.toLowerCase();
+    const text = String(token).trim();
+    const lower = text.toLowerCase();
+
     let type = "default";
 
     if (lower.startsWith("pre-")) type = "pre";
     if (lower.startsWith("post-")) type = "post";
 
-    if (type === "default") return { type, subjectHint: null };
+    if (type === "default") {
+        return { type, subjectHint: null, sourceEventId: null };
+    }
 
-    // 형식: "pre-GS건설_차세대-00U..." → prefix 이후 첫 "-" 까지가 subjectHint
-    const prefixLen = type === "pre" ? 4 : 5; // "pre-"=4, "post-"=5
-    const withoutPrefix = token.slice(prefixLen); // "GS건설_차세대-00U..."
-    const dashIdx = withoutPrefix.indexOf("-");
-    const rawHint = dashIdx !== -1 ? withoutPrefix.slice(0, dashIdx) : withoutPrefix;
-    const subjectHint = rawHint.replace(/_/g, " "); // "_" → 공백 복원
+    // 운영형 token 형식:
+    // pre-{safeSubjectHint}-{EventId}
+    // post-{safeSubjectHint}-{EventId}
+    //
+    // EventId는 Salesforce Id 15~18자리.
+    // subjectHint는 마지막 "-{EventId}" 앞 전체를 사용한다.
+    // 이렇게 하면 subjectHint 안에 실수로 "-"가 남아도 첫 번째 dash 기준으로 깨지지 않는다.
+    const match = text.match(/^(pre|post)-(.+)-([a-zA-Z0-9]{15,18})$/u);
 
-    return { type, subjectHint: subjectHint || null };
+    if (!match) {
+        return {
+            type,
+            subjectHint: null,
+            sourceEventId: null
+        };
+    }
+
+    const rawHint = match[2] || "";
+    const sourceEventId = match[3] || null;
+
+    const subjectHint = rawHint
+        .replace(/_/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    return {
+        type,
+        subjectHint: subjectHint || null,
+        sourceEventId
+    };
 }
 
 function applySessionTypeUI() {
