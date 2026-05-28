@@ -13,7 +13,7 @@ const CONFIG = {
   UC3_START_CALL: 'https://peter-n8n.duckdns.org/webhook/ultravox-start',
   UC3_END_CALL: 'https://peter-n8n.duckdns.org/webhook/get-call-log',
   UC4_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/text-to-sql-webapp',
-  UC5_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/generate-education-material'
+  UC5_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook-test/generate-education-material'
 };
 
 // ==========================================
@@ -1512,24 +1512,21 @@ Customer: Thank you. Goodbye.`
       
       // Setup loading UI
       loadingOverlay.style.display = 'flex';
+      previewStage.innerHTML = ''; // Clear preview area
       uc5RunBtn.disabled = true;
       uc5RunBtn.textContent = '처리 중...';
       
-      const formData = new FormData();
-      formData.append('file', uc5UploadedFile);
-      formData.append('template_id', uc5SelectedTemplate);
-      
-      // Rigid JSON schema contract forcing LLM structured output
-      const structuredSchema = {
-        "slides": [
-          {"page": 1, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 2, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 3, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 4, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 5, "quiz_question": "string", "options": ["A", "B", "C", "D"], "correct_option": "A/B/C/D", "explanation": "string"}
-        ]
+      // Map template layout values (e.g. template_matrix -> matrix)
+      const templateMap = {
+        'template_matrix': 'matrix',
+        'template_journey': 'journey',
+        'template_split': 'split'
       };
-      formData.append('structured_schema', JSON.stringify(structuredSchema));
+      const templateValue = templateMap[uc5SelectedTemplate] || uc5SelectedTemplate.replace('template_', '');
+      
+      const formData = new FormData();
+      formData.append('template', templateValue);
+      formData.append('file', uc5UploadedFile);
       
       try {
         const res = await fetch(CONFIG.UC5_WEBHOOK, {
@@ -1570,8 +1567,17 @@ Customer: Thank you. Goodbye.`
         renderUC5Slide();
         
       } catch (err) {
-        alert('교육자료 생성 중 에러가 발생했습니다: ' + err.message);
+        console.error(err);
         loadingOverlay.style.display = 'none';
+        
+        // Display interactive error message inside the previewStage
+        previewStage.innerHTML = `
+          <div class="uc5-empty-preview">
+            <span class="uc5-empty-icon" style="color: var(--danger);">⚠️</span>
+            <h3 style="color: var(--danger);">교육 자료 생성 실패</h3>
+            <p>${escapeHtml(err.message || '네트워크 통신 중 에러가 발생했습니다.')}</p>
+          </div>
+        `;
       } finally {
         uc5RunBtn.disabled = false;
         uc5RunBtn.textContent = '▶ 교육 자료 생성 시작';
@@ -1690,7 +1696,7 @@ Customer: Thank you. Goodbye.`
       if (quizOption) {
         const chosen = quizOption.dataset.option;
         const activeSlide = uc5SlidesData[4]; // slide 5 is indexed 4
-        const correct = String(activeSlide.correct_option || 'A').trim().toUpperCase();
+        const correct = String(activeSlide.correct_option || activeSlide.correct_answer || 'A').trim().toUpperCase();
         
         const feedbackBox = document.getElementById('uc5-quizFeedback');
         const fbTitle = document.getElementById('uc5-feedbackTitle');
@@ -1711,8 +1717,8 @@ Customer: Thank you. Goodbye.`
           void feedbackBox.offsetWidth;
           feedbackBox.classList.add('uc5-fade-in');
           
-          // Trigger Confetti
-          startUC5Confetti();
+          // Trigger Confetti using triggerConfetti()
+          triggerConfetti();
         } else {
           quizOption.classList.add('wrong');
           fbTitle.textContent = '아쉽게도 오답입니다. 😢';
@@ -1736,8 +1742,8 @@ Customer: Thank you. Goodbye.`
     });
   }
 
-  // 12. Lightweight Built-in HTML5 Confetti Canvas Engine
-  function startUC5Confetti() {
+  // 12. Lightweight Built-in HTML5 Confetti Canvas Engine (triggerConfetti)
+  function triggerConfetti() {
     const canvas = document.getElementById('uc5-confettiCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
