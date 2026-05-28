@@ -13,7 +13,7 @@ const CONFIG = {
   UC3_START_CALL: 'https://peter-n8n.duckdns.org/webhook/ultravox-start',
   UC3_END_CALL: 'https://peter-n8n.duckdns.org/webhook/get-call-log',
   UC4_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/text-to-sql-webapp',
-  UC5_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/generate-education-material'
+  UC5_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook-test/generate-education-material'
 };
 
 // ==========================================
@@ -1111,6 +1111,7 @@ Customer: Thank you. Goodbye.`
     uc4RunBtn.addEventListener('click', uc4RunQuery);
   }
 
+
   // ==========================================
   // 🎓 Use Case 5: AI 임직원 교육 자료 생성기 (Bottom Placement Only)
   // ==========================================
@@ -1148,12 +1149,12 @@ Customer: Thank you. Goodbye.`
     uc5RunBtn.disabled = !(templateActive && uc5UploadedFile);
   }
 
-  // 4. File Drop & Input Event Handling
+  // 4. File Drop & Input Event Handling (Restricted to ONLY .pdf files)
   function handleUC5File(file) {
     if (!file) return;
-    const allowedExtensions = /\.(pdf|ppt|pptx|doc|docx)$/i;
+    const allowedExtensions = /\.pdf$/i;
     if (!allowedExtensions.test(file.name)) {
-      alert('지원되지 않는 파일 형식입니다. PDF, PPT, PPTX, DOC, DOCX 파일만 업로드 가능합니다.');
+      alert('지원되지 않는 파일 형식입니다. PDF 파일만 업로드 가능합니다.');
       return;
     }
     uc5UploadedFile = file;
@@ -1239,9 +1240,9 @@ Customer: Thank you. Goodbye.`
                 <div class="uc5-flip-hint">카드를 클릭하여 뒤집어보기</div>
               </div>
               <div class="uc5-flip-card-back">
-                <div class="uc5-card-header">🔍 상세 분석 및 맥락</div>
+                <div class="uc5-card-header">🔍 상세 정의 및 분석</div>
                 <div class="uc5-card-body">${body[0] || '소스 교안 핵심 정의 설명'}</div>
-                <div class="uc5-card-sub">이 개념은 조직의 디지털 전환과 리더십 배양에 필수적인 요소로 작용합니다.</div>
+                <div class="uc5-card-sub">이 개념은 프로세스 최적화와 리더십 배양에 필수적인 요소로 규정됩니다.</div>
               </div>
             </div>
           </div>
@@ -1249,14 +1250,14 @@ Customer: Thank you. Goodbye.`
           <div class="uc5-flip-card">
             <div class="uc5-flip-card-inner">
               <div class="uc5-flip-card-front">
-                <div class="uc5-card-header">⚙️ 실무 전략 (Strategic Application)</div>
-                <div class="uc5-card-body">${body[1] || '실무 적용을 위한 전술 전개'}</div>
+                <div class="uc5-card-header">⚙️ 실무 전략 (Strategic Process)</div>
+                <div class="uc5-card-body">${body[1] || '실무 적용을 위한 구체적 방법론'}</div>
                 <div class="uc5-flip-hint">카드를 클릭하여 뒤집어보기</div>
               </div>
               <div class="uc5-flip-card-back">
-                <div class="uc5-card-header">🚀 실행 방안 및 사례</div>
-                <div class="uc5-card-body">${body[1] || '실무 적용을 위한 전술 전개'}</div>
-                <div class="uc5-card-sub">상시 피드백 구조 및 정밀 모니터링 분석 툴을 병행하여 성과를 고도화합니다.</div>
+                <div class="uc5-card-header">🚀 실행 전술 및 사례</div>
+                <div class="uc5-card-body">${body[1] || '실무 적용을 위한 구체적 방법론'}</div>
+                <div class="uc5-card-sub">상시 모니터링 시스템과 민첩한 피드백 루프 설계를 적극 활용합니다.</div>
               </div>
             </div>
           </div>
@@ -1271,7 +1272,7 @@ Customer: Thank you. Goodbye.`
               <div class="uc5-flip-card-back">
                 <div class="uc5-card-header">📸 시각 디자인 제안</div>
                 <div class="uc5-card-body">${graphic}</div>
-                <div class="uc5-card-sub">시인성이 뛰어난 고대비 그래픽 및 스키모픽 스타일의 메탈릭 텍스처 배치가 어울립니다.</div>
+                <div class="uc5-card-sub">시인성이 뛰어난 고대비 그래픽 요소와 인포그래픽 중심의 대칭 배열이 권장됩니다.</div>
               </div>
             </div>
           </div>
@@ -1279,14 +1280,14 @@ Customer: Thank you. Goodbye.`
           <div class="uc5-flip-card">
             <div class="uc5-flip-card-inner">
               <div class="uc5-flip-card-front">
-                <div class="uc5-card-header">🎯 종합 Takeaway</div>
-                <div class="uc5-card-body">해당 과정의 궁극적 업무 생산성 개선 가이드라인 및 혁신 로드맵 요약.</div>
+                <div class="uc5-card-header">🎯 가치 창출 (Business Value)</div>
+                <div class="uc5-card-body">${body[2] || '해당 과정의 궁극적 성과 및 실무 가치'}</div>
                 <div class="uc5-flip-hint">카드를 클릭하여 뒤집어보기</div>
               </div>
               <div class="uc5-flip-card-back">
-                <div class="uc5-card-header">🌟 핵심 테이크어웨이</div>
-                <div class="uc5-card-body">비즈니스 혁신 리더로서, 자동화 파이프라인의 핵심 지표(KPI) 관리 및 유연한 부서 간 협업 협약(SLA) 기준을 준수하십시오.</div>
-                <div class="uc5-card-sub">핵심 목표치: 자율 업무 자동화 프로세스 이수율 100% 목표.</div>
+                <div class="uc5-card-header">🌟 비즈니스 혁신 리더</div>
+                <div class="uc5-card-body">${body[2] || '해당 과정의 궁극적 성과 및 실무 가치'}</div>
+                <div class="uc5-card-sub">핵심 목표치: 자율 프로세스 자동화 달성율 95% 이상 권장.</div>
               </div>
             </div>
           </div>
@@ -1300,6 +1301,27 @@ Customer: Thank you. Goodbye.`
     const body = slide.body_segments || [];
     const graphic = slide.graphic_prompt || '파이프라인 여정을 묘사한 화살표 연결선 테마 그래픽';
     
+    // Parse Node titles dynamically from chronological steps "Title: Description"
+    const titles = ['개요 (Intro)', '실행 (Action)', '비주얼 (Visual)', '성과 (Goal)'];
+    body.forEach((seg, idx) => {
+      if (idx < 4) {
+        const colonIdx = seg.indexOf(':');
+        if (colonIdx !== -1) {
+          titles[idx] = seg.slice(0, colonIdx).trim();
+        }
+      }
+    });
+
+    // Parse the first step details
+    const step1Seg = body[0] || '임직원 혁신 개요 교육 내용';
+    const colonIdx = step1Seg.indexOf(':');
+    let step1Title = '핵심 도입부 및 개요';
+    let step1Desc = step1Seg;
+    if (colonIdx !== -1) {
+      step1Title = step1Seg.slice(0, colonIdx).trim();
+      step1Desc = step1Seg.slice(colonIdx + 1).trim();
+    }
+
     return `
       <div class="uc5-layout-journey">
         <div class="uc5-slide-header">
@@ -1318,19 +1340,19 @@ Customer: Thank you. Goodbye.`
           <div class="uc5-journey-nodes">
             <button class="uc5-journey-node active" data-node="1" style="left: 6%; top: 50%;">
               <span class="uc5-node-pin">📍</span>
-              <span class="uc5-node-title">개요 (Intro)</span>
+              <span class="uc5-node-title">${titles[0]}</span>
             </button>
             <button class="uc5-journey-node" data-node="2" style="left: 36%; top: 38%;">
               <span class="uc5-node-pin">📍</span>
-              <span class="uc5-node-title">실행 (Action)</span>
+              <span class="uc5-node-title">${titles[1]}</span>
             </button>
             <button class="uc5-journey-node" data-node="3" style="left: 66%; top: 62%;">
               <span class="uc5-node-pin">📍</span>
-              <span class="uc5-node-title">비주얼 (Visual)</span>
+              <span class="uc5-node-title">${titles[2]}</span>
             </button>
             <button class="uc5-journey-node" data-node="4" style="left: 94%; top: 50%;">
               <span class="uc5-node-pin">📍</span>
-              <span class="uc5-node-title">성과 (Goal)</span>
+              <span class="uc5-node-title">${titles[3]}</span>
             </button>
           </div>
         </div>
@@ -1338,10 +1360,10 @@ Customer: Thank you. Goodbye.`
         <div class="uc5-journey-card-display" id="uc5-journeyDetailCard">
           <div class="uc5-journey-detail-header">
             <span class="uc5-journey-step-badge">STEP 1</span>
-            <h3 class="uc5-journey-step-title">핵심 도입부 및 개요</h3>
+            <h3 class="uc5-journey-step-title">${step1Title}</h3>
           </div>
           <div class="uc5-journey-detail-body">
-            ${body[0] || '임직원 혁신 개요 교육 내용'}
+            ${step1Desc}
           </div>
           <div class="uc5-journey-detail-hint">각 여정 핀(Pin) 노드를 클릭하면 순차 실행 상세 가이드가 표시됩니다.</div>
         </div>
@@ -1370,7 +1392,7 @@ Customer: Thank you. Goodbye.`
             <div class="uc5-split-metrics">
               <div class="uc5-split-metric-row">
                 <div class="uc5-metric-info">
-                  <span>🔥 핵심 시급도 (Priority)</span>
+                  <span>🔥 핵심 시급성 (Priority)</span>
                   <span class="uc5-metric-value">92%</span>
                 </div>
                 <div class="uc5-metric-bar-outer">
@@ -1380,7 +1402,7 @@ Customer: Thank you. Goodbye.`
               
               <div class="uc5-split-metric-row">
                 <div class="uc5-metric-info">
-                  <span>🛠️ 실행 타당도 (Feasibility)</span>
+                  <span>🛠️ 실행 타당성 (Feasibility)</span>
                   <span class="uc5-metric-value">78%</span>
                 </div>
                 <div class="uc5-metric-bar-outer">
@@ -1398,6 +1420,10 @@ Customer: Thank you. Goodbye.`
                 </div>
               </div>
             </div>
+            
+            <div style="font-size: 0.68rem; color: var(--text-sub); border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 10px;">
+              <strong>📸 비주얼 테마 가이드:</strong> ${graphic}
+            </div>
           </div>
           
           <!-- Right Panel -->
@@ -1409,7 +1435,7 @@ Customer: Thank you. Goodbye.`
             </div>
             
             <div class="uc5-split-tab-content" id="uc5-splitTabContent">
-              <div class="uc5-split-content-title">💡 프로세스 프로세스 실행 및 세부 전략</div>
+              <div class="uc5-split-content-title">💡 프로세스 실행 및 세부 전략</div>
               <div class="uc5-split-content-body">${body[1] || '전략 세부 로드맵 설명'}</div>
             </div>
           </div>
@@ -1505,12 +1531,12 @@ Customer: Thank you. Goodbye.`
     }
   }
 
-  // 9. Asynchronous Request Dispatcher (Fetch Webhook)
+  // 9. Asynchronous Request Dispatcher (Fetch Webhook with DYNAMIC semantic JSON Schema)
   if (uc5RunBtn) {
     uc5RunBtn.addEventListener('click', async () => {
       if (!uc5UploadedFile) return;
       
-      // Setup loading UI
+      // Trigger glassmorphism loading backdrop overlay
       loadingOverlay.style.display = 'flex';
       uc5RunBtn.disabled = true;
       uc5RunBtn.textContent = '처리 중...';
@@ -1519,16 +1545,72 @@ Customer: Thank you. Goodbye.`
       formData.append('file', uc5UploadedFile);
       formData.append('template_id', uc5SelectedTemplate);
       
-      // Rigid JSON schema contract forcing LLM structured output
-      const structuredSchema = {
-        "slides": [
-          {"page": 1, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 2, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 3, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 4, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
-          {"page": 5, "quiz_question": "string", "options": ["A", "B", "C", "D"], "correct_option": "A/B/C/D", "explanation": "string"}
-        ]
+      // Construct dynamic JSON Schema based on active template semantic requirements
+      let structuredSchema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "slides": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "description": "5 slides representing the education course. Slides 1 to 4 are content slides. Slide 5 is a quiz slide.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "page": { "type": "integer", "description": "The slide page index, 1 through 5." },
+                "heading": { 
+                  "type": "string", 
+                  "maxLength": 25, 
+                  "description": uc5SelectedTemplate === 'template_matrix' ? "Core theme. Max 25 chars." :
+                                 uc5SelectedTemplate === 'template_journey' ? "Roadmap title. Max 25 chars." :
+                                 "Analysis title. Max 25 chars."
+                },
+                "body_segments": {
+                  "type": "array",
+                  "minItems": uc5SelectedTemplate === 'template_matrix' ? 3 : 4,
+                  "maxItems": uc5SelectedTemplate === 'template_matrix' ? 3 : 4,
+                  "description": uc5SelectedTemplate === 'template_matrix' 
+                    ? "Exactly 3 items. Index 0: Physical definition (Safe 60 chars), Index 1: Strategic Process (Safe 60 chars), Index 2: Business Value (Safe 60 chars). MUST NOT exceed 80 chars."
+                    : uc5SelectedTemplate === 'template_journey'
+                      ? "Exactly 4 chronological steps formatted as 'Title: Description'. 0: Intro, 1: Action, 2: Visual, 3: Goal. Safe 50 chars each."
+                      : "Index 0: Comprehensive briefing (Safe 150 chars). Index 1, 2, and 3: Action tactics (Safe 40 chars each).",
+                  "items": { "type": "string" }
+                },
+                "graphic_prompt": { 
+                  "type": "string", 
+                  "description": "Visual prompt description for image generation depicting the slide core concept." 
+                },
+                "quiz_question": { 
+                  "type": "string", 
+                  "maxLength": 80, 
+                  "description": "ONLY FOR SLIDE 5 (QUIZ): Scenario-based evaluation question. Max 80 chars." 
+                },
+                "options": {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "description": "ONLY FOR SLIDE 5 (QUIZ): Answer options. Exactly 4 strings. Max 25 chars each.",
+                  "items": { "type": "string", "maxLength": 25 }
+                },
+                "correct_option": { 
+                  "type": "string", 
+                  "enum": ["A", "B", "C", "D"], 
+                  "description": "ONLY FOR SLIDE 5 (QUIZ): The correct answer letter: A, B, C, or D." 
+                },
+                "explanation": { 
+                  "type": "string", 
+                  "maxLength": 100, 
+                  "description": "ONLY FOR SLIDE 5 (QUIZ): Feedback explanation. Safe 100 chars." 
+                }
+              },
+              "required": ["page"]
+            }
+          }
+        },
+        "required": ["slides"]
       };
+
       formData.append('structured_schema', JSON.stringify(structuredSchema));
       
       try {
@@ -1562,8 +1644,7 @@ Customer: Thank you. Goodbye.`
         uc5SlidesData = slides;
         uc5ActivePageIndex = 1;
         
-        // Hide overlay, display pagination footer
-        loadingOverlay.style.display = 'none';
+        // Display pagination footer
         paginationFooter.style.display = 'flex';
         
         // Trigger render
@@ -1571,8 +1652,9 @@ Customer: Thank you. Goodbye.`
         
       } catch (err) {
         alert('교육자료 생성 중 에러가 발생했습니다: ' + err.message);
-        loadingOverlay.style.display = 'none';
       } finally {
+        // Safe loading hiding and button restoration inside finally block
+        loadingOverlay.style.display = 'none';
         uc5RunBtn.disabled = false;
         uc5RunBtn.textContent = '▶ 교육 자료 생성 시작';
       }
@@ -1610,7 +1692,7 @@ Customer: Thank you. Goodbye.`
         return;
       }
       
-      // B. Layout 2 Journey Node Clicking
+      // B. Layout 2 Journey Node Clicking (Semantic parse step details dynamically)
       const journeyNode = e.target.closest('.uc5-journey-node');
       if (journeyNode) {
         const nodeId = journeyNode.dataset.node;
@@ -1627,25 +1709,23 @@ Customer: Thank you. Goodbye.`
           progressLine.style.strokeDasharray = `${progressValues[nodeId]} 500`;
         }
         
-        // Update Detail Box Content
+        // Update Detail Box Content Dynamically using contract Title:Description split
         const titleEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-step-title');
         const badgeEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-step-badge');
         const bodyEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-detail-body');
         
-        badgeEl.textContent = `STEP ${nodeId}`;
-        if (nodeId === '1') {
-          titleEl.textContent = '핵심 도입부 및 개요';
-          bodyEl.textContent = activeSlide.body_segments[0] || '';
-        } else if (nodeId === '2') {
-          titleEl.textContent = '세부 실무 로드맵';
-          bodyEl.textContent = activeSlide.body_segments[1] || '';
-        } else if (nodeId === '3') {
-          titleEl.textContent = '비주얼 인포그래픽 디자인';
-          bodyEl.textContent = activeSlide.graphic_prompt || '';
-        } else {
-          titleEl.textContent = '과제 이수 가이드';
-          bodyEl.textContent = '본 교육 핵심 요약을 토대로 소속 팀원들과 업무 프로세스 개선 회의를 진행하고, 분기별 이수 평가 실습 과제를 제출하십시오.';
+        const segment = activeSlide.body_segments[Number(nodeId) - 1] || '';
+        const colonIdx = segment.indexOf(':');
+        let stepTitle = `STEP ${nodeId} 상세 가이드`;
+        let stepDesc = segment;
+        if (colonIdx !== -1) {
+          stepTitle = segment.slice(0, colonIdx).trim();
+          stepDesc = segment.slice(colonIdx + 1).trim();
         }
+        
+        badgeEl.textContent = `STEP ${nodeId}`;
+        titleEl.textContent = stepTitle;
+        bodyEl.textContent = stepDesc;
         
         const detailCard = document.getElementById('uc5-journeyDetailCard');
         detailCard.classList.remove('uc5-fade-in');
@@ -1654,7 +1734,7 @@ Customer: Thank you. Goodbye.`
         return;
       }
       
-      // C. Layout 3 Split Tab Clicking
+      // C. Layout 3 Split Tab Clicking (Semantic parse Action tactics dynamically)
       const splitTab = e.target.closest('.uc5-split-tab');
       if (splitTab) {
         const tabId = splitTab.dataset.tab;
@@ -1672,10 +1752,10 @@ Customer: Thank you. Goodbye.`
           contentBody.textContent = activeSlide.body_segments[1] || '';
         } else if (tabId === 'visual') {
           contentTitle.textContent = '🎨 시각 디자인 및 테마 가이드';
-          contentBody.textContent = activeSlide.graphic_prompt || '';
+          contentBody.textContent = activeSlide.body_segments[2] || activeSlide.graphic_prompt || '';
         } else {
           contentTitle.textContent = '📈 기대 효과 및 재무 성과';
-          contentBody.textContent = '본 실행 솔루션을 도입할 경우, 수작업 처리 속도가 최대 350% 향상되며, 업무 오류율이 0.1% 미만으로 감소하는 실질적인 비용 절감과 신뢰도 향상 효과를 거두게 됩니다.';
+          contentBody.textContent = activeSlide.body_segments[3] || '';
         }
         
         const tabContent = document.getElementById('uc5-splitTabContent');
@@ -1794,4 +1874,3 @@ Customer: Thank you. Goodbye.`
     
     drawFrame();
   }
-});
