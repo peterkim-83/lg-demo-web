@@ -2110,20 +2110,1044 @@ body {
     color: #3730a3;
 }
 
-@media (max-width: 1480px) {
-    .uc4-scenario-grid {
-        grid-template-columns: repeat(5, minmax(180px, 1fr));
-    }
+}
 
-    .uc4-scenario-card {
-        padding: 20px 14px 14px;
-    }
+/* ==========================================================================
+   🎓 USE CASE 5: AI 임직원 교육 생성기 (Bottom Placement Scoped Rules)
+   ========================================================================== */
 
-    .uc4-scenario-type {
-        font-size: 0.66rem;
-    }
+/* 1. Layout Container and Twin-Panel Configuration */
+.uc5-split-container {
+    display: flex;
+    gap: 24px;
+    height: calc(100vh - 120px);
+    min-height: 580px;
+    align-items: stretch;
+    overflow: hidden;
+}
 
-    .uc4-scenario-question {
-        font-size: 0.84rem;
+.uc5-panel-left {
+    flex: 0 0 35%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: var(--bg-panel);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    overflow-y: auto;
+}
+
+.uc5-panel-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: var(--bg-panel);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+}
+
+.uc5-section-title {
+    margin-bottom: 4px;
+    flex-shrink: 0;
+}
+
+.uc5-section-title h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.uc5-section-title p {
+    font-size: 0.82rem;
+    color: var(--text-sub);
+}
+
+.uc5-field-header {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 8px;
+    display: block;
+}
+
+.uc5-card-section {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* 2. Template Selection Hub */
+.uc5-template-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.uc5-template-card {
+    display: block;
+    cursor: pointer;
+    margin: 0;
+}
+
+.uc5-template-card input[type="radio"] {
+    display: none;
+}
+
+.uc5-card-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.uc5-template-card:hover .uc5-card-inner {
+    border-color: #cbd5e1;
+    transform: translateY(-1px);
+}
+
+.uc5-template-card input[type="radio"]:checked + .uc5-card-inner {
+    border-color: var(--primary);
+    background: #eef2ff;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
+}
+
+.uc5-card-emoji {
+    font-size: 1.4rem;
+}
+
+.uc5-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.uc5-card-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.uc5-card-desc {
+    font-size: 0.74rem;
+    color: var(--text-sub);
+}
+
+/* 3. Premium Drag-and-Drop Document Uploader */
+.uc5-uploader-container {
+    width: 100%;
+}
+
+.uc5-upload-wrapper {
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+}
+
+.uc5-upload-wrapper:hover,
+.uc5-upload-wrapper.uc5-drag-highlight {
+    border-color: var(--primary);
+    background: #eef2ff;
+}
+
+.uc5-upload-icon {
+    font-size: 2rem;
+    color: #64748b;
+}
+
+.uc5-upload-text {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.uc5-upload-hint {
+    font-size: 0.72rem;
+    color: var(--text-sub);
+}
+
+.uc5-file-name {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--success);
+    word-break: break-all;
+    background: #ecfdf5;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #a7f3d0;
+    margin-top: 4px;
+}
+
+.uc5-action-area {
+    margin-top: auto;
+    flex-shrink: 0;
+}
+
+/* 4. Form-Factor Header & View Switcher */
+.uc5-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8fafc;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.uc5-preview-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.uc5-info-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-sub);
+}
+
+.uc5-info-value {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.uc5-view-switcher {
+    display: flex;
+    background: #e2e8f0;
+    padding: 2px;
+    border-radius: 8px;
+    gap: 2px;
+}
+
+.uc5-switch-btn {
+    background: none;
+    border: none;
+    padding: 5px 10px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-sub);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.uc5-switch-btn:hover {
+    color: var(--text-main);
+}
+
+.uc5-switch-btn.active {
+    background: white;
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* 5. Adaptive Viewport Canvas & Phone Chassis Wrapper */
+.uc5-viewport-canvas {
+    flex: 1;
+    background: #e2e8f0;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    padding: 16px;
+    position: relative;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.uc5-chassis-wrapper {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background: white;
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.uc5-preview-stage {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    padding: 20px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: #f8fafc;
+}
+
+/* Mobile frames: centering and resizing chassis seamlessly to 375px * 812px */
+.uc5-viewport-canvas.uc5-mobile-frame {
+    padding: 20px 0;
+    overflow-y: auto;
+}
+
+.uc5-viewport-canvas.uc5-mobile-frame .uc5-chassis-wrapper {
+    width: 375px;
+    height: 812px;
+    flex: 0 0 auto;
+    border: 12px solid #0f172a;
+    border-radius: 36px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 4px #334155;
+    position: relative;
+}
+
+.uc5-viewport-canvas.uc5-mobile-frame .uc5-chassis-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 18px;
+    background: #0f172a;
+    border-bottom-left-radius: 12px;
+    z-index: 20;
+}
+
+/* 6. Empty & Loading Overlays */
+.uc5-empty-preview {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    height: 100%;
+    gap: 14px;
+    color: var(--text-sub);
+    max-width: 400px;
+    margin: auto;
+}
+
+.uc5-empty-icon {
+    font-size: 3rem;
+    color: #cbd5e1;
+}
+
+.uc5-empty-preview h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.uc5-empty-preview p {
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.uc5-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 30;
+    animation: uc5-fadeIn 0.2s ease;
+}
+
+.uc5-loading-spinner-wrapper {
+    text-align: center;
+    padding: 20px;
+    max-width: 300px;
+}
+
+.uc5-loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 4px solid rgba(79, 70, 229, 0.1);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    display: inline-block;
+    animation: uc5-spin 0.8s linear infinite;
+    margin-bottom: 12px;
+}
+
+.uc5-loading-text {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 4px;
+}
+
+.uc5-loading-subtext {
+    font-size: 0.74rem;
+    color: var(--text-sub);
+    line-height: 1.35;
+}
+
+@keyframes uc5-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes uc5-fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* 7. Pagination Footer Control */
+.uc5-pagination-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8fafc;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.uc5-page-indicator {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.uc5-nav-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+}
+
+/* 8. Scoped Visual Design Slide Components */
+.uc5-slide-header {
+    margin-bottom: 16px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+}
+
+.uc5-slide-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: var(--primary);
+    background: #e0e7ff;
+    padding: 2px 6px;
+    border-radius: 99px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+}
+
+.uc5-slide-header h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 9. Layout 1: The Concept Matrix (3D Flip Grid) */
+.uc5-layout-matrix {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.uc5-matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+}
+
+.uc5-flip-card {
+    background-color: transparent;
+    perspective: 1000px;
+    cursor: pointer;
+    min-height: 0;
+}
+
+.uc5-flip-card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+}
+
+.uc5-flip-card.flipped .uc5-flip-card-inner {
+    transform: rotateY(180deg);
+}
+
+.uc5-flip-card-front, .uc5-flip-card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.uc5-flip-card-front {
+    background-color: white;
+    color: var(--text-main);
+}
+
+.uc5-flip-card-back {
+    background-color: #1e1b4b;
+    color: #e0e7ff;
+    transform: rotateY(180deg);
+    border-color: #312e81;
+}
+
+.uc5-card-header {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 6px;
+    flex-shrink: 0;
+}
+
+.uc5-flip-card-back .uc5-card-header {
+    color: #818cf8;
+}
+
+.uc5-card-body {
+    font-size: clamp(0.74rem, 1.3vw, 0.86rem);
+    line-height: 1.4;
+    color: var(--text-main);
+    flex: 1;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+}
+
+.uc5-flip-card-back .uc5-card-body {
+    color: #cbd5e1;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+}
+
+.uc5-card-sub {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    border-top: 1px dashed #312e81;
+    padding-top: 6px;
+    margin-top: 6px;
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.uc5-flip-hint {
+    font-size: 0.66rem;
+    color: var(--text-sub);
+    text-align: right;
+    margin-top: auto;
+    flex-shrink: 0;
+}
+
+/* 10. Layout 2: The Linear Journey (Snaking Roadmaps) */
+.uc5-layout-journey {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.uc5-journey-container {
+    position: relative;
+    height: 80px;
+    margin: 8px 0 16px;
+    flex-shrink: 0;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+.uc5-journey-line-svg-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+}
+
+.uc5-journey-line-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.uc5-journey-nodes {
+    position: absolute;
+    inset: 0;
+}
+
+.uc5-journey-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 10;
+    outline: none;
+    padding: 0;
+}
+
+.uc5-node-pin {
+    font-size: 1.3rem;
+    transition: transform 0.2s ease;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.uc5-journey-node:hover .uc5-node-pin {
+    transform: scale(1.2) translateY(-2px);
+}
+
+.uc5-journey-node.active .uc5-node-pin {
+    transform: scale(1.3) translateY(-3px);
+    filter: drop-shadow(0 4px 8px rgba(79,70,229,0.25));
+}
+
+.uc5-node-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-sub);
+    background: white;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    margin-top: 2px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.uc5-journey-node.active .uc5-node-title {
+    color: var(--primary);
+    border-color: var(--primary);
+    background: #e0e7ff;
+}
+
+.uc5-journey-card-display {
+    flex: 1;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-sm);
+    min-height: 0;
+}
+
+.uc5-journey-step-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #b45309;
+    background: #fef3c7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    width: fit-content;
+}
+
+.uc5-journey-step-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #78350f;
+    margin-bottom: 8px;
+}
+
+.uc5-journey-detail-body {
+    font-size: clamp(0.76rem, 1.3vw, 0.88rem);
+    line-height: 1.45;
+    color: #451a03;
+    flex: 1;
+    overflow-y: auto;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+}
+
+.uc5-journey-detail-hint {
+    font-size: 0.68rem;
+    color: #b45309;
+    margin-top: 6px;
+    border-top: 1px dashed #fcd34d;
+    padding-top: 6px;
+    text-align: right;
+}
+
+.uc5-fade-in {
+    animation: uc5-fadeIn 0.35s ease;
+}
+
+/* 11. Layout 3: The Tactical Split Screen (50:50 Viewports) */
+.uc5-layout-split {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.uc5-split-columns {
+    display: flex;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+}
+
+.uc5-split-col-left,
+.uc5-split-col-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: white;
+    padding: 14px;
+    min-height: 0;
+}
+
+.uc5-split-col-left {
+    background: #fafafa;
+}
+
+.uc5-split-brief-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--danger);
+    margin-bottom: 6px;
+    flex-shrink: 0;
+}
+
+.uc5-split-brief-text {
+    font-size: clamp(0.74rem, 1.3vw, 0.86rem);
+    line-height: 1.4;
+    color: var(--text-main);
+    margin-bottom: 12px;
+    overflow-y: auto;
+    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+    -webkit-box-orient: vertical;
+}
+
+.uc5-split-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px dashed var(--border);
+    padding-top: 12px;
+    flex-shrink: 0;
+}
+
+.uc5-split-metric-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.uc5-metric-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.uc5-metric-value {
+    color: var(--primary);
+}
+
+.uc5-metric-bar-outer {
+    height: 5px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.uc5-metric-bar-inner {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary) 0%, #818cf8 100%);
+    border-radius: 3px;
+    transition: width 1s cubic-bezier(0.1, 0.8, 0.2, 1);
+}
+
+.uc5-split-tabs {
+    display: flex;
+    background: #f1f5f9;
+    padding: 2px;
+    border-radius: 8px;
+    gap: 2px;
+    flex-shrink: 0;
+    margin-bottom: 10px;
+}
+
+.uc5-split-tab {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-sub);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.uc5-split-tab:hover {
+    color: var(--text-main);
+}
+
+.uc5-split-tab.active {
+    background: white;
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.uc5-split-tab-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.uc5-split-content-title {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+
+.uc5-split-content-body {
+    font-size: clamp(0.74rem, 1.3vw, 0.86rem);
+    line-height: 1.45;
+    color: var(--text-main);
+    overflow-y: auto;
+    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
+    -webkit-box-orient: vertical;
+}
+
+/* 12. Slide 5 Evaluation Quiz Page & Canvas Confetti */
+.uc5-layout-quiz {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+}
+
+.uc5-quiz-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+}
+
+.uc5-quiz-q-box {
+    display: flex;
+    gap: 10px;
+    background: #f8fafc;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.uc5-quiz-q-badge {
+    background: var(--primary);
+    color: white;
+    font-size: 0.74rem;
+    font-weight: 800;
+    padding: 3px 6px;
+    border-radius: 6px;
+    height: fit-content;
+}
+
+.uc5-quiz-q-text {
+    font-size: clamp(0.8rem, 1.4vw, 0.95rem);
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.35;
+}
+
+.uc5-quiz-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.uc5-quiz-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.uc5-quiz-option:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+    transform: translateY(-1px);
+}
+
+.uc5-opt-badge {
+    background: #f1f5f9;
+    color: var(--text-sub);
+    font-size: 0.74rem;
+    font-weight: 800;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+
+.uc5-opt-text {
+    font-size: clamp(0.74rem, 1.2vw, 0.84rem);
+    font-weight: 500;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* Quiz Option Evaluation feedback styles */
+.uc5-quiz-option.correct {
+    border-color: var(--success);
+    background: #ecfdf5;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+.uc5-quiz-option.correct .uc5-opt-badge {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
+}
+
+.uc5-quiz-option.wrong {
+    border-color: var(--danger);
+    background: #fef2f2;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.uc5-quiz-option.wrong .uc5-opt-badge {
+    background: var(--danger);
+    color: white;
+    border-color: var(--danger);
+}
+
+.uc5-quiz-feedback {
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    padding: 12px 14px;
+    flex-shrink: 0;
+    margin-top: auto;
+}
+
+.uc5-feedback-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.uc5-feedback-text {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--text-sub);
+}
+
+.uc5-confetti-canvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40;
+    width: 100%;
+    height: 100%;
+}
+
+/* Elegant CSS shake transform keyframes */
+.uc5-shake {
+    animation: uc5-shakeAnim 0.5s ease;
+}
+
+@keyframes uc5-shakeAnim {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+}
+
+@media (max-width: 960px) {
+    .uc5-split-container {
+        flex-direction: column;
+        height: auto;
+        overflow: visible;
+    }
+    .uc5-panel-left {
+        flex: 1 1 auto;
+    }
+    .uc5-panel-right {
+        height: 680px;
     }
 }

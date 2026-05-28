@@ -12,7 +12,8 @@ const CONFIG = {
   UC2_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/generate-proposal',
   UC3_START_CALL: 'https://peter-n8n.duckdns.org/webhook/ultravox-start',
   UC3_END_CALL: 'https://peter-n8n.duckdns.org/webhook/get-call-log',
-  UC4_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/text-to-sql-webapp'
+  UC4_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/text-to-sql-webapp',
+  UC5_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/generate-education-material'
 };
 
 // ==========================================
@@ -1108,5 +1109,689 @@ Customer: Thank you. Goodbye.`
       uc4RenderVariantStrip(scenario); uc4UpdateRunButtonState();
     });
     uc4RunBtn.addEventListener('click', uc4RunQuery);
+  }
+
+  // ==========================================
+  // 🎓 Use Case 5: AI 임직원 교육 자료 생성기 (Bottom Placement Only)
+  // ==========================================
+  
+  // 1. State Scoping Management
+  let uc5SelectedTemplate = 'template_matrix';
+  let uc5UploadedFile = null;
+  let uc5ActivePageIndex = 1;
+  let uc5SlidesData = null;
+  let confettiTimer = null;
+
+  // 2. DOM Queries
+  const templateInputs = document.querySelectorAll('input[name="uc5-template"]');
+  const uc5FileInput = document.getElementById('uc5-fileInput');
+  const uc5Dropzone = document.getElementById('uc5-dropzone');
+  const uc5UploadPrompt = document.getElementById('uc5-uploadPrompt');
+  const uc5FileNameDisplay = document.getElementById('uc5-fileNameDisplay');
+  const uc5RunBtn = document.getElementById('uc5-runBtn');
+  
+  const btnDesktop = document.getElementById('uc5-btnDesktop');
+  const btnMobile = document.getElementById('uc5-btnMobile');
+  const viewportCanvas = document.getElementById('uc5-viewportCanvas');
+  const previewStage = document.getElementById('uc5-previewStage');
+  const loadingOverlay = document.getElementById('uc5-loadingOverlay');
+  
+  const paginationFooter = document.getElementById('uc5-paginationFooter');
+  const prevBtn = document.getElementById('uc5-prevBtn');
+  const nextBtn = document.getElementById('uc5-nextBtn');
+  const pageIndicator = document.getElementById('uc5-pageIndicator');
+  const activeLayoutText = document.getElementById('uc5-activeLayoutText');
+
+  // 3. Helper: Validate & Unlock Run Button
+  function validateUC5RunBtn() {
+    const templateActive = Array.from(templateInputs).some(r => r.checked);
+    uc5RunBtn.disabled = !(templateActive && uc5UploadedFile);
+  }
+
+  // 4. File Drop & Input Event Handling
+  function handleUC5File(file) {
+    if (!file) return;
+    const allowedExtensions = /\.(pdf|ppt|pptx|doc|docx)$/i;
+    if (!allowedExtensions.test(file.name)) {
+      alert('지원되지 않는 파일 형식입니다. PDF, PPT, PPTX, DOC, DOCX 파일만 업로드 가능합니다.');
+      return;
+    }
+    uc5UploadedFile = file;
+    uc5FileNameDisplay.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+    uc5FileNameDisplay.style.display = 'block';
+    uc5UploadPrompt.style.display = 'none';
+    validateUC5RunBtn();
+  }
+
+  if (uc5Dropzone && uc5FileInput) {
+    uc5Dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uc5Dropzone.classList.add('uc5-drag-highlight');
+    });
+
+    uc5Dropzone.addEventListener('dragleave', () => {
+      uc5Dropzone.classList.remove('uc5-drag-highlight');
+    });
+
+    uc5Dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uc5Dropzone.classList.remove('uc5-drag-highlight');
+      const file = e.dataTransfer.files[0];
+      if (file) handleUC5File(file);
+    });
+
+    uc5FileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) handleUC5File(file);
+    });
+  }
+
+  // 5. Template Selection Hub Handler
+  templateInputs.forEach(input => {
+    input.addEventListener('change', (e) => {
+      uc5SelectedTemplate = e.target.value;
+      const names = {
+        'template_matrix': 'The Concept Matrix',
+        'template_journey': 'The Linear Journey',
+        'template_split': 'The Tactical Split'
+      };
+      if (activeLayoutText) {
+        activeLayoutText.textContent = names[uc5SelectedTemplate] || uc5SelectedTemplate;
+      }
+      validateUC5RunBtn();
+    });
+  });
+
+  // 6. Form-Factor Switching Layout Switches
+  if (btnDesktop && btnMobile && viewportCanvas) {
+    btnDesktop.addEventListener('click', () => {
+      btnDesktop.classList.add('active');
+      btnMobile.classList.remove('active');
+      viewportCanvas.classList.remove('uc5-mobile-frame');
+    });
+
+    btnMobile.addEventListener('click', () => {
+      btnMobile.classList.add('active');
+      btnDesktop.classList.remove('active');
+      viewportCanvas.classList.add('uc5-mobile-frame');
+    });
+  }
+
+  // 7. Dynamic Layout Engine & String Compilers
+  function compileConceptMatrix(slide, pageNum) {
+    const heading = slide.heading || '핵심 주제 및 기본 이론 정의';
+    const body = slide.body_segments || [];
+    const graphic = slide.graphic_prompt || '조직의 협업과 디지털 혁신을 도식화한 기하학적 인포그래픽 패턴';
+    
+    return `
+      <div class="uc5-layout-matrix">
+        <div class="uc5-slide-header">
+          <span class="uc5-slide-badge">Slide ${pageNum} · Concept Matrix</span>
+          <h2>${heading}</h2>
+        </div>
+        <div class="uc5-matrix-grid">
+          <!-- Card 1 -->
+          <div class="uc5-flip-card">
+            <div class="uc5-flip-card-inner">
+              <div class="uc5-flip-card-front">
+                <div class="uc5-card-header">💡 핵심 개념 (Core Concept)</div>
+                <div class="uc5-card-body">${body[0] || '소스 교안 핵심 정의 설명'}</div>
+                <div class="uc5-flip-hint">카드를 클릭하여 뒤집어보기</div>
+              </div>
+              <div class="uc5-flip-card-back">
+                <div class="uc5-card-header">🔍 상세 분석 및 맥락</div>
+                <div class="uc5-card-body">${body[0] || '소스 교안 핵심 정의 설명'}</div>
+                <div class="uc5-card-sub">이 개념은 조직의 디지털 전환과 리더십 배양에 필수적인 요소로 작용합니다.</div>
+              </div>
+            </div>
+          </div>
+          <!-- Card 2 -->
+          <div class="uc5-flip-card">
+            <div class="uc5-flip-card-inner">
+              <div class="uc5-flip-card-front">
+                <div class="uc5-card-header">⚙️ 실무 전략 (Strategic Application)</div>
+                <div class="uc5-card-body">${body[1] || '실무 적용을 위한 전술 전개'}</div>
+                <div class="uc5-flip-hint">카드를 클릭하여 뒤집어보기</div>
+              </div>
+              <div class="uc5-flip-card-back">
+                <div class="uc5-card-header">🚀 실행 방안 및 사례</div>
+                <div class="uc5-card-body">${body[1] || '실무 적용을 위한 전술 전개'}</div>
+                <div class="uc5-card-sub">상시 피드백 구조 및 정밀 모니터링 분석 툴을 병행하여 성과를 고도화합니다.</div>
+              </div>
+            </div>
+          </div>
+          <!-- Card 3 -->
+          <div class="uc5-flip-card">
+            <div class="uc5-flip-card-inner">
+              <div class="uc5-flip-card-front">
+                <div class="uc5-card-header">🎨 비주얼 가이드 (Visual Concept)</div>
+                <div class="uc5-card-body">${graphic}</div>
+                <div class="uc5-flip-hint">카드를 클릭하여 뒤집어보기</div>
+              </div>
+              <div class="uc5-flip-card-back">
+                <div class="uc5-card-header">📸 시각 디자인 제안</div>
+                <div class="uc5-card-body">${graphic}</div>
+                <div class="uc5-card-sub">시인성이 뛰어난 고대비 그래픽 및 스키모픽 스타일의 메탈릭 텍스처 배치가 어울립니다.</div>
+              </div>
+            </div>
+          </div>
+          <!-- Card 4 -->
+          <div class="uc5-flip-card">
+            <div class="uc5-flip-card-inner">
+              <div class="uc5-flip-card-front">
+                <div class="uc5-card-header">🎯 종합 Takeaway</div>
+                <div class="uc5-card-body">해당 과정의 궁극적 업무 생산성 개선 가이드라인 및 혁신 로드맵 요약.</div>
+                <div class="uc5-flip-hint">카드를 클릭하여 뒤집어보기</div>
+              </div>
+              <div class="uc5-flip-card-back">
+                <div class="uc5-card-header">🌟 핵심 테이크어웨이</div>
+                <div class="uc5-card-body">비즈니스 혁신 리더로서, 자동화 파이프라인의 핵심 지표(KPI) 관리 및 유연한 부서 간 협업 협약(SLA) 기준을 준수하십시오.</div>
+                <div class="uc5-card-sub">핵심 목표치: 자율 업무 자동화 프로세스 이수율 100% 목표.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function compileLinearJourney(slide, pageNum) {
+    const heading = slide.heading || '순차 프로세스 및 로드맵 가이드';
+    const body = slide.body_segments || [];
+    const graphic = slide.graphic_prompt || '파이프라인 여정을 묘사한 화살표 연결선 테마 그래픽';
+    
+    return `
+      <div class="uc5-layout-journey">
+        <div class="uc5-slide-header">
+          <span class="uc5-slide-badge">Slide ${pageNum} · Linear Journey</span>
+          <h2>${heading}</h2>
+        </div>
+        
+        <div class="uc5-journey-container">
+          <div class="uc5-journey-line-svg-wrap">
+            <svg class="uc5-journey-line-svg" viewBox="0 0 500 100" preserveAspectRatio="none">
+              <path d="M 30,50 C 120,20 180,80 250,50 C 320,20 380,80 470,50" fill="none" stroke="#e2e8f0" stroke-width="4" stroke-dasharray="8 4" />
+              <path class="uc5-journey-line-progress" id="uc5-journeyProgressLine" d="M 30,50 C 120,20 180,80 250,50 C 320,20 380,80 470,50" fill="none" stroke="var(--primary)" stroke-width="4" style="stroke-dasharray: 20 500; transition: stroke-dasharray 0.6s ease;" />
+            </svg>
+          </div>
+          
+          <div class="uc5-journey-nodes">
+            <button class="uc5-journey-node active" data-node="1" style="left: 6%; top: 50%;">
+              <span class="uc5-node-pin">📍</span>
+              <span class="uc5-node-title">개요 (Intro)</span>
+            </button>
+            <button class="uc5-journey-node" data-node="2" style="left: 36%; top: 38%;">
+              <span class="uc5-node-pin">📍</span>
+              <span class="uc5-node-title">실행 (Action)</span>
+            </button>
+            <button class="uc5-journey-node" data-node="3" style="left: 66%; top: 62%;">
+              <span class="uc5-node-pin">📍</span>
+              <span class="uc5-node-title">비주얼 (Visual)</span>
+            </button>
+            <button class="uc5-journey-node" data-node="4" style="left: 94%; top: 50%;">
+              <span class="uc5-node-pin">📍</span>
+              <span class="uc5-node-title">성과 (Goal)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="uc5-journey-card-display" id="uc5-journeyDetailCard">
+          <div class="uc5-journey-detail-header">
+            <span class="uc5-journey-step-badge">STEP 1</span>
+            <h3 class="uc5-journey-step-title">핵심 도입부 및 개요</h3>
+          </div>
+          <div class="uc5-journey-detail-body">
+            ${body[0] || '임직원 혁신 개요 교육 내용'}
+          </div>
+          <div class="uc5-journey-detail-hint">각 여정 핀(Pin) 노드를 클릭하면 순차 실행 상세 가이드가 표시됩니다.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function compileTacticalSplit(slide, pageNum) {
+    const heading = slide.heading || '전술적 분석 및 대비 스플릿';
+    const body = slide.body_segments || [];
+    const graphic = slide.graphic_prompt || '중요 리스크 및 해결 프로세스를 비교 대조한 대칭형 반할 화면 인포그래픽';
+    
+    return `
+      <div class="uc5-layout-split">
+        <div class="uc5-slide-header">
+          <span class="uc5-slide-badge">Slide ${pageNum} · Tactical Split</span>
+          <h2>${heading}</h2>
+        </div>
+        
+        <div class="uc5-split-columns">
+          <!-- Left Panel -->
+          <div class="uc5-split-col-left">
+            <div class="uc5-split-brief-title">🚨 주요 운영 진단 Briefing</div>
+            <div class="uc5-split-brief-text">${body[0] || '상황 진단 및 이슈 브리핑'}</div>
+            
+            <div class="uc5-split-metrics">
+              <div class="uc5-split-metric-row">
+                <div class="uc5-metric-info">
+                  <span>🔥 핵심 시급도 (Priority)</span>
+                  <span class="uc5-metric-value">92%</span>
+                </div>
+                <div class="uc5-metric-bar-outer">
+                  <div class="uc5-metric-bar-inner" style="width: 0%" data-width="92%"></div>
+                </div>
+              </div>
+              
+              <div class="uc5-split-metric-row">
+                <div class="uc5-metric-info">
+                  <span>🛠️ 실행 타당도 (Feasibility)</span>
+                  <span class="uc5-metric-value">78%</span>
+                </div>
+                <div class="uc5-metric-bar-outer">
+                  <div class="uc5-metric-bar-inner" style="width: 0%" data-width="78%"></div>
+                </div>
+              </div>
+
+              <div class="uc5-split-metric-row">
+                <div class="uc5-metric-info">
+                  <span>💎 비즈니스 임팩트 (Impact)</span>
+                  <span class="uc5-metric-value">86%</span>
+                </div>
+                <div class="uc5-metric-bar-outer">
+                  <div class="uc5-metric-bar-inner" style="width: 0%" data-width="86%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Right Panel -->
+          <div class="uc5-split-col-right">
+            <div class="uc5-split-tabs">
+              <button class="uc5-split-tab active" data-tab="solution">💡 실행 전략</button>
+              <button class="uc5-split-tab" data-tab="visual">🎨 비주얼 가이드</button>
+              <button class="uc5-split-tab" data-tab="impact">📈 기대 효과성</button>
+            </div>
+            
+            <div class="uc5-split-tab-content" id="uc5-splitTabContent">
+              <div class="uc5-split-content-title">💡 프로세스 프로세스 실행 및 세부 전략</div>
+              <div class="uc5-split-content-body">${body[1] || '전략 세부 로드맵 설명'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function compileQuizSlide(slide) {
+    const qText = slide.quiz_question || '다음 중 조직의 디지털 트랜스포메이션 실행 전략에서 가장 올바르지 않은 요소는 무엇입니까?';
+    const opts = slide.options || ['자동화 파이프라인 무시', '클라우드 인프라 활용', '임직원 기술 교육 세션 설계', '부서간 민첩한 협업 촉진'];
+    const explanation = slide.explanation || '자동화 파이프라인은 디지털 전환의 핵심 뼈대이므로 배제할 수 없습니다.';
+    
+    return `
+      <div class="uc5-layout-quiz">
+        <div class="uc5-slide-header">
+          <span class="uc5-slide-badge">Slide 5 · Final Evaluation</span>
+          <h2>✍️ 자가 진단 평가 퀴즈</h2>
+        </div>
+        
+        <div class="uc5-quiz-container">
+          <div class="uc5-quiz-q-box">
+            <span class="uc5-quiz-q-badge">Q5</span>
+            <div class="uc5-quiz-q-text">${qText}</div>
+          </div>
+          
+          <div class="uc5-quiz-options-grid">
+            <button class="uc5-quiz-option" data-option="A">
+              <span class="uc5-opt-badge">A</span>
+              <span class="uc5-opt-text">${opts[0] || 'A'}</span>
+            </button>
+            <button class="uc5-quiz-option" data-option="B">
+              <span class="uc5-opt-badge">B</span>
+              <span class="uc5-opt-text">${opts[1] || 'B'}</span>
+            </button>
+            <button class="uc5-quiz-option" data-option="C">
+              <span class="uc5-opt-badge">C</span>
+              <span class="uc5-opt-text">${opts[2] || 'C'}</span>
+            </button>
+            <button class="uc5-quiz-option" data-option="D">
+              <span class="uc5-opt-badge">D</span>
+              <span class="uc5-opt-text">${opts[3] || 'D'}</span>
+            </button>
+          </div>
+          
+          <div class="uc5-quiz-feedback" id="uc5-quizFeedback" style="display: none;">
+            <div class="uc5-feedback-title" id="uc5-feedbackTitle">정답입니다! 🎉</div>
+            <div class="uc5-feedback-text" id="uc5-feedbackText">${explanation}</div>
+          </div>
+        </div>
+        
+        <canvas class="uc5-confetti-canvas" id="uc5-confettiCanvas"></canvas>
+      </div>
+    `;
+  }
+
+  // 8. Main Slide Render Controller
+  function renderUC5Slide() {
+    if (!uc5SlidesData || uc5SlidesData.length < 5) return;
+    
+    // Stop any running confetti timer
+    if (confettiTimer) {
+      cancelAnimationFrame(confettiTimer);
+      confettiTimer = null;
+    }
+    
+    const slide = uc5SlidesData[uc5ActivePageIndex - 1];
+    let html = '';
+    
+    if (uc5ActivePageIndex === 5) {
+      html = compileQuizSlide(slide);
+    } else {
+      if (uc5SelectedTemplate === 'template_matrix') {
+        html = compileConceptMatrix(slide, uc5ActivePageIndex);
+      } else if (uc5SelectedTemplate === 'template_journey') {
+        html = compileLinearJourney(slide, uc5ActivePageIndex);
+      } else {
+        html = compileTacticalSplit(slide, uc5ActivePageIndex);
+      }
+    }
+    
+    previewStage.innerHTML = html;
+    updatePaginationUI();
+    
+    // Extra styling animations post-render
+    if (uc5SelectedTemplate === 'template_split' && uc5ActivePageIndex !== 5) {
+      setTimeout(() => {
+        document.querySelectorAll('.uc5-metric-bar-inner').forEach(bar => {
+          const w = bar.dataset.width;
+          if (w) bar.style.width = w + '%';
+        });
+      }, 50);
+    }
+  }
+
+  // 9. Asynchronous Request Dispatcher (Fetch Webhook)
+  if (uc5RunBtn) {
+    uc5RunBtn.addEventListener('click', async () => {
+      if (!uc5UploadedFile) return;
+      
+      // Setup loading UI
+      loadingOverlay.style.display = 'flex';
+      uc5RunBtn.disabled = true;
+      uc5RunBtn.textContent = '처리 중...';
+      
+      const formData = new FormData();
+      formData.append('file', uc5UploadedFile);
+      formData.append('template_id', uc5SelectedTemplate);
+      
+      // Rigid JSON schema contract forcing LLM structured output
+      const structuredSchema = {
+        "slides": [
+          {"page": 1, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
+          {"page": 2, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
+          {"page": 3, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
+          {"page": 4, "heading": "string (max 40 chars)", "body_segments": ["string", "string"], "graphic_prompt": "string"},
+          {"page": 5, "quiz_question": "string", "options": ["A", "B", "C", "D"], "correct_option": "A/B/C/D", "explanation": "string"}
+        ]
+      };
+      formData.append('structured_schema', JSON.stringify(structuredSchema));
+      
+      try {
+        const res = await fetch(CONFIG.UC5_WEBHOOK, {
+          method: 'POST',
+          body: formData,
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+        });
+        
+        if (!res.ok) throw new Error(`교육자료 생성 실패 (HTTP ${res.status})`);
+        
+        const data = await res.json();
+        
+        // Parse and validate response slides array
+        let slides = null;
+        if (Array.isArray(data)) {
+          slides = data;
+        } else if (data && data.slides && Array.isArray(data.slides)) {
+          slides = data.slides;
+        } else if (data && typeof data === 'object') {
+          const key = Object.keys(data).find(k => Array.isArray(data[k]));
+          if (key) slides = data[key];
+        }
+        
+        if (!slides || slides.length < 5) {
+          throw new Error('응답에 유효한 5개의 슬라이드 데이터가 포함되어 있지 않습니다.');
+        }
+        
+        // Success bind and update indices
+        uc5SlidesData = slides;
+        uc5ActivePageIndex = 1;
+        
+        // Hide overlay, display pagination footer
+        loadingOverlay.style.display = 'none';
+        paginationFooter.style.display = 'flex';
+        
+        // Trigger render
+        renderUC5Slide();
+        
+      } catch (err) {
+        alert('교육자료 생성 중 에러가 발생했습니다: ' + err.message);
+        loadingOverlay.style.display = 'none';
+      } finally {
+        uc5RunBtn.disabled = false;
+        uc5RunBtn.textContent = '▶ 교육 자료 생성 시작';
+      }
+    });
+  }
+
+  // 10. Slide Pagination Handlers
+  prevBtn.addEventListener('click', () => {
+    if (uc5ActivePageIndex > 1) {
+      uc5ActivePageIndex--;
+      renderUC5Slide();
+    }
+  });
+
+  nextBtn.addEventListener('click', () => {
+    if (uc5ActivePageIndex < 5) {
+      uc5ActivePageIndex++;
+      renderUC5Slide();
+    }
+  });
+
+  function updatePaginationUI() {
+    pageIndicator.textContent = `Slide ${uc5ActivePageIndex} / 5`;
+    prevBtn.disabled = (uc5ActivePageIndex === 1);
+    nextBtn.disabled = (uc5ActivePageIndex === 5);
+  }
+
+  // 11. Event Delegation Pattern inside permanent Stage `#uc5-previewStage`
+  if (previewStage) {
+    previewStage.addEventListener('click', (e) => {
+      // A. Layout 1 Matrix Card Click Flipping
+      const flipCard = e.target.closest('.uc5-flip-card');
+      if (flipCard) {
+        flipCard.classList.toggle('flipped');
+        return;
+      }
+      
+      // B. Layout 2 Journey Node Clicking
+      const journeyNode = e.target.closest('.uc5-journey-node');
+      if (journeyNode) {
+        const nodeId = journeyNode.dataset.node;
+        const activeSlide = uc5SlidesData[uc5ActivePageIndex - 1];
+        
+        // Update Active Pin Highlight
+        document.querySelectorAll('.uc5-journey-node').forEach(n => n.classList.remove('active'));
+        journeyNode.classList.add('active');
+        
+        // Progress Connector Line
+        const progressLine = document.getElementById('uc5-journeyProgressLine');
+        if (progressLine) {
+          const progressValues = { '1': '20', '2': '130', '3': '290', '4': '500' };
+          progressLine.style.strokeDasharray = `${progressValues[nodeId]} 500`;
+        }
+        
+        // Update Detail Box Content
+        const titleEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-step-title');
+        const badgeEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-step-badge');
+        const bodyEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-detail-body');
+        
+        badgeEl.textContent = `STEP ${nodeId}`;
+        if (nodeId === '1') {
+          titleEl.textContent = '핵심 도입부 및 개요';
+          bodyEl.textContent = activeSlide.body_segments[0] || '';
+        } else if (nodeId === '2') {
+          titleEl.textContent = '세부 실무 로드맵';
+          bodyEl.textContent = activeSlide.body_segments[1] || '';
+        } else if (nodeId === '3') {
+          titleEl.textContent = '비주얼 인포그래픽 디자인';
+          bodyEl.textContent = activeSlide.graphic_prompt || '';
+        } else {
+          titleEl.textContent = '과제 이수 가이드';
+          bodyEl.textContent = '본 교육 핵심 요약을 토대로 소속 팀원들과 업무 프로세스 개선 회의를 진행하고, 분기별 이수 평가 실습 과제를 제출하십시오.';
+        }
+        
+        const detailCard = document.getElementById('uc5-journeyDetailCard');
+        detailCard.classList.remove('uc5-fade-in');
+        void detailCard.offsetWidth; // Force Reflow
+        detailCard.classList.add('uc5-fade-in');
+        return;
+      }
+      
+      // C. Layout 3 Split Tab Clicking
+      const splitTab = e.target.closest('.uc5-split-tab');
+      if (splitTab) {
+        const tabId = splitTab.dataset.tab;
+        const activeSlide = uc5SlidesData[uc5ActivePageIndex - 1];
+        
+        // Highlight Tab
+        document.querySelectorAll('.uc5-split-tab').forEach(t => t.classList.remove('active'));
+        splitTab.classList.add('active');
+        
+        const contentTitle = document.querySelector('#uc5-splitTabContent .uc5-split-content-title');
+        const contentBody = document.querySelector('#uc5-splitTabContent .uc5-split-content-body');
+        
+        if (tabId === 'solution') {
+          contentTitle.textContent = '💡 프로세스 실행 및 세부 전략';
+          contentBody.textContent = activeSlide.body_segments[1] || '';
+        } else if (tabId === 'visual') {
+          contentTitle.textContent = '🎨 시각 디자인 및 테마 가이드';
+          contentBody.textContent = activeSlide.graphic_prompt || '';
+        } else {
+          contentTitle.textContent = '📈 기대 효과 및 재무 성과';
+          contentBody.textContent = '본 실행 솔루션을 도입할 경우, 수작업 처리 속도가 최대 350% 향상되며, 업무 오류율이 0.1% 미만으로 감소하는 실질적인 비용 절감과 신뢰도 향상 효과를 거두게 됩니다.';
+        }
+        
+        const tabContent = document.getElementById('uc5-splitTabContent');
+        tabContent.classList.remove('uc5-fade-in');
+        void tabContent.offsetWidth; // Force Reflow
+        tabContent.classList.add('uc5-fade-in');
+        return;
+      }
+      
+      // D. Slide 5 Quiz Option Clicking & Confetti Spray / Shake Evaluators
+      const quizOption = e.target.closest('.uc5-quiz-option');
+      if (quizOption) {
+        const chosen = quizOption.dataset.option;
+        const activeSlide = uc5SlidesData[4]; // slide 5 is indexed 4
+        const correct = String(activeSlide.correct_option || 'A').trim().toUpperCase();
+        
+        const feedbackBox = document.getElementById('uc5-quizFeedback');
+        const fbTitle = document.getElementById('uc5-feedbackTitle');
+        const fbText = document.getElementById('uc5-feedbackText');
+        
+        document.querySelectorAll('.uc5-quiz-option').forEach(opt => {
+          opt.classList.remove('correct', 'wrong');
+        });
+        
+        if (chosen === correct) {
+          quizOption.classList.add('correct');
+          fbTitle.textContent = '정답입니다! 🎉';
+          fbTitle.style.color = 'var(--success)';
+          fbText.textContent = activeSlide.explanation || '개념을 완벽히 소화하셨습니다!';
+          feedbackBox.style.display = 'block';
+          
+          feedbackBox.classList.remove('uc5-fade-in');
+          void feedbackBox.offsetWidth;
+          feedbackBox.classList.add('uc5-fade-in');
+          
+          // Trigger Confetti
+          startUC5Confetti();
+        } else {
+          quizOption.classList.add('wrong');
+          fbTitle.textContent = '아쉽게도 오답입니다. 😢';
+          fbTitle.style.color = 'var(--danger)';
+          fbText.textContent = '다시 한 번 고민해보고 알맞은 보기를 선택해보세요.';
+          feedbackBox.style.display = 'block';
+          
+          feedbackBox.classList.remove('uc5-fade-in');
+          void feedbackBox.offsetWidth;
+          feedbackBox.classList.add('uc5-fade-in');
+          
+          // Trigger shake animation
+          quizOption.classList.remove('uc5-shake');
+          void quizOption.offsetWidth; // Reflow
+          quizOption.classList.add('uc5-shake');
+          setTimeout(() => {
+            quizOption.classList.remove('uc5-shake');
+          }, 600);
+        }
+      }
+    });
+  }
+
+  // 12. Lightweight Built-in HTML5 Confetti Canvas Engine
+  function startUC5Confetti() {
+    const canvas = document.getElementById('uc5-confettiCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+    
+    const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899'];
+    const particles = [];
+    
+    for (let i = 0; i < 90; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * -120 - 20,
+        r: Math.random() * 5 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        tilt: Math.random() * 8 - 4,
+        tiltAngleIncremental: Math.random() * 0.08 + 0.02,
+        tiltAngle: 0,
+        vx: Math.random() * 4 - 2,
+        vy: Math.random() * 2.5 + 2.5
+      });
+    }
+    
+    if (confettiTimer) cancelAnimationFrame(confettiTimer);
+    
+    function drawFrame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let active = false;
+      
+      particles.forEach(p => {
+        p.tiltAngle += p.tiltAngleIncremental;
+        p.y += p.vy;
+        p.x += p.vx;
+        p.tilt = Math.sin(p.tiltAngle) * 6;
+        
+        if (p.y < canvas.height + 15) {
+          active = true;
+        }
+        
+        ctx.beginPath();
+        ctx.lineWidth = p.r;
+        ctx.strokeStyle = p.color;
+        ctx.moveTo(p.x + p.tilt + p.r / 2, p.y);
+        ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r / 2);
+        ctx.stroke();
+      });
+      
+      if (active) {
+        confettiTimer = requestAnimationFrame(drawFrame);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    
+    drawFrame();
   }
 });

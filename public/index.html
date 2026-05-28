@@ -21,6 +21,7 @@
         <button class="menu-item" data-target="view-uc2">📊 2. 제안서 초안 생성</button>
         <button class="menu-item" data-target="view-uc3">🎙️ 3. Voice Agent Callbot</button>
         <button class="menu-item" data-target="view-uc4">🧠 4. Text-to-SQL</button>
+        <button class="menu-item" data-target="view-uc5">🎓 5. 임직원 교육 생성</button>
       </nav>
     </aside>
     <main id="main-content">
@@ -52,6 +53,11 @@
             <div class="card-icon">🧠</div>
             <div class="card-title">Text-to-SQL 자연어 질의</div>
             <div class="card-desc">가상 세션 컨텍스트를 선택하고 CRM 데이터를 자연어로 질의하는 분석 데모입니다.</div>
+          </div>
+          <div class="demo-card" data-target="view-uc5">
+            <div class="card-icon">🎓</div>
+            <div class="card-title">임직원 교육 자료 생성</div>
+            <div class="card-desc">교안 소스 문서와 템플릿을 기반으로 맞춤형 임직원 교육 스크립트 및 퀴즈를 생성합니다.</div>
           </div>
         </div>
       </section>
@@ -197,6 +203,120 @@
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view-section" id="view-uc5">
+        <div class="uc5-split-container">
+          <!-- Left Workspace Management Panel (35%) -->
+          <div class="uc5-panel-left">
+            <div class="uc5-section-title">
+              <h2>🎓 임직원 교육 생성기</h2>
+              <p>교육 교안 파일을 업로드하고 인터랙티브 레이아웃을 설정합니다.</p>
+            </div>
+            
+            <!-- Template Selection Hub -->
+            <div class="uc5-card-section">
+              <label class="uc5-field-header">1. 교육 템플릿 레이아웃 선택</label>
+              <div class="uc5-template-selector">
+                <label class="uc5-template-card">
+                  <input type="radio" name="uc5-template" value="template_matrix" checked />
+                  <div class="uc5-card-inner">
+                    <span class="uc5-card-emoji">🧩</span>
+                    <div class="uc5-card-info">
+                      <span class="uc5-card-title">The Concept Matrix</span>
+                      <span class="uc5-card-desc">3D 카드 뒤집기 격자형 레이아웃</span>
+                    </div>
+                  </div>
+                </label>
+                
+                <label class="uc5-template-card">
+                  <input type="radio" name="uc5-template" value="template_journey" />
+                  <div class="uc5-card-inner">
+                    <span class="uc5-card-emoji">🗺️</span>
+                    <div class="uc5-card-info">
+                      <span class="uc5-card-title">The Linear Journey</span>
+                      <span class="uc5-card-desc">횡방향 RPG 성장 맵 레이아웃</span>
+                    </div>
+                  </div>
+                </label>
+                
+                <label class="uc5-template-card">
+                  <input type="radio" name="uc5-template" value="template_split" />
+                  <div class="uc5-card-inner">
+                    <span class="uc5-card-emoji">⚖️</span>
+                    <div class="uc5-card-info">
+                      <span class="uc5-card-title">The Tactical Split</span>
+                      <span class="uc5-card-desc">50:50 좌우 탭 전환 레이아웃</span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Premium Drag-and-Drop Document Uploader -->
+            <div class="uc5-card-section">
+              <label class="uc5-field-header">2. 교육 원천 소스 업로드</label>
+              <div class="uc5-uploader-container">
+                <label class="uc5-upload-wrapper" id="uc5-dropzone" for="uc5-fileInput">
+                  <span class="uc5-upload-icon">📤</span>
+                  <div class="uc5-upload-text" id="uc5-uploadPrompt">파일을 드롭하거나 선택하세요</div>
+                  <div class="uc5-upload-hint">PPT, PDF, Word 지원 (최대 10MB)</div>
+                  <div class="uc5-file-name" id="uc5-fileNameDisplay" style="display: none;"></div>
+                </label>
+                <input type="file" id="uc5-fileInput" accept=".pdf,.ppt,.pptx,.doc,.docx" hidden />
+              </div>
+            </div>
+
+            <!-- Action Button -->
+            <div class="uc5-action-area">
+              <button class="btn btn-primary w-full" id="uc5-runBtn" disabled>▶ 교육 자료 생성 시작</button>
+            </div>
+          </div>
+
+          <!-- Right Immersive Live Preview Panel (65%) -->
+          <div class="uc5-panel-right">
+            <!-- Form-Factor Controls Header -->
+            <div class="uc5-preview-header">
+              <div class="uc5-preview-info">
+                <span class="uc5-info-label">Active Layout:</span>
+                <span class="uc5-info-value" id="uc5-activeLayoutText">The Concept Matrix</span>
+              </div>
+              <div class="uc5-view-switcher">
+                <button class="uc5-switch-btn active" id="uc5-btnDesktop" data-view="desktop">💻 Desktop View</button>
+                <button class="uc5-switch-btn" id="uc5-btnMobile" data-view="mobile">📱 Mobile View</button>
+              </div>
+            </div>
+
+            <!-- Adaptive Viewport Canvas -->
+            <div class="uc5-viewport-canvas" id="uc5-viewportCanvas">
+              <div class="uc5-chassis-wrapper">
+                <div class="uc5-preview-stage" id="uc5-previewStage">
+                  <div class="uc5-empty-preview">
+                    <span class="uc5-empty-icon">🎓</span>
+                    <h3>교육 콘텐츠 실시간 프리뷰</h3>
+                    <p>좌측에서 템플릿과 교육용 소스 문서를 업로드한 후 생성 버튼을 누르면, AI가 분석한 대화식 시나리오 및 인터랙티브 퀴즈가 이곳에 즉시 렌더링됩니다.</p>
+                  </div>
+                </div>
+
+                <!-- Glassmorphism Loading Mask -->
+                <div class="uc5-loading-overlay" id="uc5-loadingOverlay" style="display: none;">
+                  <div class="uc5-loading-spinner-wrapper">
+                    <div class="uc5-loading-spinner"></div>
+                    <p class="uc5-loading-text">n8n 워크플로우 분석 및 교육 콘텐츠 생성 중...</p>
+                    <p class="uc5-loading-subtext">AI가 슬라이드 구조화와 인터랙티브 평가 문항을 조합하고 있습니다.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Slide Navigation Footer Boundary -->
+            <div class="uc5-pagination-footer" id="uc5-paginationFooter" style="display: none;">
+              <button class="btn btn-outline uc5-nav-btn" id="uc5-prevBtn" disabled>◀ 이전 슬라이드</button>
+              <span class="uc5-page-indicator" id="uc5-pageIndicator">Slide 1 / 5</span>
+              <button class="btn btn-outline uc5-nav-btn" id="uc5-nextBtn">다음 슬라이드 ▶</button>
             </div>
           </div>
         </div>
