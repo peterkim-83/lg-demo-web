@@ -209,25 +209,22 @@
       </section>
 
       <section class="view-section" id="view-uc5">
-        <div class="uc5-split-container">
-          <!-- Left Workspace Management Panel (35%) -->
-          <div class="uc5-panel-left">
-            <div class="uc5-section-title">
-              <h2>🎓 임직원 교육 생성기</h2>
-              <p>교육 교안 파일을 업로드하고 인터랙티브 레이아웃을 설정합니다.</p>
-            </div>
+        <div class="uc5-dashboard-container">
+          
+          <!-- Top Horizontal Control Bar (Equal Height Row) -->
+          <div class="uc5-top-control-bar">
             
-            <!-- Template Selection Hub -->
-            <div class="uc5-card-section">
-              <label class="uc5-field-header">1. 교육 템플릿 레이아웃 선택</label>
-              <div class="uc5-template-selector">
+            <!-- 1번 영역: 교육 템플릿 레이아웃 선택 -->
+            <div class="uc5-control-box uc5-template-box">
+              <span class="uc5-control-label">1. 교육 템플릿 레이아웃 선택</span>
+              <div class="uc5-template-selector-row">
                 <label class="uc5-template-card">
                   <input type="radio" name="uc5-template" value="template_matrix" checked />
                   <div class="uc5-card-inner">
                     <span class="uc5-card-emoji">🧩</span>
                     <div class="uc5-card-info">
-                      <span class="uc5-card-title">The Concept Matrix</span>
-                      <span class="uc5-card-desc">3D 카드 뒤집기 격자형 레이아웃</span>
+                      <span class="uc5-card-title">Concept Matrix</span>
+                      <span class="uc5-card-desc">3D 카드 격자형</span>
                     </div>
                   </div>
                 </label>
@@ -237,8 +234,8 @@
                   <div class="uc5-card-inner">
                     <span class="uc5-card-emoji">🗺️</span>
                     <div class="uc5-card-info">
-                      <span class="uc5-card-title">The Linear Journey</span>
-                      <span class="uc5-card-desc">횡방향 RPG 성장 맵 레이아웃</span>
+                      <span class="uc5-card-title">Linear Journey</span>
+                      <span class="uc5-card-desc">RPG 횡형 성장맵</span>
                     </div>
                   </div>
                 </label>
@@ -248,36 +245,39 @@
                   <div class="uc5-card-inner">
                     <span class="uc5-card-emoji">⚖️</span>
                     <div class="uc5-card-info">
-                      <span class="uc5-card-title">The Tactical Split</span>
-                      <span class="uc5-card-desc">50:50 좌우 탭 전환 레이아웃</span>
+                      <span class="uc5-card-title">Tactical Split</span>
+                      <span class="uc5-card-desc">50:50 좌우 탭형</span>
                     </div>
                   </div>
                 </label>
               </div>
             </div>
 
-            <!-- Premium Drag-and-Drop Document Uploader -->
-            <div class="uc5-card-section">
-              <label class="uc5-field-header">2. 교육 원천 소스 업로드</label>
+            <!-- 2번 영역: 교육 원천 소스 업로드 -->
+            <div class="uc5-control-box uc5-upload-box">
+              <span class="uc5-control-label">2. 교육 원천 소스 업로드</span>
               <div class="uc5-uploader-container">
                 <label class="uc5-upload-wrapper" id="uc5-dropzone" for="uc5-fileInput">
                   <span class="uc5-upload-icon">📤</span>
-                  <div class="uc5-upload-text" id="uc5-uploadPrompt">파일을 드롭하거나 선택하세요</div>
-                  <div class="uc5-upload-hint">PPT, PDF, Word 지원 (최대 10MB)</div>
-                  <div class="uc5-file-name" id="uc5-fileNameDisplay" style="display: none;"></div>
+                  <div class="uc5-upload-content" id="uc5-uploadPrompt">
+                    <span class="uc5-upload-text">파일을 드롭하거나 선택하세요</span>
+                    <span class="uc5-upload-hint">PPT, PDF, Word (최대 10MB)</span>
+                  </div>
+                  <span class="uc5-file-name" id="uc5-fileNameDisplay" style="display: none;"></span>
                 </label>
                 <input type="file" id="uc5-fileInput" accept=".pdf,.ppt,.pptx,.doc,.docx" hidden />
               </div>
             </div>
 
-            <!-- Action Button -->
-            <div class="uc5-action-area">
+            <!-- 3번 영역: 생성 버튼 -->
+            <div class="uc5-control-box uc5-action-box">
               <button class="btn btn-primary w-full" id="uc5-runBtn" disabled>▶ 교육 자료 생성 시작</button>
             </div>
+            
           </div>
 
-          <!-- Right Immersive Live Preview Panel (65%) -->
-          <div class="uc5-panel-right">
+          <!-- Bottom Viewport Preview Panel -->
+          <div class="uc5-bottom-preview-panel">
             <!-- Form-Factor Controls Header -->
             <div class="uc5-preview-header">
               <div class="uc5-preview-info">
@@ -297,7 +297,7 @@
                   <div class="uc5-empty-preview">
                     <span class="uc5-empty-icon">🎓</span>
                     <h3>교육 콘텐츠 실시간 프리뷰</h3>
-                    <p>좌측에서 템플릿과 교육용 소스 문서를 업로드한 후 생성 버튼을 누르면, AI가 분석한 대화식 시나리오 및 인터랙티브 퀴즈가 이곳에 즉시 렌더링됩니다.</p>
+                    <p>상단에서 템플릿과 교육용 소스 문서를 업로드한 후 생성 버튼을 누르면, AI가 분석한 대화식 시나리오 및 인터랙티브 퀴즈가 이곳에 즉시 렌더링됩니다.</p>
                   </div>
                 </div>
 
@@ -319,6 +319,7 @@
               <button class="btn btn-outline uc5-nav-btn" id="uc5-nextBtn">다음 슬라이드 ▶</button>
             </div>
           </div>
+          
         </div>
       </section>
     </main>

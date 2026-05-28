@@ -2112,89 +2112,82 @@ body {
 
 }
 
+
 /* ==========================================================================
    🎓 USE CASE 5: AI 임직원 교육 생성기 (Bottom Placement Scoped Rules)
    ========================================================================== */
 
-/* 1. Layout Container and Twin-Panel Configuration */
-.uc5-split-container {
+/* 1. Dashboard Layout Container (Scroll-Lock Dashboard) */
+#view-uc5.active {
     display: flex;
-    gap: 24px;
-    height: calc(100vh - 120px);
-    min-height: 580px;
+    flex-direction: column;
+    height: calc(100vh - 110px);
+    overflow: hidden;
+}
+
+.uc5-dashboard-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    gap: 12px;
+    overflow: hidden;
+}
+
+/* 2. Top Horizontal Control Bar (Equal Height Row) */
+.uc5-top-control-bar {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
     align-items: stretch;
-    overflow: hidden;
+    flex-shrink: 0;
+    width: 100%;
 }
 
-.uc5-panel-left {
-    flex: 0 0 35%;
+.uc5-control-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    background: var(--bg-panel);
-    border-radius: 16px;
-    padding: 20px;
-    border: 1px solid var(--border);
-    overflow-y: auto;
-}
-
-.uc5-panel-right {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    background: var(--bg-panel);
-    border-radius: 16px;
-    padding: 20px;
-    border: 1px solid var(--border);
-    overflow: hidden;
+    justify-content: center;
+    height: 112px;
+    min-height: 112px;
+    max-height: 112px;
+    box-sizing: border-box;
     position: relative;
 }
 
-.uc5-section-title {
-    margin-bottom: 4px;
-    flex-shrink: 0;
-}
-
-.uc5-section-title h2 {
-    font-size: 1.35rem;
+.uc5-control-label {
+    font-size: 0.78rem;
     font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 4px;
-}
-
-.uc5-section-title p {
-    font-size: 0.82rem;
     color: var(--text-sub);
-}
-
-.uc5-field-header {
-    font-size: 0.86rem;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 8px;
-    display: block;
-}
-
-.uc5-card-section {
-    background: #f8fafc;
-    border-radius: 12px;
-    padding: 14px;
-    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
     flex-shrink: 0;
 }
 
-/* 2. Template Selection Hub */
-.uc5-template-selector {
+/* 3. 1번 영역: Template selector row */
+.uc5-template-box {
+    flex: 2 1 auto;
+    max-width: 58%;
+    min-width: 480px;
+}
+
+.uc5-template-selector-row {
     display: flex;
-    flex-direction: column;
     gap: 8px;
+    flex: 1;
+    align-items: center;
 }
 
 .uc5-template-card {
-    display: block;
+    flex: 1;
     cursor: pointer;
     margin: 0;
+    display: block;
 }
 
 .uc5-template-card input[type="radio"] {
@@ -2204,12 +2197,14 @@ body {
 .uc5-card-inner {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
+    gap: 8px;
+    padding: 8px 10px;
     background: white;
     border: 1.5px solid var(--border);
-    border-radius: 10px;
+    border-radius: 8px;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    height: 52px;
+    box-sizing: border-box;
 }
 
 .uc5-template-card:hover .uc5-card-inner {
@@ -2224,43 +2219,63 @@ body {
 }
 
 .uc5-card-emoji {
-    font-size: 1.4rem;
+    font-size: 1.25rem;
+    flex-shrink: 0;
 }
 
 .uc5-card-info {
     display: flex;
     flex-direction: column;
     gap: 1px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .uc5-card-title {
-    font-size: 0.88rem;
-    font-weight: 600;
+    font-size: 0.8rem;
+    font-weight: 700;
     color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .uc5-card-desc {
-    font-size: 0.74rem;
+    font-size: 0.68rem;
     color: var(--text-sub);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* 3. Premium Drag-and-Drop Document Uploader */
+/* 4. 2번 영역: Premium drag-and-drop document uploader */
+.uc5-upload-box {
+    flex: 1.5 1 auto;
+    min-width: 320px;
+}
+
 .uc5-uploader-container {
     width: 100%;
+    flex: 1;
+    display: flex;
+    align-items: center;
 }
 
 .uc5-upload-wrapper {
-    border: 2px dashed #cbd5e1;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 12px;
+    width: 100%;
+    height: 52px;
+    box-sizing: border-box;
     background: white;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 10px;
     margin: 0;
 }
 
@@ -2271,46 +2286,95 @@ body {
 }
 
 .uc5-upload-icon {
-    font-size: 2rem;
+    font-size: 1.3rem;
     color: #64748b;
-}
-
-.uc5-upload-text {
-    font-size: 0.86rem;
-    font-weight: 600;
-    color: var(--text-main);
-}
-
-.uc5-upload-hint {
-    font-size: 0.72rem;
-    color: var(--text-sub);
-}
-
-.uc5-file-name {
-    font-size: 0.84rem;
-    font-weight: 600;
-    color: var(--success);
-    word-break: break-all;
-    background: #ecfdf5;
-    padding: 6px 12px;
-    border-radius: 6px;
-    border: 1px solid #a7f3d0;
-    margin-top: 4px;
-}
-
-.uc5-action-area {
-    margin-top: auto;
     flex-shrink: 0;
 }
 
-/* 4. Form-Factor Header & View Switcher */
+.uc5-upload-content {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.uc5-upload-text {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.uc5-upload-hint {
+    font-size: 0.66rem;
+    color: var(--text-sub);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.uc5-file-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--success);
+    word-break: break-all;
+    background: #ecfdf5;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #a7f3d0;
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 5. 3번 영역: Action execution button (Stretched Height) */
+.uc5-action-box {
+    flex: 0.6 0 auto;
+    min-width: 160px;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+}
+
+.uc5-action-box button {
+    height: 112px !important;
+    border-radius: 12px !important;
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.15);
+}
+
+/* 6. Bottom Viewport Preview Panel */
+.uc5-bottom-preview-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--bg-panel);
+    border-radius: 16px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+}
+
 .uc5-preview-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: #f8fafc;
-    padding: 10px 14px;
-    border-radius: 12px;
+    padding: 8px 12px;
+    border-radius: 10px;
     border: 1px solid var(--border);
     flex-shrink: 0;
 }
@@ -2322,13 +2386,13 @@ body {
 }
 
 .uc5-info-label {
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     font-weight: 600;
     color: var(--text-sub);
 }
 
 .uc5-info-value {
-    font-size: 0.84rem;
+    font-size: 0.8rem;
     font-weight: 700;
     color: var(--primary);
 }
@@ -2344,8 +2408,8 @@ body {
 .uc5-switch-btn {
     background: none;
     border: none;
-    padding: 5px 10px;
-    font-size: 0.76rem;
+    padding: 4px 8px;
+    font-size: 0.74rem;
     font-weight: 600;
     color: var(--text-sub);
     cursor: pointer;
@@ -2363,9 +2427,10 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
-/* 5. Adaptive Viewport Canvas & Phone Chassis Wrapper */
+/* 7. Adaptive Viewport Canvas & Phone Chassis Wrapper */
 .uc5-viewport-canvas {
     flex: 1;
+    min-height: 0;
     background: #e2e8f0;
     border-radius: 12px;
     border: 1px solid var(--border);
@@ -2373,7 +2438,7 @@ body {
     justify-content: center;
     align-items: center;
     overflow: hidden;
-    padding: 16px;
+    padding: 14px;
     position: relative;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2395,26 +2460,26 @@ body {
     width: 100%;
     height: 100%;
     overflow-y: auto;
-    padding: 20px;
+    padding: 18px;
     position: relative;
     display: flex;
     flex-direction: column;
     background: #f8fafc;
 }
 
-/* Mobile frames: centering and resizing chassis seamlessly to 375px * 812px */
+/* Mobile frames: centering and resizing chassis seamlessly to 330px * 710px to fit standard desktop displays safe */
 .uc5-viewport-canvas.uc5-mobile-frame {
-    padding: 20px 0;
+    padding: 10px 0;
     overflow-y: auto;
 }
 
 .uc5-viewport-canvas.uc5-mobile-frame .uc5-chassis-wrapper {
-    width: 375px;
-    height: 812px;
+    width: 330px;
+    height: 710px;
     flex: 0 0 auto;
-    border: 12px solid #0f172a;
-    border-radius: 36px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 4px #334155;
+    border: 10px solid #0f172a;
+    border-radius: 28px;
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.25), 0 0 0 3px #334155;
     position: relative;
 }
 
@@ -2424,14 +2489,14 @@ body {
     top: 0;
     left: 50%;
     transform: translateX(-50%);
-    width: 140px;
-    height: 18px;
+    width: 120px;
+    height: 14px;
     background: #0f172a;
-    border-bottom-left-radius: 12px;
+    border-bottom-left-radius: 10px;
     z-index: 20;
 }
 
-/* 6. Empty & Loading Overlays */
+/* 8. Empty & Loading Overlays */
 .uc5-empty-preview {
     display: flex;
     flex-direction: column;
@@ -2439,26 +2504,26 @@ body {
     align-items: center;
     text-align: center;
     height: 100%;
-    gap: 14px;
+    gap: 12px;
     color: var(--text-sub);
-    max-width: 400px;
+    max-width: 380px;
     margin: auto;
 }
 
 .uc5-empty-icon {
-    font-size: 3rem;
+    font-size: 2.8rem;
     color: #cbd5e1;
 }
 
 .uc5-empty-preview h3 {
-    font-size: 1.05rem;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--text-main);
 }
 
 .uc5-empty-preview p {
-    font-size: 0.82rem;
-    line-height: 1.45;
+    font-size: 0.8rem;
+    line-height: 1.4;
 }
 
 .uc5-loading-overlay {
@@ -2476,32 +2541,32 @@ body {
 
 .uc5-loading-spinner-wrapper {
     text-align: center;
-    padding: 20px;
-    max-width: 300px;
+    padding: 16px;
+    max-width: 280px;
 }
 
 .uc5-loading-spinner {
-    width: 36px;
-    height: 36px;
-    border: 4px solid rgba(79, 70, 229, 0.1);
+    width: 32px;
+    height: 32px;
+    border: 3.5px solid rgba(79, 70, 229, 0.1);
     border-top-color: var(--primary);
     border-radius: 50%;
     display: inline-block;
     animation: uc5-spin 0.8s linear infinite;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .uc5-loading-text {
-    font-size: 0.9rem;
+    font-size: 0.86rem;
     font-weight: 700;
     color: var(--primary);
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 }
 
 .uc5-loading-subtext {
-    font-size: 0.74rem;
+    font-size: 0.72rem;
     color: var(--text-sub);
-    line-height: 1.35;
+    line-height: 1.3;
 }
 
 @keyframes uc5-spin {
@@ -2513,62 +2578,62 @@ body {
     to { opacity: 1; }
 }
 
-/* 7. Pagination Footer Control */
+/* 9. Pagination Footer Control */
 .uc5-pagination-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: #f8fafc;
-    padding: 8px 14px;
-    border-radius: 10px;
+    padding: 6px 12px;
+    border-radius: 8px;
     border: 1px solid var(--border);
     flex-shrink: 0;
 }
 
 .uc5-page-indicator {
-    font-size: 0.84rem;
+    font-size: 0.82rem;
     font-weight: 700;
     color: var(--text-main);
 }
 
 .uc5-nav-btn {
-    padding: 6px 12px;
-    font-size: 0.8rem;
+    padding: 5px 10px;
+    font-size: 0.78rem;
     border-radius: 6px;
 }
 
-/* 8. Scoped Visual Design Slide Components */
+/* 10. Scoped Visual Design Slide Components */
 .uc5-slide-header {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     flex-shrink: 0;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 10px;
+    padding-bottom: 8px;
 }
 
 .uc5-slide-badge {
     display: inline-block;
-    font-size: 0.68rem;
+    font-size: 0.66rem;
     font-weight: 800;
     color: var(--primary);
     background: #e0e7ff;
-    padding: 2px 6px;
+    padding: 1px 5px;
     border-radius: 99px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 }
 
 .uc5-slide-header h2 {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: var(--text-main);
-    line-height: 1.3;
+    line-height: 1.25;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-/* 9. Layout 1: The Concept Matrix (3D Flip Grid) */
+/* 11. Layout 1: The Concept Matrix (3D Flip Grid) */
 .uc5-layout-matrix {
     display: flex;
     flex-direction: column;
@@ -2578,7 +2643,7 @@ body {
 .uc5-matrix-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 10px;
     flex: 1;
     min-height: 0;
 }
@@ -2597,7 +2662,7 @@ body {
     text-align: center;
     transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
     transform-style: preserve-3d;
-    border-radius: 12px;
+    border-radius: 10px;
     box-shadow: var(--shadow-sm);
 }
 
@@ -2611,8 +2676,8 @@ body {
     height: 100%;
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
-    border-radius: 12px;
-    padding: 12px;
+    border-radius: 10px;
+    padding: 10px;
     display: flex;
     flex-direction: column;
     text-align: left;
@@ -2633,10 +2698,10 @@ body {
 }
 
 .uc5-card-header {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: var(--primary);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     flex-shrink: 0;
 }
 
@@ -2645,8 +2710,8 @@ body {
 }
 
 .uc5-card-body {
-    font-size: clamp(0.74rem, 1.3vw, 0.86rem);
-    line-height: 1.4;
+    font-size: clamp(0.7rem, 1.2vw, 0.8rem);
+    line-height: 1.35;
     color: var(--text-main);
     flex: 1;
     overflow: hidden;
@@ -2663,11 +2728,11 @@ body {
 }
 
 .uc5-card-sub {
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     color: #94a3b8;
     border-top: 1px dashed #312e81;
-    padding-top: 6px;
-    margin-top: 6px;
+    padding-top: 4px;
+    margin-top: 4px;
     flex-shrink: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2675,14 +2740,14 @@ body {
 }
 
 .uc5-flip-hint {
-    font-size: 0.66rem;
+    font-size: 0.62rem;
     color: var(--text-sub);
     text-align: right;
     margin-top: auto;
     flex-shrink: 0;
 }
 
-/* 10. Layout 2: The Linear Journey (Snaking Roadmaps) */
+/* 12. Layout 2: The Linear Journey (Snaking Roadmaps) */
 .uc5-layout-journey {
     display: flex;
     flex-direction: column;
@@ -2691,11 +2756,11 @@ body {
 
 .uc5-journey-container {
     position: relative;
-    height: 80px;
-    margin: 8px 0 16px;
+    height: 60px;
+    margin: 4px 0 10px;
     flex-shrink: 0;
     background: #f8fafc;
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid var(--border);
 }
 
@@ -2704,7 +2769,7 @@ body {
     inset: 0;
     display: flex;
     align-items: center;
-    padding: 0 10px;
+    padding: 0 8px;
 }
 
 .uc5-journey-line-svg {
@@ -2733,29 +2798,28 @@ body {
 }
 
 .uc5-node-pin {
-    font-size: 1.3rem;
+    font-size: 1.15rem;
     transition: transform 0.2s ease;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
 }
 
 .uc5-journey-node:hover .uc5-node-pin {
-    transform: scale(1.2) translateY(-2px);
+    transform: scale(1.15) translateY(-2px);
 }
 
 .uc5-journey-node.active .uc5-node-pin {
-    transform: scale(1.3) translateY(-3px);
-    filter: drop-shadow(0 4px 8px rgba(79,70,229,0.25));
+    transform: scale(1.25) translateY(-2px);
+    filter: drop-shadow(0 3px 6px rgba(79,70,229,0.2));
 }
 
 .uc5-node-title {
-    font-size: 0.7rem;
+    font-size: 0.64rem;
     font-weight: 700;
     color: var(--text-sub);
     background: white;
-    padding: 1px 5px;
-    border-radius: 4px;
+    padding: 1px 4px;
+    border-radius: 3px;
     border: 1px solid var(--border);
-    margin-top: 2px;
+    margin-top: 1px;
     white-space: nowrap;
     transition: all 0.2s ease;
 }
@@ -2770,8 +2834,8 @@ body {
     flex: 1;
     background: #fffbeb;
     border: 1px solid #fde68a;
-    border-radius: 12px;
-    padding: 16px;
+    border-radius: 10px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
     box-shadow: var(--shadow-sm);
@@ -2780,26 +2844,26 @@ body {
 
 .uc5-journey-step-badge {
     display: inline-block;
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 800;
     color: #b45309;
     background: #fef3c7;
-    padding: 2px 6px;
-    border-radius: 4px;
-    margin-bottom: 4px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-bottom: 3px;
     width: fit-content;
 }
 
 .uc5-journey-step-title {
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     font-weight: 700;
     color: #78350f;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .uc5-journey-detail-body {
-    font-size: clamp(0.76rem, 1.3vw, 0.88rem);
-    line-height: 1.45;
+    font-size: clamp(0.72rem, 1.2vw, 0.84rem);
+    line-height: 1.4;
     color: #451a03;
     flex: 1;
     overflow-y: auto;
@@ -2810,19 +2874,15 @@ body {
 }
 
 .uc5-journey-detail-hint {
-    font-size: 0.68rem;
+    font-size: 0.64rem;
     color: #b45309;
-    margin-top: 6px;
+    margin-top: 4px;
     border-top: 1px dashed #fcd34d;
-    padding-top: 6px;
+    padding-top: 4px;
     text-align: right;
 }
 
-.uc5-fade-in {
-    animation: uc5-fadeIn 0.35s ease;
-}
-
-/* 11. Layout 3: The Tactical Split Screen (50:50 Viewports) */
+/* 13. Layout 3: The Tactical Split Screen (50:50 Viewports) */
 .uc5-layout-split {
     display: flex;
     flex-direction: column;
@@ -2831,7 +2891,7 @@ body {
 
 .uc5-split-columns {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     flex: 1;
     min-height: 0;
 }
@@ -2841,10 +2901,10 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid var(--border);
     background: white;
-    padding: 14px;
+    padding: 12px;
     min-height: 0;
 }
 
@@ -2853,18 +2913,18 @@ body {
 }
 
 .uc5-split-brief-title {
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     font-weight: 700;
     color: var(--danger);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     flex-shrink: 0;
 }
 
 .uc5-split-brief-text {
-    font-size: clamp(0.74rem, 1.3vw, 0.86rem);
-    line-height: 1.4;
+    font-size: clamp(0.7rem, 1.2vw, 0.82rem);
+    line-height: 1.35;
     color: var(--text-main);
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     overflow-y: auto;
     flex: 1;
     display: -webkit-box;
@@ -2876,22 +2936,22 @@ body {
 .uc5-split-metrics {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     border-top: 1px dashed var(--border);
-    padding-top: 12px;
+    padding-top: 8px;
     flex-shrink: 0;
 }
 
 .uc5-split-metric-row {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
 }
 
 .uc5-metric-info {
     display: flex;
     justify-content: space-between;
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 700;
     color: var(--text-main);
 }
@@ -2901,16 +2961,16 @@ body {
 }
 
 .uc5-metric-bar-outer {
-    height: 5px;
+    height: 4px;
     background: #e2e8f0;
-    border-radius: 3px;
+    border-radius: 2px;
     overflow: hidden;
 }
 
 .uc5-metric-bar-inner {
     height: 100%;
     background: linear-gradient(90deg, var(--primary) 0%, #818cf8 100%);
-    border-radius: 3px;
+    border-radius: 2px;
     transition: width 1s cubic-bezier(0.1, 0.8, 0.2, 1);
 }
 
@@ -2918,22 +2978,22 @@ body {
     display: flex;
     background: #f1f5f9;
     padding: 2px;
-    border-radius: 8px;
+    border-radius: 6px;
     gap: 2px;
     flex-shrink: 0;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .uc5-split-tab {
     flex: 1;
     background: none;
     border: none;
-    padding: 6px;
-    font-size: 0.74rem;
+    padding: 5px;
+    font-size: 0.7rem;
     font-weight: 700;
     color: var(--text-sub);
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: 5px;
     transition: all 0.2s ease;
     white-space: nowrap;
 }
@@ -2956,16 +3016,16 @@ body {
 }
 
 .uc5-split-content-title {
-    font-size: 0.84rem;
+    font-size: 0.78rem;
     font-weight: 700;
     color: var(--primary);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     flex-shrink: 0;
 }
 
 .uc5-split-content-body {
-    font-size: clamp(0.74rem, 1.3vw, 0.86rem);
-    line-height: 1.45;
+    font-size: clamp(0.7rem, 1.2vw, 0.82rem);
+    line-height: 1.4;
     color: var(--text-main);
     overflow-y: auto;
     flex: 1;
@@ -2975,7 +3035,18 @@ body {
     -webkit-box-orient: vertical;
 }
 
-/* 12. Slide 5 Evaluation Quiz Page & Canvas Confetti */
+/* Force mobile scroll wrapping for mobile frame and small displays */
+.uc5-viewport-canvas.uc5-mobile-frame .uc5-split-columns {
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.uc5-viewport-canvas.uc5-mobile-frame .uc5-split-col-left,
+.uc5-viewport-canvas.uc5-mobile-frame .uc5-split-col-right {
+    flex: 0 0 auto;
+}
+
+/* 14. Slide 5 Evaluation Quiz Page & Canvas Confetti */
 .uc5-layout-quiz {
     display: flex;
     flex-direction: column;
@@ -2986,17 +3057,17 @@ body {
 .uc5-quiz-container {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     flex: 1;
     min-height: 0;
 }
 
 .uc5-quiz-q-box {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     background: #f8fafc;
-    padding: 12px 14px;
-    border-radius: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
     border: 1px solid var(--border);
     flex-shrink: 0;
 }
@@ -3004,35 +3075,35 @@ body {
 .uc5-quiz-q-badge {
     background: var(--primary);
     color: white;
-    font-size: 0.74rem;
+    font-size: 0.7rem;
     font-weight: 800;
-    padding: 3px 6px;
-    border-radius: 6px;
+    padding: 2px 5px;
+    border-radius: 4px;
     height: fit-content;
 }
 
 .uc5-quiz-q-text {
-    font-size: clamp(0.8rem, 1.4vw, 0.95rem);
+    font-size: clamp(0.78rem, 1.3vw, 0.88rem);
     font-weight: 700;
     color: var(--text-main);
-    line-height: 1.35;
+    line-height: 1.3;
 }
 
 .uc5-quiz-options-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
 }
 
 .uc5-quiz-option {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     background: white;
     border: 1.5px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 12px;
+    border-radius: 8px;
+    padding: 8px 10px;
     cursor: pointer;
     text-align: left;
     transition: all 0.2s ease;
@@ -3048,10 +3119,10 @@ body {
 .uc5-opt-badge {
     background: #f1f5f9;
     color: var(--text-sub);
-    font-size: 0.74rem;
+    font-size: 0.7rem;
     font-weight: 800;
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     display: flex;
     justify-content: center;
@@ -3061,7 +3132,7 @@ body {
 }
 
 .uc5-opt-text {
-    font-size: clamp(0.74rem, 1.2vw, 0.84rem);
+    font-size: clamp(0.7rem, 1.2vw, 0.8rem);
     font-weight: 500;
     color: var(--text-main);
     overflow: hidden;
@@ -3076,7 +3147,7 @@ body {
 .uc5-quiz-option.correct {
     border-color: var(--success);
     background: #ecfdf5;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 .uc5-quiz-option.correct .uc5-opt-badge {
@@ -3088,7 +3159,7 @@ body {
 .uc5-quiz-option.wrong {
     border-color: var(--danger);
     background: #fef2f2;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
 }
 
 .uc5-quiz-option.wrong .uc5-opt-badge {
@@ -3099,22 +3170,22 @@ body {
 
 .uc5-quiz-feedback {
     background: #f8fafc;
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid var(--border);
-    padding: 12px 14px;
+    padding: 10px 12px;
     flex-shrink: 0;
     margin-top: auto;
 }
 
 .uc5-feedback-title {
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     font-weight: 700;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 }
 
 .uc5-feedback-text {
-    font-size: 0.78rem;
-    line-height: 1.4;
+    font-size: 0.74rem;
+    line-height: 1.35;
     color: var(--text-sub);
 }
 
@@ -3138,16 +3209,26 @@ body {
     40%, 80% { transform: translateX(6px); }
 }
 
-@media (max-width: 960px) {
-    .uc5-split-container {
+/* 15. Responsive Adaptations */
+@media (max-width: 1024px) {
+    .uc5-top-control-bar {
         flex-direction: column;
+        align-items: stretch;
+    }
+    .uc5-control-box {
+        flex: 1 1 auto !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    #view-uc5.active {
         height: auto;
         overflow: visible;
     }
-    .uc5-panel-left {
-        flex: 1 1 auto;
+    .uc5-dashboard-container {
+        height: auto;
+        overflow: visible;
     }
-    .uc5-panel-right {
-        height: 680px;
+    .uc5-bottom-preview-panel {
+        height: 600px;
     }
 }
