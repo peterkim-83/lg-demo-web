@@ -1114,7 +1114,7 @@ Customer: Thank you. Goodbye.`
   // ==========================================
   // 🎓 Use Case 5: AI 임직원 교육 자료 생성기 (Bottom Placement Only)
   // ==========================================
-  
+
   // 1. State Scoping Management
   let uc5SelectedTemplate = 'template_matrix';
   let uc5UploadedFile = null;
@@ -1129,13 +1129,13 @@ Customer: Thank you. Goodbye.`
   const uc5UploadPrompt = document.getElementById('uc5-uploadPrompt');
   const uc5FileNameDisplay = document.getElementById('uc5-fileNameDisplay');
   const uc5RunBtn = document.getElementById('uc5-runBtn');
-  
+
   const btnDesktop = document.getElementById('uc5-btnDesktop');
   const btnMobile = document.getElementById('uc5-btnMobile');
   const viewportCanvas = document.getElementById('uc5-viewportCanvas');
   const previewStage = document.getElementById('uc5-previewStage');
   const loadingOverlay = document.getElementById('uc5-loadingOverlay');
-  
+
   const paginationFooter = document.getElementById('uc5-paginationFooter');
   const prevBtn = document.getElementById('uc5-prevBtn');
   const nextBtn = document.getElementById('uc5-nextBtn');
@@ -1222,7 +1222,7 @@ Customer: Thank you. Goodbye.`
     const heading = slide.heading || '핵심 주제 및 기본 이론 정의';
     const body = slide.body_segments || [];
     const graphic = slide.graphic_prompt || '조직의 협업과 디지털 혁신을 도식화한 기하학적 인포그래픽 패턴';
-    
+
     return `
       <div class="uc5-layout-matrix">
         <div class="uc5-slide-header">
@@ -1299,7 +1299,7 @@ Customer: Thank you. Goodbye.`
     const heading = slide.heading || '순차 프로세스 및 로드맵 가이드';
     const body = slide.body_segments || [];
     const graphic = slide.graphic_prompt || '파이프라인 여정을 묘사한 화살표 연결선 테마 그래픽';
-    
+
     return `
       <div class="uc5-layout-journey">
         <div class="uc5-slide-header">
@@ -1353,7 +1353,7 @@ Customer: Thank you. Goodbye.`
     const heading = slide.heading || '전술적 분석 및 대비 스플릿';
     const body = slide.body_segments || [];
     const graphic = slide.graphic_prompt || '중요 리스크 및 해결 프로세스를 비교 대조한 대칭형 반할 화면 인포그래픽';
-    
+
     return `
       <div class="uc5-layout-split">
         <div class="uc5-slide-header">
@@ -1422,7 +1422,7 @@ Customer: Thank you. Goodbye.`
     const qText = slide.quiz_question || '다음 중 조직의 디지털 트랜스포메이션 실행 전략에서 가장 올바르지 않은 요소는 무엇입니까?';
     const opts = slide.options || ['자동화 파이프라인 무시', '클라우드 인프라 활용', '임직원 기술 교육 세션 설계', '부서간 민첩한 협업 촉진'];
     const explanation = slide.explanation || '자동화 파이프라인은 디지털 전환의 핵심 뼈대이므로 배제할 수 없습니다.';
-    
+
     return `
       <div class="uc5-layout-quiz">
         <div class="uc5-slide-header">
@@ -1469,16 +1469,16 @@ Customer: Thank you. Goodbye.`
   // 8. Main Slide Render Controller
   function renderUC5Slide() {
     if (!uc5SlidesData || uc5SlidesData.length < 5) return;
-    
+
     // Stop any running confetti timer
     if (confettiTimer) {
       cancelAnimationFrame(confettiTimer);
       confettiTimer = null;
     }
-    
+
     const slide = uc5SlidesData[uc5ActivePageIndex - 1];
     let html = '';
-    
+
     if (uc5ActivePageIndex === 5) {
       html = compileQuizSlide(slide);
     } else {
@@ -1490,10 +1490,10 @@ Customer: Thank you. Goodbye.`
         html = compileTacticalSplit(slide, uc5ActivePageIndex);
       }
     }
-    
+
     previewStage.innerHTML = html;
     updatePaginationUI();
-    
+
     // Extra styling animations post-render
     if (uc5SelectedTemplate === 'template_split' && uc5ActivePageIndex !== 5) {
       setTimeout(() => {
@@ -1509,25 +1509,20 @@ Customer: Thank you. Goodbye.`
   if (uc5RunBtn) {
     uc5RunBtn.addEventListener('click', async () => {
       if (!uc5UploadedFile) return;
-      
+
       // Setup loading UI
       loadingOverlay.style.display = 'flex';
       previewStage.innerHTML = ''; // Clear preview area
       uc5RunBtn.disabled = true;
       uc5RunBtn.textContent = '처리 중...';
-      
-      // Map template layout values (e.g. template_matrix -> matrix)
-      const templateMap = {
-        'template_matrix': 'matrix',
-        'template_journey': 'journey',
-        'template_split': 'split'
-      };
-      const templateValue = templateMap[uc5SelectedTemplate] || uc5SelectedTemplate.replace('template_', '');
-      
+
       const formData = new FormData();
-      formData.append('template', templateValue);
+
+      // n8n 워크플로우의 'Prep Data & Schema' 노드 및 'Switch' 노드가 
+      // 기대하는 키 이름(template_id)과 값(template_matrix 등)을 그대로 전송합니다.
+      formData.append('template_id', uc5SelectedTemplate);
       formData.append('file', uc5UploadedFile);
-      
+
       try {
         const res = await fetch(CONFIG.UC5_WEBHOOK, {
           method: 'POST',
@@ -1535,11 +1530,11 @@ Customer: Thank you. Goodbye.`
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
         });
-        
+
         if (!res.ok) throw new Error(`교육자료 생성 실패 (HTTP ${res.status})`);
-        
+
         const data = await res.json();
-        
+
         // Parse and validate response slides array
         let slides = null;
         if (Array.isArray(data)) {
@@ -1550,26 +1545,26 @@ Customer: Thank you. Goodbye.`
           const key = Object.keys(data).find(k => Array.isArray(data[k]));
           if (key) slides = data[key];
         }
-        
+
         if (!slides || slides.length < 5) {
           throw new Error('응답에 유효한 5개의 슬라이드 데이터가 포함되어 있지 않습니다.');
         }
-        
+
         // Success bind and update indices
         uc5SlidesData = slides;
         uc5ActivePageIndex = 1;
-        
+
         // Hide overlay, display pagination footer
         loadingOverlay.style.display = 'none';
         paginationFooter.style.display = 'flex';
-        
+
         // Trigger render
         renderUC5Slide();
-        
+
       } catch (err) {
         console.error(err);
         loadingOverlay.style.display = 'none';
-        
+
         // Display interactive error message inside the previewStage
         previewStage.innerHTML = `
           <div class="uc5-empty-preview">
@@ -1615,29 +1610,29 @@ Customer: Thank you. Goodbye.`
         flipCard.classList.toggle('flipped');
         return;
       }
-      
+
       // B. Layout 2 Journey Node Clicking
       const journeyNode = e.target.closest('.uc5-journey-node');
       if (journeyNode) {
         const nodeId = journeyNode.dataset.node;
         const activeSlide = uc5SlidesData[uc5ActivePageIndex - 1];
-        
+
         // Update Active Pin Highlight
         document.querySelectorAll('.uc5-journey-node').forEach(n => n.classList.remove('active'));
         journeyNode.classList.add('active');
-        
+
         // Progress Connector Line
         const progressLine = document.getElementById('uc5-journeyProgressLine');
         if (progressLine) {
           const progressValues = { '1': '20', '2': '130', '3': '290', '4': '500' };
           progressLine.style.strokeDasharray = `${progressValues[nodeId]} 500`;
         }
-        
+
         // Update Detail Box Content
         const titleEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-step-title');
         const badgeEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-step-badge');
         const bodyEl = document.querySelector('#uc5-journeyDetailCard .uc5-journey-detail-body');
-        
+
         badgeEl.textContent = `STEP ${nodeId}`;
         if (nodeId === '1') {
           titleEl.textContent = '핵심 도입부 및 개요';
@@ -1652,27 +1647,27 @@ Customer: Thank you. Goodbye.`
           titleEl.textContent = '과제 이수 가이드';
           bodyEl.textContent = '본 교육 핵심 요약을 토대로 소속 팀원들과 업무 프로세스 개선 회의를 진행하고, 분기별 이수 평가 실습 과제를 제출하십시오.';
         }
-        
+
         const detailCard = document.getElementById('uc5-journeyDetailCard');
         detailCard.classList.remove('uc5-fade-in');
         void detailCard.offsetWidth; // Force Reflow
         detailCard.classList.add('uc5-fade-in');
         return;
       }
-      
+
       // C. Layout 3 Split Tab Clicking
       const splitTab = e.target.closest('.uc5-split-tab');
       if (splitTab) {
         const tabId = splitTab.dataset.tab;
         const activeSlide = uc5SlidesData[uc5ActivePageIndex - 1];
-        
+
         // Highlight Tab
         document.querySelectorAll('.uc5-split-tab').forEach(t => t.classList.remove('active'));
         splitTab.classList.add('active');
-        
+
         const contentTitle = document.querySelector('#uc5-splitTabContent .uc5-split-content-title');
         const contentBody = document.querySelector('#uc5-splitTabContent .uc5-split-content-body');
-        
+
         if (tabId === 'solution') {
           contentTitle.textContent = '💡 프로세스 실행 및 세부 전략';
           contentBody.textContent = activeSlide.body_segments[1] || '';
@@ -1683,40 +1678,40 @@ Customer: Thank you. Goodbye.`
           contentTitle.textContent = '📈 기대 효과 및 재무 성과';
           contentBody.textContent = '본 실행 솔루션을 도입할 경우, 수작업 처리 속도가 최대 350% 향상되며, 업무 오류율이 0.1% 미만으로 감소하는 실질적인 비용 절감과 신뢰도 향상 효과를 거두게 됩니다.';
         }
-        
+
         const tabContent = document.getElementById('uc5-splitTabContent');
         tabContent.classList.remove('uc5-fade-in');
         void tabContent.offsetWidth; // Force Reflow
         tabContent.classList.add('uc5-fade-in');
         return;
       }
-      
+
       // D. Slide 5 Quiz Option Clicking & Confetti Spray / Shake Evaluators
       const quizOption = e.target.closest('.uc5-quiz-option');
       if (quizOption) {
         const chosen = quizOption.dataset.option;
         const activeSlide = uc5SlidesData[4]; // slide 5 is indexed 4
         const correct = String(activeSlide.correct_option || activeSlide.correct_answer || 'A').trim().toUpperCase();
-        
+
         const feedbackBox = document.getElementById('uc5-quizFeedback');
         const fbTitle = document.getElementById('uc5-feedbackTitle');
         const fbText = document.getElementById('uc5-feedbackText');
-        
+
         document.querySelectorAll('.uc5-quiz-option').forEach(opt => {
           opt.classList.remove('correct', 'wrong');
         });
-        
+
         if (chosen === correct) {
           quizOption.classList.add('correct');
           fbTitle.textContent = '정답입니다! 🎉';
           fbTitle.style.color = 'var(--success)';
           fbText.textContent = activeSlide.explanation || '개념을 완벽히 소화하셨습니다!';
           feedbackBox.style.display = 'block';
-          
+
           feedbackBox.classList.remove('uc5-fade-in');
           void feedbackBox.offsetWidth;
           feedbackBox.classList.add('uc5-fade-in');
-          
+
           // Trigger Confetti using triggerConfetti()
           triggerConfetti();
         } else {
@@ -1725,11 +1720,11 @@ Customer: Thank you. Goodbye.`
           fbTitle.style.color = 'var(--danger)';
           fbText.textContent = '다시 한 번 고민해보고 알맞은 보기를 선택해보세요.';
           feedbackBox.style.display = 'block';
-          
+
           feedbackBox.classList.remove('uc5-fade-in');
           void feedbackBox.offsetWidth;
           feedbackBox.classList.add('uc5-fade-in');
-          
+
           // Trigger shake animation
           quizOption.classList.remove('uc5-shake');
           void quizOption.offsetWidth; // Reflow
@@ -1749,10 +1744,10 @@ Customer: Thank you. Goodbye.`
     const ctx = canvas.getContext('2d');
     canvas.width = canvas.parentElement.clientWidth;
     canvas.height = canvas.parentElement.clientHeight;
-    
+
     const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899'];
     const particles = [];
-    
+
     for (let i = 0; i < 90; i++) {
       particles.push({
         x: Math.random() * canvas.width,
@@ -1766,23 +1761,23 @@ Customer: Thank you. Goodbye.`
         vy: Math.random() * 2.5 + 2.5
       });
     }
-    
+
     if (confettiTimer) cancelAnimationFrame(confettiTimer);
-    
+
     function drawFrame() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       let active = false;
-      
+
       particles.forEach(p => {
         p.tiltAngle += p.tiltAngleIncremental;
         p.y += p.vy;
         p.x += p.vx;
         p.tilt = Math.sin(p.tiltAngle) * 6;
-        
+
         if (p.y < canvas.height + 15) {
           active = true;
         }
-        
+
         ctx.beginPath();
         ctx.lineWidth = p.r;
         ctx.strokeStyle = p.color;
@@ -1790,14 +1785,14 @@ Customer: Thank you. Goodbye.`
         ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r / 2);
         ctx.stroke();
       });
-      
+
       if (active) {
         confettiTimer = requestAnimationFrame(drawFrame);
       } else {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
-    
+
     drawFrame();
   }
 });
