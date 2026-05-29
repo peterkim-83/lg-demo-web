@@ -1574,13 +1574,9 @@ Customer: Thank you. Goodbye.`
       const formData = new FormData();
 
       // n8n 워크플로우의 'Prep Data & Schema' 노드 및 'Switch' 노드가 
-      // 기대하는 키 이름(template_id)과 값(template_matrix 등)을 기대합니다.
-      // template_divergence 의 경우 'divergence' 로 변경하여 발송합니다.
-      let templateValueForWebhook = uc5SelectedTemplate;
-      if (uc5SelectedTemplate === 'template_divergence') {
-        templateValueForWebhook = 'divergence';
-      }
-      formData.append('template_id', templateValueForWebhook);
+      // 기대하는 키 이름(template_id)과 값(template_matrix 등)의 규칙을 일관되게 유지합니다.
+      // 다른 템플릿들과 형식을 통일하여 'template_divergence' 명칭 그대로 전송합니다.
+      formData.append('template_id', uc5SelectedTemplate);
       formData.append('file', uc5UploadedFile);
 
       try {
