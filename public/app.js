@@ -1193,7 +1193,8 @@ Customer: Thank you. Goodbye.`
       const names = {
         'template_matrix': 'The Concept Matrix',
         'template_journey': 'The Linear Journey',
-        'template_split': 'The Tactical Split'
+        'template_split': 'The Tactical Split',
+        'template_divergence': 'The Dual Divergence'
       };
       if (activeLayoutText) {
         activeLayoutText.textContent = names[uc5SelectedTemplate] || uc5SelectedTemplate;
@@ -1418,6 +1419,46 @@ Customer: Thank you. Goodbye.`
     `;
   }
 
+  function compileContextDivergence(slide, pageNum) {
+    const heading = slide.heading || '양방향 대칭 대비적 전략 연구';
+    const body = slide.body_segments || [];
+    const graphic = slide.graphic_prompt || '상호작용하는 시스템 또는 대칭 인포그래픽';
+
+    return `
+      <div class="uc5-layout-divergence">
+        <div class="uc5-slide-header">
+          <span class="uc5-slide-badge">Slide ${pageNum} · Dual Divergence</span>
+          <h2>${heading}</h2>
+        </div>
+        <div class="uc5-divergence-grid">
+          <!-- Left Column: Context / Origin Panel -->
+          <div class="uc5-divergence-col left">
+            <div class="uc5-divergence-card">
+              <div class="uc5-divergence-card-header">📚 이론적 기반 (Theory & Context)</div>
+              <div class="uc5-divergence-card-body">${body[0] || '소스 교안 핵심 이론 설명'}</div>
+            </div>
+          </div>
+          
+          <!-- Center Column: Visual Bridge Metaphor Node -->
+          <div class="uc5-divergence-col center">
+            <div class="uc5-divergence-card bridge">
+              <div class="uc5-divergence-card-header">🎨 비주얼 시각화 (Visual Metaphor)</div>
+              <div class="uc5-divergence-card-body graphic">${graphic}</div>
+            </div>
+          </div>
+          
+          <!-- Right Column: Evolution / Practice Panel -->
+          <div class="uc5-divergence-col right">
+            <div class="uc5-divergence-card">
+              <div class="uc5-divergence-card-header">⚙️ 실무 적용 (Practice & Evolution)</div>
+              <div class="uc5-divergence-card-body">${body[1] || '실무 적용을 위한 전술적 실행'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function compileQuizSlide(slide) {
     const qText = slide.quiz_question || '다음 중 조직의 디지털 트랜스포메이션 실행 전략에서 가장 올바르지 않은 요소는 무엇입니까?';
     const opts = slide.options || ['자동화 파이프라인 무시', '클라우드 인프라 활용', '임직원 기술 교육 세션 설계', '부서간 민첩한 협업 촉진'];
@@ -1486,12 +1527,26 @@ Customer: Thank you. Goodbye.`
         html = compileConceptMatrix(slide, uc5ActivePageIndex);
       } else if (uc5SelectedTemplate === 'template_journey') {
         html = compileLinearJourney(slide, uc5ActivePageIndex);
-      } else {
+      } else if (uc5SelectedTemplate === 'template_split') {
         html = compileTacticalSplit(slide, uc5ActivePageIndex);
+      } else if (uc5SelectedTemplate === 'template_divergence') {
+        html = compileContextDivergence(slide, uc5ActivePageIndex);
       }
     }
 
-    previewStage.innerHTML = html;
+    // Wrap in scroll container with micro-interaction and overlay inner pagination
+    const finalHtml = `
+      <div class="uc5-inner-scroll-container uc5-fade-in-up">
+        ${html}
+      </div>
+      <div class="uc5-inner-pagination">
+        <button class="uc5-inner-nav-btn prev-slide-btn" ${uc5ActivePageIndex === 1 ? 'disabled' : ''}>Previous</button>
+        <span class="uc5-inner-page-indicator">${uc5ActivePageIndex} / 5</span>
+        <button class="uc5-inner-nav-btn next-slide-btn">${uc5ActivePageIndex === 5 ? 'Complete' : 'Next'}</button>
+      </div>
+    `;
+
+    previewStage.innerHTML = finalHtml;
     updatePaginationUI();
 
     // Extra styling animations post-render
@@ -1519,8 +1574,13 @@ Customer: Thank you. Goodbye.`
       const formData = new FormData();
 
       // n8n 워크플로우의 'Prep Data & Schema' 노드 및 'Switch' 노드가 
-      // 기대하는 키 이름(template_id)과 값(template_matrix 등)을 그대로 전송합니다.
-      formData.append('template_id', uc5SelectedTemplate);
+      // 기대하는 키 이름(template_id)과 값(template_matrix 등)을 기대합니다.
+      // template_divergence 의 경우 'divergence' 로 변경하여 발송합니다.
+      let templateValueForWebhook = uc5SelectedTemplate;
+      if (uc5SelectedTemplate === 'template_divergence') {
+        templateValueForWebhook = 'divergence';
+      }
+      formData.append('template_id', templateValueForWebhook);
       formData.append('file', uc5UploadedFile);
 
       try {
@@ -1548,6 +1608,19 @@ Customer: Thank you. Goodbye.`
 
         if (!slides || slides.length < 5) {
           throw new Error('응답에 유효한 5개의 슬라이드 데이터가 포함되어 있지 않습니다.');
+        }
+
+        // Schema validation for divergence
+        if (uc5SelectedTemplate === 'template_divergence' && Array.isArray(slides)) {
+          slides.forEach((slide) => {
+            if (!slide) return;
+            if (!slide.body_segments || !Array.isArray(slide.body_segments) || slide.body_segments.length < 2) {
+              if (!slide.body_segments) slide.body_segments = [];
+              while (slide.body_segments.length < 2) {
+                slide.body_segments.push('상세 학습 내용 요약 준비 중');
+              }
+            }
+          });
         }
 
         // Success bind and update indices
@@ -1734,6 +1807,29 @@ Customer: Thank you. Goodbye.`
           }, 600);
         }
       }
+
+      // E. Inner Pagination Previous Button Click
+      const prevBtnInner = e.target.closest('.prev-slide-btn');
+      if (prevBtnInner) {
+        if (uc5ActivePageIndex > 1) {
+          uc5ActivePageIndex--;
+          renderUC5Slide();
+        }
+        return;
+      }
+
+      // F. Inner Pagination Next Button Click
+      const nextBtnInner = e.target.closest('.next-slide-btn');
+      if (nextBtnInner) {
+        if (uc5ActivePageIndex < 5) {
+          uc5ActivePageIndex++;
+          renderUC5Slide();
+        } else if (uc5ActivePageIndex === 5) {
+          triggerConfetti();
+          alert('🎉 축하합니다! 임직원 교육 과정을 성공적으로 이수하셨습니다.');
+        }
+        return;
+      }
     });
   }
 
@@ -1795,4 +1891,30 @@ Customer: Thank you. Goodbye.`
 
     drawFrame();
   }
+
+  // Keyboard Left/Right Navigation Hook for UC5 V2.1
+  window.addEventListener('keydown', (e) => {
+    // Only trigger if #view-uc5 is active and we have slides data loaded
+    const uc5Section = document.getElementById('view-uc5');
+    if (uc5Section && uc5Section.classList.contains('active') && uc5SlidesData) {
+      // Ignore if user is currently typing in an input or textarea
+      if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        if (uc5ActivePageIndex > 1) {
+          uc5ActivePageIndex--;
+          renderUC5Slide();
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (uc5ActivePageIndex < 5) {
+          uc5ActivePageIndex++;
+          renderUC5Slide();
+        } else if (uc5ActivePageIndex === 5) {
+          triggerConfetti();
+          alert('🎉 축하합니다! 임직원 교육 과정을 성공적으로 이수하셨습니다.');
+        }
+      }
+    }
+  });
 });
