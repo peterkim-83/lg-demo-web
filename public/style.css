@@ -2451,7 +2451,7 @@ body:has(#view-uc5.active) #main-content {
 
 .uc5-chassis-wrapper {
     aspect-ratio: 16 / 9;
-    width: auto;
+    width: 100%;
     height: auto;
     max-width: 100%;
     max-height: 100%;
