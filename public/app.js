@@ -1824,7 +1824,29 @@ Customer: Thank you. Goodbye.`
 
   function renderUC5FinalRenderPlanPlaceholder(data) {
     const version = data?.render_plan_version || data?.version || 'uc5_render_plan';
-    const shell = data?.macro_shell_id || data?.layout_decision?.selected_macro_shell_id || 'unknown';
+
+    const shell =
+      data?.lesson_meta?.macro_shell_id ||
+      data?.layout_contract?.macro_shell_id ||
+      data?.approval_context?.approved_macro_shell_id ||
+      data?.macro_shell_id ||
+      data?.layout_decision?.selected_macro_shell_id ||
+      'unknown';
+
+    const screenCount =
+      data?.lesson_meta?.screen_count ||
+      data?.approval_context?.approved_screen_count ||
+      (Array.isArray(data?.screens) ? data.screens.length : '-');
+
+    const lessonTitle =
+      data?.lesson_meta?.lesson_title ||
+      data?.admin_handoff_summary?.summary ||
+      '최종 렌더링 계약이 도착했습니다';
+
+    const status =
+      data?.render_plan_status ||
+      data?.status ||
+      'received';
 
     if (paginationFooter) {
       paginationFooter.style.display = 'none';
@@ -1841,10 +1863,10 @@ Customer: Thank you. Goodbye.`
     previewStage.innerHTML = `
       <div class="uc5-render-ack uc5-fade-in-up">
         <div class="uc5-render-ack-kicker">UC5 v2 · Render Plan 수신</div>
-        <h3>최종 렌더링 계약이 도착했습니다</h3>
+        <h3>${escapeHtml(lessonTitle)}</h3>
         <p>
-          아직 deterministic component renderer 연결 전이므로, 현재는 render plan 수신 여부만 표시합니다.
-          다음 구현 단계에서 이 JSON을 실제 HTML 학습 콘텐츠로 렌더링합니다.
+          최종 렌더링 계약 JSON이 도착했습니다. 아직 deterministic component renderer 연결 전이므로,
+          현재는 render plan 수신 여부와 핵심 메타데이터만 표시합니다.
         </p>
 
         <div class="uc5-render-ack-grid">
@@ -1857,8 +1879,12 @@ Customer: Thank you. Goodbye.`
             <strong>${escapeHtml(shell)}</strong>
           </div>
           <div class="uc5-render-ack-card">
+            <span>Screen Count</span>
+            <strong>${escapeHtml(screenCount)}</strong>
+          </div>
+          <div class="uc5-render-ack-card">
             <span>Status</span>
-            <strong>received</strong>
+            <strong>${escapeHtml(status)}</strong>
           </div>
         </div>
       </div>
