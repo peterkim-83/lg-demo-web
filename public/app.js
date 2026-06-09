@@ -1725,6 +1725,220 @@ Customer: Thank you. Goodbye.`
     return firstCandidate || 'planning';
   }
 
+  function buildUC5ApprovalContext(plan) {
+    const shellDecision = plan?.macro_shell_decision || {};
+    const screenDecision = plan?.screen_count_decision || {};
+
+    return {
+      approved_at: new Date().toISOString(),
+      admin_action: 'approve_planning_draft',
+      approval_status: 'approved',
+      approved_macro_shell_id: shellDecision.selected_macro_shell_id || 'unknown',
+      approved_screen_count: screenDecision.selected_screen_count || null,
+      approved_screen_count_range: screenDecision.screen_count_range || '',
+      decision_confidence: shellDecision.decision_confidence || '',
+      source_planning_version: plan?.planning_version || '',
+      source_planning_status: plan?.planning_status || ''
+    };
+  }
+
+  function buildUC5RenderPlanRequestFormData() {
+    if (!uc5PlanningDraftData) {
+      throw new Error('승인할 1차 콘텐츠 기획안이 없습니다.');
+    }
+
+    if (!uc5UploadedFile) {
+      throw new Error('승인 요청에 사용할 원본 파일이 없습니다. 파일을 다시 업로드해 주세요.');
+    }
+
+    const planningContext = getUC5PlanningContext();
+    const fileProfile = getUC5FileProfile(uc5UploadedFile);
+    const approvalContext = buildUC5ApprovalContext(uc5PlanningDraftData);
+    const selectedMacroShell = approvalContext.approved_macro_shell_id || planningContext.preferred_macro_shell_id || 'auto';
+    const legacyTemplateId = (UC5_MACRO_SHELL_META[selectedMacroShell] || UC5_MACRO_SHELL_META.auto).legacyTemplateId || 'template_matrix';
+
+    const formData = new FormData();
+    formData.append('request_type', 'uc5_render_plan_request');
+    formData.append('workflow_version', 'uc5_v2');
+    formData.append('approval_status', 'approved');
+    formData.append('macro_shell_id', selectedMacroShell);
+    formData.append('planning_context', JSON.stringify(planningContext));
+    formData.append('file_profile', JSON.stringify(fileProfile));
+    formData.append('content_planning_draft', JSON.stringify(uc5PlanningDraftData));
+    formData.append('approval_context', JSON.stringify(approvalContext));
+
+    // Backward compatibility for existing or temporary n8n branches.
+    formData.append('template_id', legacyTemplateId);
+
+    // Keep sending the source file so n8n can re-extract text in the render-plan branch.
+    formData.append('file', uc5UploadedFile);
+
+    return formData;
+  }
+
+  function renderUC5RenderPlanRequestAck(data) {
+    const approval = data?.approval_context || {};
+    const summary = data?.planning_summary || {};
+    const shell = approval.approved_macro_shell_id || summary.macro_shell_id || 'unknown';
+    const screenCount = approval.approved_screen_count || summary.screen_count || '-';
+    const status = data?.status || data?.render_plan_status || 'received';
+
+    if (paginationFooter) {
+      paginationFooter.style.display = 'none';
+    }
+
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'none';
+    }
+
+    if (activeLayoutText) {
+      activeLayoutText.textContent = `Render Plan Request · ${shell}`;
+    }
+
+    previewStage.innerHTML = `
+      <div class="uc5-render-ack uc5-fade-in-up">
+        <div class="uc5-render-ack-kicker">UC5 v2 · 승인 완료</div>
+        <h3>렌더링 기획 요청이 n8n으로 전달되었습니다</h3>
+        <p>
+          현재 단계에서는 승인된 1차 기획안과 원본 파일이 n8n으로 정상 전달되는지 확인합니다.
+          이후 n8n의 final render plan LLM 분기를 연결하면 이 응답 위치에 최종 렌더링 계약이 표시됩니다.
+        </p>
+
+        <div class="uc5-render-ack-grid">
+          <div class="uc5-render-ack-card">
+            <span>Status</span>
+            <strong>${escapeHtml(status)}</strong>
+          </div>
+          <div class="uc5-render-ack-card">
+            <span>Macro Shell</span>
+            <strong>${escapeHtml(shell)}</strong>
+          </div>
+          <div class="uc5-render-ack-card">
+            <span>Screen Count</span>
+            <strong>${escapeHtml(screenCount)}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderUC5FinalRenderPlanPlaceholder(data) {
+    const version = data?.render_plan_version || data?.version || 'uc5_render_plan';
+    const shell = data?.macro_shell_id || data?.layout_decision?.selected_macro_shell_id || 'unknown';
+
+    if (paginationFooter) {
+      paginationFooter.style.display = 'none';
+    }
+
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'none';
+    }
+
+    if (activeLayoutText) {
+      activeLayoutText.textContent = `Final Render Plan · ${shell}`;
+    }
+
+    previewStage.innerHTML = `
+      <div class="uc5-render-ack uc5-fade-in-up">
+        <div class="uc5-render-ack-kicker">UC5 v2 · Render Plan 수신</div>
+        <h3>최종 렌더링 계약이 도착했습니다</h3>
+        <p>
+          아직 deterministic component renderer 연결 전이므로, 현재는 render plan 수신 여부만 표시합니다.
+          다음 구현 단계에서 이 JSON을 실제 HTML 학습 콘텐츠로 렌더링합니다.
+        </p>
+
+        <div class="uc5-render-ack-grid">
+          <div class="uc5-render-ack-card">
+            <span>Version</span>
+            <strong>${escapeHtml(version)}</strong>
+          </div>
+          <div class="uc5-render-ack-card">
+            <span>Macro Shell</span>
+            <strong>${escapeHtml(shell)}</strong>
+          </div>
+          <div class="uc5-render-ack-card">
+            <span>Status</span>
+            <strong>received</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function requestUC5RenderPlanFromApprovedDraft() {
+    if (!uc5PlanningDraftData) {
+      alert('승인할 1차 콘텐츠 기획안이 없습니다.');
+      return;
+    }
+
+    const approveBtn = previewStage?.querySelector('[data-uc5-action="approve-planning"]');
+    const regenerateBtn = previewStage?.querySelector('[data-uc5-action="regenerate-planning"]');
+
+    if (approveBtn) {
+      approveBtn.disabled = true;
+      approveBtn.textContent = '렌더링 기획 요청 중...';
+    }
+
+    if (regenerateBtn) {
+      regenerateBtn.disabled = true;
+    }
+
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'flex';
+    }
+
+    try {
+      const formData = buildUC5RenderPlanRequestFormData();
+
+      const res = await fetch(CONFIG.UC5_WEBHOOK, {
+        method: 'POST',
+        body: formData,
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+
+      if (!res.ok) {
+        throw new Error(`렌더링 기획 요청 실패 (HTTP ${res.status})`);
+      }
+
+      const rawText = await res.text();
+      let data;
+
+      try {
+        data = parseUC5WebhookResponse(rawText);
+      } catch (parseError) {
+        throw new Error('n8n 승인 응답 JSON 파싱 실패');
+      }
+
+      if (data?.render_plan_version || data?.version === 'uc5_render_plan.v1') {
+        renderUC5FinalRenderPlanPlaceholder(data);
+        return;
+      }
+
+      renderUC5RenderPlanRequestAck(data);
+    } catch (err) {
+      console.error(err);
+
+      if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+      }
+
+      if (approveBtn) {
+        approveBtn.disabled = false;
+        approveBtn.textContent = '승인하고 렌더링 기획 생성';
+      }
+
+      if (regenerateBtn) {
+        regenerateBtn.disabled = false;
+      }
+
+      alert(err.message || '렌더링 기획 요청 중 오류가 발생했습니다.');
+    }
+  }
+
   function renderUC5PlanningDraft(plan) {
     uc5PlanningDraftData = plan;
     uc5SlidesData = null;
@@ -1828,11 +2042,84 @@ Customer: Thank you. Goodbye.`
         <div class="uc5-planning-review-note">
           <strong>관리자 검토:</strong> ${escapeHtml(reviewText)}
         </div>
+
+        <div class="uc5-planning-review-actions">
+          <button
+            type="button"
+            class="uc5-review-btn uc5-review-btn-ghost"
+            data-uc5-action="back-to-input"
+          >
+            입력값 조정
+          </button>
+
+          <button
+            type="button"
+            class="uc5-review-btn uc5-review-btn-secondary"
+            data-uc5-action="regenerate-planning"
+          >
+            기획안 다시 생성
+          </button>
+
+          <button
+            type="button"
+            class="uc5-review-btn uc5-review-btn-primary"
+            data-uc5-action="approve-planning"
+          >
+            승인하고 렌더링 기획 생성
+          </button>
+        </div>
+
+        <div class="uc5-planning-next-note">
+          승인 시 현재 기획안, 관리자 input, 원본 파일이 n8n으로 다시 전달됩니다.
+        </div>
       </div>
     `;
   }
 
-  // 9. Asynchronous Request Dispatcher (Fetch Webhook)
+  if (previewStage) {
+    previewStage.addEventListener('click', (e) => {
+      const actionEl = e.target.closest('[data-uc5-action]');
+      if (!actionEl) return;
+
+      const action = actionEl.getAttribute('data-uc5-action');
+
+      if (action === 'approve-planning') {
+        e.preventDefault();
+        requestUC5RenderPlanFromApprovedDraft();
+        return;
+      }
+
+      if (action === 'regenerate-planning') {
+        e.preventDefault();
+
+        if (!uc5UploadedFile) {
+          alert('파일을 다시 업로드해 주세요.');
+          return;
+        }
+
+        if (uc5RunBtn) {
+          uc5RunBtn.click();
+        }
+
+        return;
+      }
+
+      if (action === 'back-to-input') {
+        e.preventDefault();
+
+        if (window.scrollTo) {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        if (activeLayoutText) {
+          activeLayoutText.textContent = 'Planning Draft · 입력값 조정 대기';
+        }
+
+        return;
+      }
+    });
+  }
+
   // 9. Asynchronous Request Dispatcher (Fetch Webhook)
   if (uc5RunBtn) {
     uc5RunBtn.addEventListener('click', async () => {
