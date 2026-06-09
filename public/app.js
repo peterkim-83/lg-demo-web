@@ -1122,6 +1122,9 @@ Customer: Thank you. Goodbye.`
   let uc5ActivePageIndex = 1;
   let uc5SlidesData = null;
   let uc5PlanningDraftData = null;
+  let uc5RenderPlanData = null;
+  let uc5RenderPlanScreenIndex = 0;
+  let uc5RenderPlanInteractionState = {};
   let confettiTimer = null;
 
   const UC5_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -1822,74 +1825,393 @@ Customer: Thank you. Goodbye.`
     `;
   }
 
-  function renderUC5FinalRenderPlanPlaceholder(data) {
-    const version = data?.render_plan_version || data?.version || 'uc5_render_plan';
+  function normalizeUC5RenderPlan(plan) {
+    const rawPlan = plan && typeof plan === 'object' ? plan : {};
+    const rawScreens = Array.isArray(rawPlan.screens) ? rawPlan.screens : [];
+    const screens = rawScreens
+      .filter(screen => screen && typeof screen === 'object')
+      .map((screen, idx) => ({
+        ...screen,
+        screen_index: Number.isFinite(Number(screen.screen_index)) ? Number(screen.screen_index) : idx + 1,
+        sections: Array.isArray(screen.sections) ? screen.sections : []
+      }))
+      .sort((a, b) => a.screen_index - b.screen_index);
 
-    const shell =
-      data?.lesson_meta?.macro_shell_id ||
-      data?.layout_contract?.macro_shell_id ||
-      data?.approval_context?.approved_macro_shell_id ||
-      data?.macro_shell_id ||
-      data?.layout_decision?.selected_macro_shell_id ||
-      'unknown';
+    return {
+      ...rawPlan,
+      screens
+    };
+  }
 
-    const screenCount =
-      data?.lesson_meta?.screen_count ||
-      data?.approval_context?.approved_screen_count ||
-      (Array.isArray(data?.screens) ? data.screens.length : '-');
+  function getUC5RenderPlanScreenCount(plan = uc5RenderPlanData) {
+    return Array.isArray(plan?.screens) ? plan.screens.length : 0;
+  }
 
-    const lessonTitle =
-      data?.lesson_meta?.lesson_title ||
-      data?.admin_handoff_summary?.summary ||
-      '최종 렌더링 계약이 도착했습니다';
+  function getUC5V2Payload(section) {
+    return section?.component_payload && typeof section.component_payload === 'object'
+      ? section.component_payload
+      : {};
+  }
 
-    const status =
-      data?.render_plan_status ||
-      data?.status ||
-      'received';
+  function getUC5V2Array(value) {
+    return Array.isArray(value) ? value : [];
+  }
 
-    if (paginationFooter) {
-      paginationFooter.style.display = 'none';
-    }
+  function getUC5V2PayloadCollection(payload) {
+    const cards = getUC5V2Array(payload.cards);
+    const items = getUC5V2Array(payload.items);
+    const steps = getUC5V2Array(payload.steps);
+    const checklist = getUC5V2Array(payload.checklist_items);
+    const options = getUC5V2Array(payload.options);
 
-    if (loadingOverlay) {
-      loadingOverlay.style.display = 'none';
-    }
+    if (cards.length) return cards;
+    if (items.length) return items;
+    if (steps.length) return steps;
+    if (checklist.length) return checklist;
+    if (options.length) return options;
+    return [];
+  }
 
-    if (activeLayoutText) {
-      activeLayoutText.textContent = `Final Render Plan · ${shell}`;
-    }
+  function getUC5V2SectionTitle(section) {
+    const payload = getUC5V2Payload(section);
+    return payload.title || section?.component_type || section?.semantic_role || 'Section';
+  }
 
-    previewStage.innerHTML = `
-      <div class="uc5-render-ack uc5-fade-in-up">
-        <div class="uc5-render-ack-kicker">UC5 v2 · Render Plan 수신</div>
-        <h3>${escapeHtml(lessonTitle)}</h3>
-        <p>
-          최종 렌더링 계약 JSON이 도착했습니다. 아직 deterministic component renderer 연결 전이므로,
-          현재는 render plan 수신 여부와 핵심 메타데이터만 표시합니다.
-        </p>
+  function renderUC5V2PayloadIntro(section, { compact = false } = {}) {
+    const payload = getUC5V2Payload(section);
+    const eyebrow = payload.eyebrow || section?.semantic_role || '';
+    const title = payload.title || section?.screen_title || getUC5V2SectionTitle(section);
+    const subtitle = payload.subtitle || '';
+    const summary = payload.summary || '';
+    const body = payload.body || '';
+    const keyMessage = payload.key_message || '';
 
-        <div class="uc5-render-ack-grid">
-          <div class="uc5-render-ack-card">
-            <span>Version</span>
-            <strong>${escapeHtml(version)}</strong>
-          </div>
-          <div class="uc5-render-ack-card">
-            <span>Macro Shell</span>
-            <strong>${escapeHtml(shell)}</strong>
-          </div>
-          <div class="uc5-render-ack-card">
-            <span>Screen Count</span>
-            <strong>${escapeHtml(screenCount)}</strong>
-          </div>
-          <div class="uc5-render-ack-card">
-            <span>Status</span>
-            <strong>${escapeHtml(status)}</strong>
-          </div>
-        </div>
+    return `
+      <div class="uc5-rp-intro${compact ? ' uc5-rp-intro-compact' : ''}">
+        ${eyebrow ? `<div class="uc5-rp-kicker">${escapeHtml(eyebrow)}</div>` : ''}
+        ${title ? `<h3>${escapeHtml(title)}</h3>` : ''}
+        ${subtitle ? `<p class="uc5-rp-subtitle">${escapeHtml(subtitle)}</p>` : ''}
+        ${summary ? `<p class="uc5-rp-summary">${escapeHtml(summary)}</p>` : ''}
+        ${body ? `<p class="uc5-rp-body">${escapeHtml(body)}</p>` : ''}
+        ${keyMessage ? `<div class="uc5-rp-key-message">${escapeHtml(keyMessage)}</div>` : ''}
       </div>
     `;
   }
+
+  function renderUC5V2SourceEvidence(section) {
+    const payload = getUC5V2Payload(section);
+    const evidence = payload.source_evidence || section?.source_content_requirement || '';
+    if (!evidence) return '';
+    return `<div class="uc5-rp-source-note">근거: ${escapeHtml(evidence)}</div>`;
+  }
+
+  function renderUC5V2CardGrid(entries, { variant = 'card' } = {}) {
+    const safeEntries = getUC5V2Array(entries).slice(0, 8);
+    if (!safeEntries.length) return '';
+
+    return `
+      <div class="uc5-rp-card-grid uc5-rp-card-grid-${escapeHtml(variant)}">
+        ${safeEntries.map((entry, idx) => {
+          const badge = entry.badge || entry.label || entry.value || String(idx + 1);
+          const title = entry.title || entry.term || entry.label || entry.id || `Item ${idx + 1}`;
+          const body = entry.body || entry.definition || entry.detail || entry.feedback || '';
+          const detail = entry.detail || entry.note || '';
+
+          return `
+            <article class="uc5-rp-mini-card">
+              <div class="uc5-rp-mini-card-badge">${escapeHtml(badge)}</div>
+              <h4>${escapeHtml(title)}</h4>
+              ${body ? `<p>${escapeHtml(body)}</p>` : ''}
+              ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
+            </article>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function renderUC5V2HeroStatement(section) {
+    return `
+      <section class="uc5-rp-hero-card">
+        ${renderUC5V2PayloadIntro(section)}
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2KeyMessageBanner(section) {
+    const payload = getUC5V2Payload(section);
+    const message = payload.key_message || payload.summary || payload.body || payload.title || '핵심 메시지';
+    return `
+      <section class="uc5-rp-message-banner">
+        ${payload.eyebrow ? `<span>${escapeHtml(payload.eyebrow)}</span>` : ''}
+        <strong>${escapeHtml(message)}</strong>
+      </section>
+    `;
+  }
+
+  function renderUC5V2OutcomeBadges(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = getUC5V2Array(payload.cards).length ? payload.cards : payload.items;
+    return `
+      <section class="uc5-rp-standard-block">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        ${renderUC5V2CardGrid(entries, { variant: 'badge' })}
+      </section>
+    `;
+  }
+
+  function renderUC5V2DefinitionBlock(section) {
+    return `
+      <section class="uc5-rp-definition-block">
+        ${renderUC5V2PayloadIntro(section)}
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2DefinitionCompare(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = getUC5V2Array(payload.cards).length ? payload.cards : payload.items;
+    return `
+      <section class="uc5-rp-standard-block">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        ${renderUC5V2CardGrid(entries, { variant: 'compare' })}
+      </section>
+    `;
+  }
+
+  function renderUC5V2PrincipleCard(section) {
+    return `
+      <section class="uc5-rp-principle-card">
+        ${renderUC5V2PayloadIntro(section)}
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2AttributeStack(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = getUC5V2Array(payload.items).length ? payload.items : payload.cards;
+    return `
+      <section class="uc5-rp-standard-block">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        ${renderUC5V2CardGrid(entries, { variant: 'attribute' })}
+      </section>
+    `;
+  }
+
+  function renderUC5V2ProcessTimeline(section) {
+    const payload = getUC5V2Payload(section);
+    const steps = getUC5V2Array(payload.steps).length ? payload.steps : payload.items;
+    return `
+      <section class="uc5-rp-standard-block">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-timeline">
+          ${steps.slice(0, 8).map((step, idx) => `
+            <article class="uc5-rp-timeline-step">
+              <div class="uc5-rp-timeline-index">${escapeHtml(step.label || String(idx + 1))}</div>
+              <div>
+                <h4>${escapeHtml(step.title || step.label || `Step ${idx + 1}`)}</h4>
+                ${step.body ? `<p>${escapeHtml(step.body)}</p>` : ''}
+              </div>
+            </article>
+          `).join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderUC5V2PhaseCards(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = getUC5V2Array(payload.cards).length ? payload.cards : payload.steps;
+    return `
+      <section class="uc5-rp-standard-block">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        ${renderUC5V2CardGrid(entries, { variant: 'phase' })}
+      </section>
+    `;
+  }
+
+  function renderUC5V2Checklist(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = getUC5V2Array(payload.checklist_items).length ? payload.checklist_items : payload.items;
+    return `
+      <section class="uc5-rp-standard-block">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-checklist">
+          ${entries.slice(0, 8).map((item, idx) => `
+            <button type="button" class="uc5-rp-check-item" data-uc5-rp-check="${escapeHtml(item.id || idx)}">
+              <span class="uc5-rp-check-box">✓</span>
+              <span>
+                <strong>${escapeHtml(item.title || item.label || `Check ${idx + 1}`)}</strong>
+                ${item.body ? `<em>${escapeHtml(item.body)}</em>` : ''}
+              </span>
+            </button>
+          `).join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderUC5V2Quiz(section) {
+    const payload = getUC5V2Payload(section);
+    const options = getUC5V2Array(payload.options);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-quiz-block">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-quiz-options">
+          ${options.slice(0, 6).map(option => `
+            <button type="button" class="uc5-rp-quiz-option" data-uc5-rp-correct="${option.is_correct ? 'true' : 'false'}" data-uc5-rp-feedback="${escapeHtml(option.feedback || '')}">
+              <span>${escapeHtml(option.label || '')}</span>
+              <strong>${escapeHtml(option.body || option.title || '')}</strong>
+            </button>
+          `).join('')}
+        </div>
+        <div class="uc5-rp-quiz-feedback" aria-live="polite"></div>
+      </section>
+    `;
+  }
+
+  function renderUC5V2CommitmentCard(section) {
+    const payload = getUC5V2Payload(section);
+    return `
+      <section class="uc5-rp-commitment-card">
+        ${renderUC5V2PayloadIntro(section)}
+        ${renderUC5V2Checklist(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2FallbackSection(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = getUC5V2PayloadCollection(payload);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-fallback-block">
+        <div class="uc5-rp-fallback-tag">${escapeHtml(section?.component_type || 'unsupported_component')}</div>
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        ${renderUC5V2CardGrid(entries, { variant: 'fallback' })}
+      </section>
+    `;
+  }
+
+  const UC5_RENDER_PLAN_COMPONENTS = {
+    hero_statement: renderUC5V2HeroStatement,
+    module_intro: renderUC5V2HeroStatement,
+    key_message_banner: renderUC5V2KeyMessageBanner,
+    outcome_badges: renderUC5V2OutcomeBadges,
+    objective_list: renderUC5V2OutcomeBadges,
+    definition_block: renderUC5V2DefinitionBlock,
+    concept_explainer: renderUC5V2DefinitionBlock,
+    definition_compare: renderUC5V2DefinitionCompare,
+    principle_card: renderUC5V2PrincipleCard,
+    attribute_stack: renderUC5V2AttributeStack,
+    concept_card_grid: renderUC5V2AttributeStack,
+    stakeholder_map: renderUC5V2AttributeStack,
+    process_timeline: renderUC5V2ProcessTimeline,
+    method_stepper: renderUC5V2ProcessTimeline,
+    phase_cards: renderUC5V2PhaseCards,
+    application_checklist: renderUC5V2Checklist,
+    checklist_table: renderUC5V2Checklist,
+    quiz_mcq: renderUC5V2Quiz,
+    scenario_quiz: renderUC5V2Quiz,
+    commitment_card: renderUC5V2CommitmentCard,
+    reflection_prompt: renderUC5V2CommitmentCard
+  };
+
+  function renderUC5V2Section(section) {
+    const renderer = UC5_RENDER_PLAN_COMPONENTS[section?.component_type] || renderUC5V2FallbackSection;
+    const semanticRole = section?.semantic_role || 'semantic_role_unknown';
+    const slotId = section?.slot_id || 'main';
+    const interaction = section?.interaction?.interaction_type || 'none';
+    const placementReason = section?.narrative_placement_reason || '';
+
+    return `
+      <div class="uc5-rp-section uc5-rp-slot-${escapeHtml(slotId)}" data-uc5-rp-slot="${escapeHtml(slotId)}" data-uc5-rp-interaction="${escapeHtml(interaction)}">
+        <div class="uc5-rp-section-meta">
+          <span>${escapeHtml(slotId)}</span>
+          <span>${escapeHtml(semanticRole)}</span>
+        </div>
+        ${renderer(section)}
+        ${placementReason ? `
+          <details class="uc5-rp-reason">
+            <summary>배치 이유</summary>
+            <p>${escapeHtml(placementReason)}</p>
+          </details>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  function renderUC5V2CurrentScreen() {
+    if (!uc5RenderPlanData) return;
+
+    const screens = Array.isArray(uc5RenderPlanData.screens) ? uc5RenderPlanData.screens : [];
+    const screenCount = screens.length;
+    if (!screenCount) return;
+
+    uc5RenderPlanScreenIndex = Math.min(Math.max(uc5RenderPlanScreenIndex, 0), screenCount - 1);
+    const screen = screens[uc5RenderPlanScreenIndex];
+    const lesson = uc5RenderPlanData.lesson_meta || {};
+    const shell = lesson.macro_shell_id || uc5RenderPlanData.layout_contract?.macro_shell_id || 'learning_canvas';
+    const progressPercent = Math.round(((uc5RenderPlanScreenIndex + 1) / screenCount) * 100);
+    const sections = Array.isArray(screen.sections) ? screen.sections : [];
+
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+    if (paginationFooter) paginationFooter.style.display = 'none';
+    if (activeLayoutText) activeLayoutText.textContent = `Final Render · ${shell}`;
+
+    previewStage.innerHTML = `
+      <div class="uc5-inner-scroll-container uc5-rp-scroll uc5-fade-in-up">
+        <article class="uc5-render-plan-shell" data-uc5-rp-shell="${escapeHtml(shell)}">
+          <header class="uc5-rp-screen-header">
+            <div>
+              <div class="uc5-rp-kicker">${escapeHtml(lesson.lesson_title || 'UC5 Learning Module')}</div>
+              <h2>${escapeHtml(screen.screen_title || `Screen ${uc5RenderPlanScreenIndex + 1}`)}</h2>
+              <p>${escapeHtml(screen.learning_goal || screen.narrative_function || '')}</p>
+            </div>
+            <div class="uc5-rp-progress-card">
+              <span>${uc5RenderPlanScreenIndex + 1} / ${screenCount}</span>
+              <strong>${progressPercent}%</strong>
+            </div>
+          </header>
+
+          <div class="uc5-rp-progress-track" aria-hidden="true">
+            <span style="width: ${progressPercent}%"></span>
+          </div>
+
+          <section class="uc5-rp-screen-grid">
+            ${sections.map(section => renderUC5V2Section(section)).join('') || `
+              <div class="uc5-rp-section uc5-rp-slot-main">
+                ${renderUC5V2FallbackSection({ component_type: 'empty_screen', component_payload: { title: '표시할 섹션이 없습니다.', summary: '', body: '', items: [] } })}
+              </div>
+            `}
+          </section>
+        </article>
+      </div>
+      <div class="uc5-inner-pagination uc5-rp-pagination">
+        <button class="uc5-inner-nav-btn uc5-v2-prev-btn" ${uc5RenderPlanScreenIndex === 0 ? 'disabled' : ''}>Previous</button>
+        <span class="uc5-inner-page-indicator">Screen ${uc5RenderPlanScreenIndex + 1} / ${screenCount}</span>
+        <button class="uc5-inner-nav-btn uc5-v2-next-btn">${uc5RenderPlanScreenIndex === screenCount - 1 ? 'Complete' : 'Next'}</button>
+      </div>
+    `;
+  }
+
+  function renderUC5RenderPlan(data) {
+    uc5PlanningDraftData = null;
+    uc5SlidesData = null;
+    uc5RenderPlanData = normalizeUC5RenderPlan(data);
+    uc5RenderPlanScreenIndex = 0;
+    uc5RenderPlanInteractionState = {};
+
+    if (confettiTimer) {
+      cancelAnimationFrame(confettiTimer);
+      confettiTimer = null;
+    }
+
+    renderUC5V2CurrentScreen();
+  }
+
 
   async function requestUC5RenderPlanFromApprovedDraft() {
     if (!uc5PlanningDraftData) {
@@ -1939,8 +2261,8 @@ Customer: Thank you. Goodbye.`
         throw new Error('n8n 승인 응답 JSON 파싱 실패');
       }
 
-      if (data?.render_plan_version || data?.version === 'uc5_render_plan.v1') {
-        renderUC5FinalRenderPlanPlaceholder(data);
+      if (data?.render_plan_version === 'uc5_render_plan.v1' || data?.version === 'uc5_render_plan.v1') {
+        renderUC5RenderPlan(data);
         return;
       }
 
@@ -1968,6 +2290,9 @@ Customer: Thank you. Goodbye.`
   function renderUC5PlanningDraft(plan) {
     uc5PlanningDraftData = plan;
     uc5SlidesData = null;
+    uc5RenderPlanData = null;
+    uc5RenderPlanScreenIndex = 0;
+    uc5RenderPlanInteractionState = {};
 
     if (confettiTimer) {
       cancelAnimationFrame(confettiTimer);
@@ -2182,6 +2507,11 @@ Customer: Thank you. Goodbye.`
           throw new Error('n8n 응답 JSON 파싱 실패');
         }
 
+        if (data?.render_plan_version === 'uc5_render_plan.v1' || data?.version === 'uc5_render_plan.v1') {
+          renderUC5RenderPlan(data);
+          return;
+        }
+
         if (data?.planning_version === 'uc5_content_planning_draft.v1') {
           renderUC5PlanningDraft(data);
           return;
@@ -2215,6 +2545,9 @@ Customer: Thank you. Goodbye.`
         }
 
         uc5PlanningDraftData = null;
+        uc5RenderPlanData = null;
+        uc5RenderPlanScreenIndex = 0;
+        uc5RenderPlanInteractionState = {};
         uc5SlidesData = slides;
         uc5ActivePageIndex = 1;
 
@@ -2266,6 +2599,56 @@ Customer: Thank you. Goodbye.`
   // 11. Event Delegation Pattern inside permanent Stage `#uc5-previewStage`
   if (previewStage) {
     previewStage.addEventListener('click', (e) => {
+      const uc5V2PrevBtn = e.target.closest('.uc5-v2-prev-btn');
+      if (uc5V2PrevBtn) {
+        if (uc5RenderPlanData && uc5RenderPlanScreenIndex > 0) {
+          uc5RenderPlanScreenIndex--;
+          renderUC5V2CurrentScreen();
+        }
+        return;
+      }
+
+      const uc5V2NextBtn = e.target.closest('.uc5-v2-next-btn');
+      if (uc5V2NextBtn) {
+        if (uc5RenderPlanData) {
+          const screenCount = getUC5RenderPlanScreenCount();
+          if (uc5RenderPlanScreenIndex < screenCount - 1) {
+            uc5RenderPlanScreenIndex++;
+            renderUC5V2CurrentScreen();
+          } else {
+            triggerConfetti();
+          }
+        }
+        return;
+      }
+
+      const uc5V2CheckItem = e.target.closest('.uc5-rp-check-item');
+      if (uc5V2CheckItem) {
+        uc5V2CheckItem.classList.toggle('is-complete');
+        return;
+      }
+
+      const uc5V2QuizOption = e.target.closest('.uc5-rp-quiz-option');
+      if (uc5V2QuizOption) {
+        const quizBlock = uc5V2QuizOption.closest('.uc5-rp-quiz-block');
+        const feedbackBox = quizBlock?.querySelector('.uc5-rp-quiz-feedback');
+        const isCorrect = uc5V2QuizOption.dataset.uc5RpCorrect === 'true';
+        const feedback = uc5V2QuizOption.dataset.uc5RpFeedback || '';
+
+        quizBlock?.querySelectorAll('.uc5-rp-quiz-option').forEach(option => {
+          option.classList.remove('is-correct', 'is-wrong');
+        });
+
+        uc5V2QuizOption.classList.add(isCorrect ? 'is-correct' : 'is-wrong');
+        if (feedbackBox) {
+          feedbackBox.textContent = feedback || (isCorrect ? '정답입니다.' : '다시 확인해 보세요.');
+          feedbackBox.classList.toggle('is-correct', isCorrect);
+          feedbackBox.classList.toggle('is-wrong', !isCorrect);
+        }
+        if (isCorrect) triggerConfetti();
+        return;
+      }
+
       // A. Layout 1 Matrix Card Click Flipping
       const flipCard = e.target.closest('.uc5-flip-card');
       if (flipCard) {
@@ -2485,11 +2868,28 @@ Customer: Thank you. Goodbye.`
   window.addEventListener('keydown', (e) => {
     // Only trigger if #view-uc5 is active and we have slides data loaded
     const uc5Section = document.getElementById('view-uc5');
-    if (uc5Section && uc5Section.classList.contains('active') && uc5SlidesData) {
+    if (uc5Section && uc5Section.classList.contains('active') && (uc5SlidesData || uc5RenderPlanData)) {
       // Ignore if user is currently typing in an input or textarea
       if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
         return;
       }
+
+      if (uc5RenderPlanData) {
+        const screenCount = getUC5RenderPlanScreenCount();
+        if (e.key === 'ArrowLeft' && uc5RenderPlanScreenIndex > 0) {
+          uc5RenderPlanScreenIndex--;
+          renderUC5V2CurrentScreen();
+        } else if (e.key === 'ArrowRight') {
+          if (uc5RenderPlanScreenIndex < screenCount - 1) {
+            uc5RenderPlanScreenIndex++;
+            renderUC5V2CurrentScreen();
+          } else {
+            triggerConfetti();
+          }
+        }
+        return;
+      }
+
       if (e.key === 'ArrowLeft') {
         if (uc5ActivePageIndex > 1) {
           uc5ActivePageIndex--;
