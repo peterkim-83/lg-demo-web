@@ -1116,14 +1116,51 @@ Customer: Thank you. Goodbye.`
   // ==========================================
 
   // 1. State Scoping Management
-  let uc5SelectedTemplate = 'template_matrix';
+  let uc5SelectedMacroShell = 'auto';
+  let uc5SelectedTemplate = 'template_matrix'; // legacy renderer fallback
   let uc5UploadedFile = null;
   let uc5ActivePageIndex = 1;
   let uc5SlidesData = null;
+  let uc5PlanningDraftData = null;
   let confettiTimer = null;
 
+  const UC5_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+  const UC5_MACRO_SHELL_META = {
+    auto: {
+      label: 'AI 추천',
+      activeText: 'AI Recommended Narrative',
+      legacyTemplateId: 'template_matrix'
+    },
+    learning_canvas: {
+      label: 'Learning Canvas',
+      activeText: 'Learning Canvas · Concept Narrative',
+      legacyTemplateId: 'template_matrix'
+    },
+    process_playbook: {
+      label: 'Process Playbook',
+      activeText: 'Process Playbook · Operational Narrative',
+      legacyTemplateId: 'template_journey'
+    },
+    decision_simulator: {
+      label: 'Decision Simulator',
+      activeText: 'Decision Simulator · Scenario Narrative',
+      legacyTemplateId: 'template_split'
+    }
+  };
+
   // 2. DOM Queries
-  const templateInputs = document.querySelectorAll('input[name="uc5-template"]');
+  const macroShellInputs = document.querySelectorAll('input[name="uc5-macroShell"]');
+  const legacyTemplateInputs = document.querySelectorAll('input[name="uc5-template"]'); // backward compatibility only
+
+  const uc5PlanningMode = document.getElementById('uc5-planningMode');
+  const uc5ContentDensity = document.getElementById('uc5-contentDensity');
+  const uc5TargetAudience = document.getElementById('uc5-targetAudience');
+  const uc5TargetDuration = document.getElementById('uc5-targetDuration');
+  const uc5InteractionLevel = document.getElementById('uc5-interactionLevel');
+  const uc5GamificationLevel = document.getElementById('uc5-gamificationLevel');
+  const uc5AdminNotes = document.getElementById('uc5-adminNotes');
+
   const uc5FileInput = document.getElementById('uc5-fileInput');
   const uc5Dropzone = document.getElementById('uc5-dropzone');
   const uc5UploadPrompt = document.getElementById('uc5-uploadPrompt');
@@ -1142,24 +1179,119 @@ Customer: Thank you. Goodbye.`
   const pageIndicator = document.getElementById('uc5-pageIndicator');
   const activeLayoutText = document.getElementById('uc5-activeLayoutText');
 
+  function getUC5SelectedMacroShell() {
+    const checked = Array.from(macroShellInputs).find(input => input.checked);
+    return checked?.value || uc5SelectedMacroShell || 'auto';
+  }
+
+  function setUC5SelectedMacroShell(value) {
+    uc5SelectedMacroShell = UC5_MACRO_SHELL_META[value] ? value : 'auto';
+    const meta = UC5_MACRO_SHELL_META[uc5SelectedMacroShell] || UC5_MACRO_SHELL_META.auto;
+    uc5SelectedTemplate = meta.legacyTemplateId || 'template_matrix';
+
+    if (activeLayoutText) {
+      activeLayoutText.textContent = meta.activeText || meta.label;
+    }
+  }
+
+  function getUC5FieldValue(el, fallback) {
+    if (!el) return fallback;
+    const value = String(el.value ?? '').trim();
+    return value || fallback;
+  }
+
+  function getUC5PlanningContext() {
+    const selectedMacroShell = getUC5SelectedMacroShell();
+
+    return {
+      planning_mode: getUC5FieldValue(uc5PlanningMode, 'ai_recommend_shell'),
+      preferred_macro_shell_id: selectedMacroShell,
+      content_density: getUC5FieldValue(uc5ContentDensity, 'standard'),
+      target_audience: getUC5FieldValue(uc5TargetAudience, 'general_employee'),
+      target_duration_minutes: Number(getUC5FieldValue(uc5TargetDuration, '7')),
+      tone: 'professional_motivational',
+      language: 'ko',
+      form_factors: ['desktop', 'mobile'],
+      interaction_level: getUC5FieldValue(uc5InteractionLevel, 'medium'),
+      gamification_level: getUC5FieldValue(uc5GamificationLevel, 'medium'),
+      output_stage: 'content_planning_draft',
+      admin_notes: getUC5FieldValue(uc5AdminNotes, '')
+    };
+  }
+
+  function getUC5FileExtension(fileName) {
+    const matched = String(fileName || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+    return matched ? matched[1] : '';
+  }
+
+  function getUC5FileProfile(file) {
+    if (!file) return null;
+
+    return {
+      file_name: file.name || '',
+      file_size_bytes: file.size || 0,
+      file_size_mb: Number(((file.size || 0) / 1024 / 1024).toFixed(3)),
+      file_type: file.type || 'application/octet-stream',
+      file_extension: getUC5FileExtension(file.name),
+      last_modified: file.lastModified || null
+    };
+  }
+
+  function buildUC5PlanningFormData() {
+    const planningContext = getUC5PlanningContext();
+    const fileProfile = getUC5FileProfile(uc5UploadedFile);
+    const selectedMacroShell = planningContext.preferred_macro_shell_id;
+    const legacyTemplateId = (UC5_MACRO_SHELL_META[selectedMacroShell] || UC5_MACRO_SHELL_META.auto).legacyTemplateId;
+
+    const formData = new FormData();
+    formData.append('request_type', 'uc5_content_planning_draft');
+    formData.append('workflow_version', 'uc5_v2');
+    formData.append('macro_shell_id', selectedMacroShell);
+    formData.append('planning_context', JSON.stringify(planningContext));
+    formData.append('file_profile', JSON.stringify(fileProfile));
+
+    // Backward compatibility for the existing n8n workflow.
+    // Existing Switch nodes may still read template_id while the v2 workflow is being built in n8n UI.
+    formData.append('template_id', legacyTemplateId);
+    formData.append('file', uc5UploadedFile);
+
+    return formData;
+  }
+
   // 3. Helper: Validate & Unlock Run Button
   function validateUC5RunBtn() {
-    const templateActive = Array.from(templateInputs).some(r => r.checked);
-    uc5RunBtn.disabled = !(templateActive && uc5UploadedFile);
+    if (!uc5RunBtn) return;
+
+    const hasShell = Array.from(macroShellInputs).some(r => r.checked) || legacyTemplateInputs.length > 0;
+    uc5RunBtn.disabled = !(hasShell && uc5UploadedFile);
   }
 
   // 4. File Drop & Input Event Handling
   function handleUC5File(file) {
     if (!file) return;
+
     const allowedExtensions = /\.(pdf|ppt|pptx|doc|docx)$/i;
     if (!allowedExtensions.test(file.name)) {
       alert('지원되지 않는 파일 형식입니다. PDF, PPT, PPTX, DOC, DOCX 파일만 업로드 가능합니다.');
       return;
     }
+
+    if (file.size > UC5_MAX_FILE_SIZE_BYTES) {
+      alert('파일 크기는 최대 10MB까지 업로드 가능합니다.');
+      return;
+    }
+
     uc5UploadedFile = file;
-    uc5FileNameDisplay.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-    uc5FileNameDisplay.style.display = 'block';
-    uc5UploadPrompt.style.display = 'none';
+
+    if (uc5FileNameDisplay) {
+      uc5FileNameDisplay.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+      uc5FileNameDisplay.style.display = 'block';
+    }
+
+    if (uc5UploadPrompt) {
+      uc5UploadPrompt.style.display = 'none';
+    }
+
     validateUC5RunBtn();
   }
 
@@ -1186,15 +1318,23 @@ Customer: Thank you. Goodbye.`
     });
   }
 
-  // 5. Template Selection Hub Handler
-  templateInputs.forEach(input => {
+  // 5. Macro Shell Selection Handler
+  macroShellInputs.forEach(input => {
+    input.addEventListener('change', (e) => {
+      setUC5SelectedMacroShell(e.target.value);
+      validateUC5RunBtn();
+    });
+  });
+
+  // Legacy handler retained only if an old index.html is accidentally deployed with name="uc5-template".
+  legacyTemplateInputs.forEach(input => {
     input.addEventListener('change', (e) => {
       uc5SelectedTemplate = e.target.value;
       const names = {
-        'template_matrix': 'The Concept Matrix',
-        'template_journey': 'The Linear Journey',
-        'template_split': 'The Tactical Split',
-        'template_divergence': 'The Dual Divergence'
+        template_matrix: 'The Concept Matrix',
+        template_journey: 'The Linear Journey',
+        template_split: 'The Tactical Split',
+        template_divergence: 'The Dual Divergence'
       };
       if (activeLayoutText) {
         activeLayoutText.textContent = names[uc5SelectedTemplate] || uc5SelectedTemplate;
@@ -1202,6 +1342,8 @@ Customer: Thank you. Goodbye.`
       validateUC5RunBtn();
     });
   });
+
+  setUC5SelectedMacroShell(getUC5SelectedMacroShell());
 
   // 6. Form-Factor Switching Layout Switches
   if (btnDesktop && btnMobile && viewportCanvas) {
@@ -1560,38 +1702,179 @@ Customer: Thank you. Goodbye.`
     }
   }
 
+  function parseUC5WebhookResponse(rawText) {
+    const firstParsed = JSON.parse(rawText);
+
+    // Some n8n Respond to Webhook configurations return the model JSON as a string.
+    if (typeof firstParsed === 'string') {
+      return JSON.parse(firstParsed);
+    }
+
+    return firstParsed;
+  }
+
+  function getUC5PrimaryComponentLabel(screen) {
+    const positions = Array.isArray(screen?.skeleton_positions) ? screen.skeleton_positions : [];
+    const firstSelected = positions.find(pos => pos?.selected_component_type)?.selected_component_type;
+    if (firstSelected) return firstSelected;
+
+    const firstCandidate = positions
+      .flatMap(pos => Array.isArray(pos?.component_candidates) ? pos.component_candidates : [])
+      .find(Boolean);
+
+    return firstCandidate || 'planning';
+  }
+
+  function renderUC5PlanningDraft(plan) {
+    uc5PlanningDraftData = plan;
+    uc5SlidesData = null;
+
+    if (confettiTimer) {
+      cancelAnimationFrame(confettiTimer);
+      confettiTimer = null;
+    }
+
+    const shellDecision = plan?.macro_shell_decision || {};
+    const screenDecision = plan?.screen_count_decision || {};
+    const narrative = plan?.narrative_plan || {};
+    const profile = plan?.source_content_profile || {};
+    const screens = Array.isArray(plan?.screen_blueprints) ? plan.screen_blueprints : [];
+    const reviewItems = Array.isArray(plan?.admin_review_items) ? plan.admin_review_items : [];
+
+    const selectedShell = shellDecision.selected_macro_shell_id || 'unknown';
+    const screenCount = screenDecision.selected_screen_count || screens.length || '-';
+    const density = profile.content_density_assessment || '-';
+    const confidence = shellDecision.decision_confidence || '-';
+
+    const screenHtml = screens.slice(0, 12).map((screen, idx) => {
+      const index = screen.screen_index || idx + 1;
+      const title = screen.screen_title || screen.screen_role || `Screen ${index}`;
+      const goal = screen.learning_goal || screen.narrative_function || '';
+      const componentLabel = getUC5PrimaryComponentLabel(screen);
+
+      return `
+        <div class="uc5-planning-screen-item">
+          <div class="uc5-planning-screen-index">${escapeHtml(index)}</div>
+          <div class="uc5-planning-screen-copy">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(goal)}</span>
+          </div>
+          <div class="uc5-planning-component-pill">${escapeHtml(componentLabel)}</div>
+        </div>
+      `;
+    }).join('');
+
+    const reviewText = reviewItems.length > 0
+      ? reviewItems.map(item => `${item.review_item || ''}: ${item.recommended_admin_action || item.reason || ''}`).filter(Boolean).join(' · ')
+      : '관리자 검토 항목이 없거나, n8n 응답에 포함되지 않았습니다.';
+
+    if (paginationFooter) {
+      paginationFooter.style.display = 'none';
+    }
+
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'none';
+    }
+
+    if (activeLayoutText) {
+      activeLayoutText.textContent = `Planning Draft · ${selectedShell}`;
+    }
+
+    previewStage.innerHTML = `
+      <div class="uc5-planning-review uc5-fade-in-up">
+        <div class="uc5-planning-review-head">
+          <div>
+            <div class="uc5-planning-review-kicker">UC5 v2 · 콘텐츠 기획안</div>
+            <h3>${escapeHtml(narrative.lesson_title || '1차 콘텐츠 기획안 생성 완료')}</h3>
+            <p class="uc5-planning-review-subtitle">
+              ${escapeHtml(narrative.lesson_subtitle || narrative.learner_promise || '관리자 input과 PDF 추출 텍스트를 기준으로 Macro Shell, 분량, 내러티브, 구성요소 후보를 산출했습니다.')}
+            </p>
+          </div>
+          <div class="uc5-planning-status-badge">READY FOR REVIEW</div>
+        </div>
+
+        <div class="uc5-planning-summary-grid">
+          <div class="uc5-planning-summary-card">
+            <span>Macro Shell</span>
+            <strong>${escapeHtml(selectedShell)}</strong>
+          </div>
+          <div class="uc5-planning-summary-card">
+            <span>Screen Count</span>
+            <strong>${escapeHtml(screenCount)}</strong>
+          </div>
+          <div class="uc5-planning-summary-card">
+            <span>Density</span>
+            <strong>${escapeHtml(density)}</strong>
+          </div>
+          <div class="uc5-planning-summary-card">
+            <span>Confidence</span>
+            <strong>${escapeHtml(confidence)}</strong>
+          </div>
+        </div>
+
+        <div class="uc5-planning-screen-list">
+          ${screenHtml || `
+            <div class="uc5-planning-screen-item">
+              <div class="uc5-planning-screen-index">!</div>
+              <div class="uc5-planning-screen-copy">
+                <strong>screen_blueprints 없음</strong>
+                <span>n8n structured output schema에서 screen_blueprints를 확인해야 합니다.</span>
+              </div>
+              <div class="uc5-planning-component-pill">missing</div>
+            </div>
+          `}
+        </div>
+
+        <div class="uc5-planning-review-note">
+          <strong>관리자 검토:</strong> ${escapeHtml(reviewText)}
+        </div>
+      </div>
+    `;
+  }
+
+  // 9. Asynchronous Request Dispatcher (Fetch Webhook)
   // 9. Asynchronous Request Dispatcher (Fetch Webhook)
   if (uc5RunBtn) {
     uc5RunBtn.addEventListener('click', async () => {
       if (!uc5UploadedFile) return;
 
-      // Setup loading UI
-      loadingOverlay.style.display = 'flex';
-      previewStage.innerHTML = ''; // Clear preview area
+      if (loadingOverlay) loadingOverlay.style.display = 'flex';
+      if (paginationFooter) paginationFooter.style.display = 'none';
+      if (previewStage) previewStage.innerHTML = '';
+
       uc5RunBtn.disabled = true;
-      uc5RunBtn.textContent = '처리 중...';
+      uc5RunBtn.textContent = '기획안 생성 중...';
 
-      const formData = new FormData();
-
-      // n8n 워크플로우의 'Prep Data & Schema' 노드 및 'Switch' 노드가 
-      // 기대하는 키 이름(template_id)과 값(template_matrix 등)의 규칙을 일관되게 유지합니다.
-      // 다른 템플릿들과 형식을 통일하여 'template_divergence' 명칭 그대로 전송합니다.
-      formData.append('template_id', uc5SelectedTemplate);
-      formData.append('file', uc5UploadedFile);
+      const formData = buildUC5PlanningFormData();
 
       try {
         const res = await fetch(CONFIG.UC5_WEBHOOK, {
           method: 'POST',
           body: formData,
           cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
         });
 
-        if (!res.ok) throw new Error(`교육자료 생성 실패 (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`교육 콘텐츠 기획안 생성 실패 (HTTP ${res.status})`);
 
-        const data = await res.json();
+        const rawText = await res.text();
+        let data;
 
-        // Parse and validate response slides array
+        try {
+          data = parseUC5WebhookResponse(rawText);
+        } catch (parseError) {
+          throw new Error('n8n 응답 JSON 파싱 실패');
+        }
+
+        if (data?.planning_version === 'uc5_content_planning_draft.v1') {
+          renderUC5PlanningDraft(data);
+          return;
+        }
+
+        // Legacy path: retain current slide renderer while n8n v2 is being built.
         let slides = null;
         if (Array.isArray(data)) {
           slides = data;
@@ -1603,10 +1886,9 @@ Customer: Thank you. Goodbye.`
         }
 
         if (!slides || slides.length < 5) {
-          throw new Error('응답에 유효한 5개의 슬라이드 데이터가 포함되어 있지 않습니다.');
+          throw new Error('응답에 planning draft 또는 유효한 5개 이상의 legacy slide 데이터가 없습니다.');
         }
 
-        // Schema validation for divergence
         if (uc5SelectedTemplate === 'template_divergence' && Array.isArray(slides)) {
           slides.forEach((slide) => {
             if (!slide) return;
@@ -1619,32 +1901,30 @@ Customer: Thank you. Goodbye.`
           });
         }
 
-        // Success bind and update indices
+        uc5PlanningDraftData = null;
         uc5SlidesData = slides;
         uc5ActivePageIndex = 1;
 
-        // Hide overlay, display pagination footer
-        loadingOverlay.style.display = 'none';
-        paginationFooter.style.display = 'flex';
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+        if (paginationFooter) paginationFooter.style.display = 'flex';
 
-        // Trigger render
         renderUC5Slide();
-
       } catch (err) {
         console.error(err);
-        loadingOverlay.style.display = 'none';
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
 
-        // Display interactive error message inside the previewStage
-        previewStage.innerHTML = `
-          <div class="uc5-empty-preview">
-            <span class="uc5-empty-icon" style="color: var(--danger);">⚠️</span>
-            <h3 style="color: var(--danger);">교육 자료 생성 실패</h3>
-            <p>${escapeHtml(err.message || '네트워크 통신 중 에러가 발생했습니다.')}</p>
-          </div>
-        `;
+        if (previewStage) {
+          previewStage.innerHTML = `
+            <div class="uc5-empty-preview">
+              <span class="uc5-empty-icon" style="color: var(--danger);">⚠️</span>
+              <h3 style="color: var(--danger);">교육 콘텐츠 기획안 생성 실패</h3>
+              <p>${escapeHtml(err.message || '네트워크 통신 중 에러가 발생했습니다.')}</p>
+            </div>
+          `;
+        }
       } finally {
-        uc5RunBtn.disabled = false;
-        uc5RunBtn.textContent = '▶ 교육 자료 생성 시작';
+        validateUC5RunBtn();
+        uc5RunBtn.textContent = '▶ 1차 기획안 생성';
       }
     });
   }

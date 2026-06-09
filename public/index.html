@@ -210,69 +210,136 @@
 
       <section class="view-section" id="view-uc5">
         <div class="uc5-dashboard-container">
-          
-          <!-- Top Horizontal Control Bar (Equal Height Row) -->
+
+          <!-- Top Horizontal Control Bar: UC5 v2 Planning Input -->
           <div class="uc5-top-control-bar">
-            
-            <!-- 1번 영역: 교육 템플릿 레이아웃 선택 -->
-            <div class="uc5-control-box uc5-template-box">
-              <span class="uc5-control-label">1. 교육 템플릿 레이아웃 선택</span>
-              <div class="uc5-template-selector-row">
+
+            <!-- 1번 영역: 학습 내러티브 / Macro Shell 선택 -->
+            <div class="uc5-control-box uc5-template-box uc5-shell-box">
+              <span class="uc5-control-label">1. 학습 내러티브 선택</span>
+              <div class="uc5-template-selector-row uc5-shell-selector-row">
                 <label class="uc5-template-card">
-                  <input type="radio" name="uc5-template" value="template_matrix" checked />
+                  <input type="radio" name="uc5-macroShell" value="auto" checked />
                   <div class="uc5-card-inner">
-                    <span class="uc5-card-emoji">🧩</span>
+                    <span class="uc5-card-emoji">🧠</span>
                     <div class="uc5-card-info">
-                      <span class="uc5-card-title">Concept Matrix</span>
-                      <span class="uc5-card-desc">3D 카드 격자형</span>
-                    </div>
-                  </div>
-                </label>
-                
-                <label class="uc5-template-card">
-                  <input type="radio" name="uc5-template" value="template_journey" />
-                  <div class="uc5-card-inner">
-                    <span class="uc5-card-emoji">🗺️</span>
-                    <div class="uc5-card-info">
-                      <span class="uc5-card-title">Linear Journey</span>
-                      <span class="uc5-card-desc">RPG 횡형 성장맵</span>
-                    </div>
-                  </div>
-                </label>
-                
-                <label class="uc5-template-card">
-                  <input type="radio" name="uc5-template" value="template_split" />
-                  <div class="uc5-card-inner">
-                    <span class="uc5-card-emoji">⚖️</span>
-                    <div class="uc5-card-info">
-                      <span class="uc5-card-title">Tactical Split</span>
-                      <span class="uc5-card-desc">50:50 좌우 탭형</span>
+                      <span class="uc5-card-title">AI 추천</span>
+                      <span class="uc5-card-desc">문서 기반 자동 선택</span>
                     </div>
                   </div>
                 </label>
 
                 <label class="uc5-template-card">
-                  <input type="radio" name="uc5-template" value="template_divergence" />
+                  <input type="radio" name="uc5-macroShell" value="learning_canvas" />
+                  <div class="uc5-card-inner">
+                    <span class="uc5-card-emoji">🧩</span>
+                    <div class="uc5-card-info">
+                      <span class="uc5-card-title">Learning Canvas</span>
+                      <span class="uc5-card-desc">개념·원칙·프레임워크</span>
+                    </div>
+                  </div>
+                </label>
+
+                <label class="uc5-template-card">
+                  <input type="radio" name="uc5-macroShell" value="process_playbook" />
+                  <div class="uc5-card-inner">
+                    <span class="uc5-card-emoji">🗺️</span>
+                    <div class="uc5-card-info">
+                      <span class="uc5-card-title">Process Playbook</span>
+                      <span class="uc5-card-desc">절차·단계·체크리스트</span>
+                    </div>
+                  </div>
+                </label>
+
+                <label class="uc5-template-card">
+                  <input type="radio" name="uc5-macroShell" value="decision_simulator" />
                   <div class="uc5-card-inner">
                     <span class="uc5-card-emoji">⚡</span>
                     <div class="uc5-card-info">
-                      <span class="uc5-card-title">Dual Divergence</span>
-                      <span class="uc5-card-desc">대비형 3열 융합형</span>
+                      <span class="uc5-card-title">Decision Simulator</span>
+                      <span class="uc5-card-desc">시나리오·판단·토론</span>
                     </div>
                   </div>
                 </label>
               </div>
             </div>
 
-            <!-- 2번 영역: 교육 원천 소스 업로드 -->
+            <!-- 2번 영역: 관리자 기획 입력 -->
+            <div class="uc5-control-box uc5-planning-box">
+              <span class="uc5-control-label">2. 관리자 기획 입력</span>
+
+              <div class="uc5-planning-grid">
+                <label class="uc5-mini-field">
+                  <span>Planning</span>
+                  <select id="uc5-planningMode">
+                    <option value="ai_recommend_shell" selected>AI 추천 후 검토</option>
+                    <option value="manual_shell">선택 Shell 우선</option>
+                    <option value="auto">완전 자동</option>
+                  </select>
+                </label>
+
+                <label class="uc5-mini-field">
+                  <span>분량</span>
+                  <select id="uc5-contentDensity">
+                    <option value="micro">Micro 5~6</option>
+                    <option value="standard" selected>Standard 7~9</option>
+                    <option value="extended">Extended 10~12</option>
+                  </select>
+                </label>
+
+                <label class="uc5-mini-field">
+                  <span>대상</span>
+                  <select id="uc5-targetAudience">
+                    <option value="general_employee" selected>일반 임직원</option>
+                    <option value="manager">관리자</option>
+                    <option value="executive">임원</option>
+                    <option value="technical">기술 직군</option>
+                    <option value="sales">영업 직군</option>
+                  </select>
+                </label>
+
+                <label class="uc5-mini-field">
+                  <span>목표 시간</span>
+                  <select id="uc5-targetDuration">
+                    <option value="5">5분</option>
+                    <option value="7" selected>7분</option>
+                    <option value="10">10분</option>
+                    <option value="15">15분</option>
+                  </select>
+                </label>
+
+                <label class="uc5-mini-field">
+                  <span>상호작용</span>
+                  <select id="uc5-interactionLevel">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+
+                <label class="uc5-mini-field">
+                  <span>동기부여</span>
+                  <select id="uc5-gamificationLevel">
+                    <option value="light">Light</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+              </div>
+
+              <input class="uc5-admin-notes" id="uc5-adminNotes" type="text"
+                placeholder="관리자 메모: 예) 모바일 학습자 중심, 퀴즈 강화, 실무 적용 사례 중심" />
+            </div>
+
+            <!-- 3번 영역: 교육 원천 소스 업로드 -->
             <div class="uc5-control-box uc5-upload-box">
-              <span class="uc5-control-label">2. 교육 원천 소스 업로드</span>
+              <span class="uc5-control-label">3. 교육 원천 소스 업로드</span>
               <div class="uc5-uploader-container">
                 <label class="uc5-upload-wrapper" id="uc5-dropzone" for="uc5-fileInput">
                   <span class="uc5-upload-icon">📤</span>
                   <div class="uc5-upload-content" id="uc5-uploadPrompt">
                     <span class="uc5-upload-text">파일을 드롭하거나 선택하세요</span>
-                    <span class="uc5-upload-hint">PPT, PDF, Word (최대 10MB)</span>
+                    <span class="uc5-upload-hint">PDF 권장 · 최대 10MB</span>
                   </div>
                   <span class="uc5-file-name" id="uc5-fileNameDisplay" style="display: none;"></span>
                 </label>
@@ -280,11 +347,11 @@
               </div>
             </div>
 
-            <!-- 3번 영역: 생성 버튼 -->
+            <!-- 4번 영역: 생성 버튼 -->
             <div class="uc5-control-box uc5-action-box">
-              <button class="btn btn-primary w-full" id="uc5-runBtn" disabled>▶ 교육 자료 생성 시작</button>
+              <button class="btn btn-primary w-full" id="uc5-runBtn" disabled>▶ 1차 기획안 생성</button>
             </div>
-            
+
           </div>
 
           <!-- Bottom Viewport Preview Panel -->
@@ -293,7 +360,7 @@
             <div class="uc5-preview-header">
               <div class="uc5-preview-info">
                 <span class="uc5-info-label">Active Layout:</span>
-                <span class="uc5-info-value" id="uc5-activeLayoutText">The Concept Matrix</span>
+                <span class="uc5-info-value" id="uc5-activeLayoutText">AI Recommended Narrative</span>
               </div>
               <div class="uc5-view-switcher">
                 <button class="uc5-switch-btn active" id="uc5-btnDesktop" data-view="desktop">💻 Desktop View</button>
@@ -308,7 +375,8 @@
                   <div class="uc5-empty-preview">
                     <span class="uc5-empty-icon">🎓</span>
                     <h3>교육 콘텐츠 실시간 프리뷰</h3>
-                    <p>상단에서 템플릿과 교육용 소스 문서를 업로드한 후 생성 버튼을 누르면, AI가 분석한 대화식 시나리오 및 인터랙티브 퀴즈가 이곳에 즉시 렌더링됩니다.</p>
+                    <p>상단에서 학습 내러티브, 분량, 대상, 상호작용 수준을 설정하고 교육용 소스 문서를 업로드하면, n8n 워크플로가 PDF 텍스트를 분석해 1차 콘텐츠 기획안을 반환합니다.
+                    </p>
                   </div>
                 </div>
 
@@ -316,8 +384,9 @@
                 <div class="uc5-loading-overlay" id="uc5-loadingOverlay" style="display: none;">
                   <div class="uc5-loading-spinner-wrapper">
                     <div class="uc5-loading-spinner"></div>
-                    <p class="uc5-loading-text">n8n 워크플로우 분석 및 교육 콘텐츠 생성 중...</p>
-                    <p class="uc5-loading-subtext">AI가 슬라이드 구조화와 인터랙티브 평가 문항을 조합하고 있습니다.</p>
+                    <p class="uc5-loading-text">n8n 워크플로우 분석 및 1차 콘텐츠 기획안 생성 중...</p>
+                    <p class="uc5-loading-subtext">AI가 관리자 input과 추출 텍스트를 기준으로 Macro Shell, 분량, 내러티브, 구성요소 후보를 조립하고
+                      있습니다.</p>
                   </div>
                 </div>
               </div>
@@ -330,7 +399,7 @@
               <button class="btn btn-outline uc5-nav-btn" id="uc5-nextBtn">다음 슬라이드 ▶</button>
             </div>
           </div>
-          
+
         </div>
       </section>
     </main>
