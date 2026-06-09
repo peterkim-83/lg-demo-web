@@ -3981,3 +3981,33 @@ body:has(#view-uc5.active) #main-content {
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================================================
+   UC5 v2 Approval Button Contrast Fix
+   Scope: UC5 only
+   ========================================================================== */
+
+.uc5-planning-review .uc5-review-btn-primary,
+.uc5-planning-review .uc5-review-btn-primary:hover:not(:disabled),
+.uc5-planning-review .uc5-review-btn-primary:focus-visible {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    border-color: var(--primary) !important;
+}
+
+.uc5-planning-review .uc5-review-btn-primary:hover:not(:disabled) {
+    background: var(--primary-dark) !important;
+    color: #ffffff !important;
+}
+
+.uc5-planning-review .uc5-review-btn-primary:disabled {
+    background: #e0e7ff !important;
+    color: #4f46e5 !important;
+    border-color: #c7d2fe !important;
+    opacity: 0.78;
+}
+
+.uc5-planning-review .uc5-review-btn-primary:disabled:hover {
+    background: #e0e7ff !important;
+    color: #4f46e5 !important;
+}
