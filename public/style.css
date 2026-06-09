@@ -2456,6 +2456,7 @@ body:has(#view-uc5.active) #main-content {
     height: auto;
     max-width: 100%;
     max-height: 100%;
+    flex: 0 0 auto;
     position: relative;
     background: white;
     border-radius: 8px;
@@ -2463,7 +2464,7 @@ body:has(#view-uc5.active) #main-content {
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.22s ease, height 0.22s ease, border-radius 0.22s ease, box-shadow 0.22s ease;
 }
 
 .uc5-preview-stage {
@@ -2548,8 +2549,6 @@ body:has(#view-uc5.active) #main-content {
 .uc5-viewport-canvas.uc5-mobile-frame .uc5-chassis-wrapper {
     aspect-ratio: 9 / 19.5;
     /* Modern smartphone standard */
-    height: 100%;
-    width: auto;
     max-height: 100%;
     max-width: 100%;
     border-radius: 20px;
@@ -3996,20 +3995,18 @@ body:has(#view-uc5.active) #main-content {
 }
 
 .uc5-planning-review .uc5-review-btn-primary:hover:not(:disabled) {
-    background: var(--primary-dark) !important;
+    background: var(--primary-hover) !important;
     color: #ffffff !important;
 }
 
-.uc5-planning-review .uc5-review-btn-primary:disabled {
+.uc5-planning-review .uc5-review-btn-primary:disabled,
+.uc5-planning-review .uc5-review-btn-primary:disabled:hover,
+.uc5-planning-review .uc5-review-btn-primary:disabled:focus {
     background: #e0e7ff !important;
-    color: #4f46e5 !important;
+    color: #3730a3 !important;
     border-color: #c7d2fe !important;
-    opacity: 0.78;
-}
-
-.uc5-planning-review .uc5-review-btn-primary:disabled:hover {
-    background: #e0e7ff !important;
-    color: #4f46e5 !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
 }
 
 /* ==========================================================================

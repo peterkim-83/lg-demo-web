@@ -1125,6 +1125,7 @@ Customer: Thank you. Goodbye.`
   let uc5RenderPlanData = null;
   let uc5RenderPlanScreenIndex = 0;
   let uc5RenderPlanInteractionState = {};
+  let uc5PreviewFitRaf = null;
   let confettiTimer = null;
 
   const UC5_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -1175,12 +1176,80 @@ Customer: Thank you. Goodbye.`
   const viewportCanvas = document.getElementById('uc5-viewportCanvas');
   const previewStage = document.getElementById('uc5-previewStage');
   const loadingOverlay = document.getElementById('uc5-loadingOverlay');
+  const chassisWrapper = viewportCanvas?.querySelector('.uc5-chassis-wrapper') || null;
+  const uc5LoadingText = loadingOverlay?.querySelector('.uc5-loading-text') || null;
+  const uc5LoadingSubtext = loadingOverlay?.querySelector('.uc5-loading-subtext') || null;
 
   const paginationFooter = document.getElementById('uc5-paginationFooter');
   const prevBtn = document.getElementById('uc5-prevBtn');
   const nextBtn = document.getElementById('uc5-nextBtn');
   const pageIndicator = document.getElementById('uc5-pageIndicator');
   const activeLayoutText = document.getElementById('uc5-activeLayoutText');
+
+  function setUC5LoadingCopy(stage) {
+    if (!uc5LoadingText || !uc5LoadingSubtext) return;
+
+    const copies = {
+      planning: {
+        text: 'n8n 워크플로우 분석 및 1차 콘텐츠 기획안 생성 중...',
+        subtext: 'AI가 관리자 input과 추출 텍스트를 기준으로 Macro Shell, 분량, 내러티브, 구성요소 후보를 조립하고 있습니다.'
+      },
+      final_render: {
+        text: 'n8n 워크플로우 분석 및 최종 렌더링 기획안 생성 중...',
+        subtext: '승인된 기획안과 원문을 기준으로 화면별 JSON 렌더 계약을 생성하고 있습니다.'
+      }
+    };
+
+    const copy = copies[stage] || copies.planning;
+    uc5LoadingText.textContent = copy.text;
+    uc5LoadingSubtext.textContent = copy.subtext;
+  }
+
+  function fitUC5PreviewChassis() {
+    if (!viewportCanvas || !chassisWrapper) return;
+
+    if (uc5PreviewFitRaf) {
+      cancelAnimationFrame(uc5PreviewFitRaf);
+      uc5PreviewFitRaf = null;
+    }
+
+    uc5PreviewFitRaf = requestAnimationFrame(() => {
+      uc5PreviewFitRaf = null;
+
+      const canvasRect = viewportCanvas.getBoundingClientRect();
+      if (!canvasRect.width || !canvasRect.height) return;
+
+      const styles = window.getComputedStyle(viewportCanvas);
+      const paddingX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+      const paddingY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+      const availableWidth = Math.max(0, canvasRect.width - paddingX);
+      const availableHeight = Math.max(0, canvasRect.height - paddingY);
+      if (!availableWidth || !availableHeight) return;
+
+      const isMobileFrame = viewportCanvas.classList.contains('uc5-mobile-frame');
+      const ratio = isMobileFrame ? (9 / 19.5) : (16 / 9);
+      const safetyGap = isMobileFrame ? 0 : 2;
+      let targetWidth = Math.min(availableWidth, availableHeight * ratio) - safetyGap;
+      let targetHeight = targetWidth / ratio;
+
+      if (targetHeight > availableHeight - safetyGap) {
+        targetHeight = availableHeight - safetyGap;
+        targetWidth = targetHeight * ratio;
+      }
+
+      chassisWrapper.style.width = `${Math.max(0, Math.floor(targetWidth))}px`;
+      chassisWrapper.style.height = `${Math.max(0, Math.floor(targetHeight))}px`;
+    });
+  }
+
+  function scheduleUC5PreviewFit(delayMs = 0) {
+    if (delayMs > 0) {
+      window.setTimeout(fitUC5PreviewChassis, delayMs);
+      return;
+    }
+
+    fitUC5PreviewChassis();
+  }
 
   function getUC5SelectedMacroShell() {
     const checked = Array.from(macroShellInputs).find(input => input.checked);
@@ -1354,14 +1423,27 @@ Customer: Thank you. Goodbye.`
       btnDesktop.classList.add('active');
       btnMobile.classList.remove('active');
       viewportCanvas.classList.remove('uc5-mobile-frame');
+      scheduleUC5PreviewFit();
     });
 
     btnMobile.addEventListener('click', () => {
       btnMobile.classList.add('active');
       btnDesktop.classList.remove('active');
       viewportCanvas.classList.add('uc5-mobile-frame');
+      scheduleUC5PreviewFit();
     });
   }
+
+  window.addEventListener('resize', () => {
+    scheduleUC5PreviewFit(80);
+  });
+
+  if (window.ResizeObserver && viewportCanvas) {
+    const uc5PreviewResizeObserver = new ResizeObserver(() => scheduleUC5PreviewFit());
+    uc5PreviewResizeObserver.observe(viewportCanvas);
+  }
+
+  scheduleUC5PreviewFit(0);
 
   // 7. Dynamic Layout Engine & String Compilers
   function compileConceptMatrix(slide, pageNum) {
@@ -1693,6 +1775,7 @@ Customer: Thank you. Goodbye.`
 
     previewStage.innerHTML = finalHtml;
     updatePaginationUI();
+    scheduleUC5PreviewFit();
 
     // Extra styling animations post-render
     if (uc5SelectedTemplate === 'template_split' && uc5ActivePageIndex !== 5) {
@@ -2195,6 +2278,8 @@ Customer: Thank you. Goodbye.`
         <button class="uc5-inner-nav-btn uc5-v2-next-btn">${uc5RenderPlanScreenIndex === screenCount - 1 ? 'Complete' : 'Next'}</button>
       </div>
     `;
+
+    scheduleUC5PreviewFit();
   }
 
   function renderUC5RenderPlan(data) {
@@ -2231,9 +2316,13 @@ Customer: Thank you. Goodbye.`
       regenerateBtn.disabled = true;
     }
 
+    setUC5LoadingCopy('final_render');
+
     if (loadingOverlay) {
       loadingOverlay.style.display = 'flex';
     }
+
+    scheduleUC5PreviewFit();
 
     try {
       const formData = buildUC5RenderPlanRequestFormData();
@@ -2425,6 +2514,7 @@ Customer: Thank you. Goodbye.`
         </div>
       </div>
     `;
+    scheduleUC5PreviewFit();
   }
 
   if (previewStage) {
@@ -2476,7 +2566,9 @@ Customer: Thank you. Goodbye.`
     uc5RunBtn.addEventListener('click', async () => {
       if (!uc5UploadedFile) return;
 
+      setUC5LoadingCopy('planning');
       if (loadingOverlay) loadingOverlay.style.display = 'flex';
+      scheduleUC5PreviewFit();
       if (paginationFooter) paginationFooter.style.display = 'none';
       if (previewStage) previewStage.innerHTML = '';
 
@@ -2567,6 +2659,7 @@ Customer: Thank you. Goodbye.`
               <p>${escapeHtml(err.message || '네트워크 통신 중 에러가 발생했습니다.')}</p>
             </div>
           `;
+          scheduleUC5PreviewFit();
         }
       } finally {
         validateUC5RunBtn();
