@@ -13,10 +13,9 @@ const CONFIG = {
   UC3_START_CALL: 'https://peter-n8n.duckdns.org/webhook/ultravox-start',
   UC3_END_CALL: 'https://peter-n8n.duckdns.org/webhook/get-call-log',
   UC4_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/text-to-sql-webapp',
-  UC5_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook-test/generate-education-material',
-  UC5_W01_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook-test/uc5-ai-narrative-plan',
-  UC5_W02_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook-test/uc5-template-blueprint-plan',
-  UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook-test/uc5-slot-fill-render'
+  UC5_W01_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-ai-narrative-plan',
+  UC5_W02_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-template-blueprint-plan',
+  UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-slot-fill-render'
 };
 
 // ==========================================
@@ -1182,6 +1181,11 @@ Customer: Thank you. Goodbye.`
   const uc5UploadPrompt = document.getElementById('uc5-uploadPrompt');
   const uc5FileNameDisplay = document.getElementById('uc5-fileNameDisplay');
   const uc5RunBtn = document.getElementById('uc5-runBtn');
+  const uc5AiRecommendBtn = document.getElementById('uc5-aiRecommendBtn');
+  const uc5LearningConditionsBox = document.getElementById('uc5-learningConditionsBox');
+  const uc5SelectionModeChip = document.getElementById('uc5-selectionModeChip');
+  const uc5ConditionStateChip = document.getElementById('uc5-conditionStateChip');
+  const uc5ActionHelper = document.getElementById('uc5-actionHelper');
 
   const btnDesktop = document.getElementById('uc5-btnDesktop');
   const btnMobile = document.getElementById('uc5-btnMobile');
@@ -1315,6 +1319,182 @@ Customer: Thank you. Goodbye.`
     if (activeLayoutText) {
       activeLayoutText.textContent = meta.activeText || meta.label;
     }
+
+    updateUC5LearningConditionState();
+    validateUC5RunBtn();
+  }
+
+  function getUC5ConditionControls() {
+    return [
+      uc5PlanningMode,
+      uc5ContentDensity,
+      uc5TargetAudience,
+      uc5TargetDuration,
+      uc5InteractionLevel,
+      uc5GamificationLevel,
+      uc5AdminNotes
+    ].filter(Boolean);
+  }
+
+  function setUC5ConditionControlsDisabled(disabled) {
+    getUC5ConditionControls().forEach((control) => {
+      control.disabled = Boolean(disabled);
+    });
+
+    if (uc5LearningConditionsBox) {
+      uc5LearningConditionsBox.classList.toggle('is-disabled', Boolean(disabled));
+    }
+  }
+
+  function updateUC5LearningConditionState() {
+    const selected = getUC5SelectedMacroShell();
+    const isAiRecommend = selected === 'auto';
+    const hasAiRecommendation = Boolean(uc5PlanningDraftData && uc5CurrentUiSelectionData);
+    const shouldDisableConditions = isAiRecommend && !hasAiRecommendation;
+
+    setUC5ConditionControlsDisabled(shouldDisableConditions);
+
+    if (uc5SelectionModeChip) {
+      if (hasAiRecommendation) {
+        uc5SelectionModeChip.textContent = 'AI 추천 적용됨';
+      } else if (isAiRecommend) {
+        uc5SelectionModeChip.textContent = 'AI 추천 대기';
+      } else {
+        uc5SelectionModeChip.textContent = '직접 선택';
+      }
+    }
+
+    if (uc5ConditionStateChip) {
+      uc5ConditionStateChip.textContent = shouldDisableConditions
+        ? 'AI 추천 후 편집 가능'
+        : '편집 가능';
+    }
+
+    if (uc5ActionHelper) {
+      if (!uc5UploadedFile) {
+        uc5ActionHelper.textContent = '교육 원문 PDF를 먼저 업로드하세요.';
+      } else if (isAiRecommend && !hasAiRecommendation) {
+        uc5ActionHelper.textContent = 'AI가 추천 카드의 “추천 받기”를 먼저 실행하세요.';
+      } else if (hasAiRecommendation && !uc5TemplateBoundBlueprintData) {
+        uc5ActionHelper.textContent = 'AI 추천값을 확인한 뒤 교육 기획안을 만들 수 있습니다.';
+      } else if (uc5TemplateBoundBlueprintData) {
+        uc5ActionHelper.textContent = '화면 설계안을 검토한 뒤 최종 미리보기를 만들 수 있습니다.';
+      } else {
+        uc5ActionHelper.textContent = '선택한 구성으로 교육 화면 설계안을 만듭니다.';
+      }
+    }
+  }
+
+  function getUC5ScreenCountFromDensity(density) {
+    if (density === 'micro') return 6;
+    if (density === 'extended') return 10;
+    return 8;
+  }
+
+  function getUC5ScreenCountRangeFromDensity(density) {
+    if (density === 'micro') return '5-6';
+    if (density === 'extended') return '10-12';
+    return '7-9';
+  }
+
+  function getUC5DensityFromScreenCount(screenCount) {
+    const count = Number(screenCount || 8);
+    if (count <= 6) return 'micro';
+    if (count >= 10) return 'extended';
+    return 'standard';
+  }
+
+  function getUC5CurrentUiSelectionFromControls() {
+    const selectedMacroShell = getUC5SelectedMacroShell();
+    const shell = selectedMacroShell === 'auto'
+      ? (uc5CurrentUiSelectionData?.macro_shell_id || 'learning_canvas')
+      : selectedMacroShell;
+    const meta = UC5_MACRO_SHELL_META[shell] || UC5_MACRO_SHELL_META.learning_canvas;
+    const density = getUC5FieldValue(uc5ContentDensity, 'standard');
+    const screenCount = getUC5ScreenCountFromDensity(density);
+
+    return {
+      narrative_choice: shell,
+      planning_input_mode: selectedMacroShell === 'auto' ? 'ai_recommend_then_review' : 'manual_template',
+      template_id: meta.templateId || 'learning_canvas.core_concept_flow',
+      macro_shell_id: shell,
+      screen_count: screenCount,
+      screen_count_range: getUC5ScreenCountRangeFromDensity(density),
+      content_density: density,
+      interaction_level: getUC5FieldValue(uc5InteractionLevel, 'medium'),
+      gamification_level: getUC5FieldValue(uc5GamificationLevel, 'medium'),
+      target_duration_minutes: Number(getUC5FieldValue(uc5TargetDuration, '7')),
+      target_audience: getUC5FieldValue(uc5TargetAudience, 'general_employee'),
+      tone: 'professional_motivational',
+      language: 'ko'
+    };
+  }
+
+  function applyUC5SelectionToControls(selection) {
+    if (!selection || typeof selection !== 'object') return;
+
+    const macroShell = selection.macro_shell_id || selection.narrative_choice;
+    if (macroShell && UC5_MACRO_SHELL_META[macroShell]) {
+      macroShellInputs.forEach((input) => {
+        input.checked = input.value === macroShell;
+      });
+      uc5SelectedMacroShell = macroShell;
+      uc5SelectedTemplate = UC5_MACRO_SHELL_META[macroShell].legacyTemplateId || 'template_matrix';
+    }
+
+    if (uc5PlanningMode) uc5PlanningMode.value = 'manual_shell';
+    if (uc5ContentDensity) uc5ContentDensity.value = selection.content_density || getUC5DensityFromScreenCount(selection.screen_count);
+    if (uc5TargetAudience) uc5TargetAudience.value = selection.target_audience || 'general_employee';
+    if (uc5TargetDuration) uc5TargetDuration.value = String(selection.target_duration_minutes || 7);
+    if (uc5InteractionLevel) uc5InteractionLevel.value = selection.interaction_level || 'medium';
+    if (uc5GamificationLevel) uc5GamificationLevel.value = selection.gamification_level || 'medium';
+
+    updateUC5LearningConditionState();
+  }
+
+  function buildUC5ManualPlanningDraft(selection) {
+    const selected = selection || getUC5CurrentUiSelectionFromControls();
+    const meta = UC5_MACRO_SHELL_META[selected.macro_shell_id] || UC5_MACRO_SHELL_META.learning_canvas;
+    const screenCount = Number(selected.screen_count || 8);
+
+    return {
+      planning_stage: 'manual_admin_selection',
+      planning_version: 'uc5_manual_admin_selection.v1',
+      planning_status: 'approved_by_admin_input',
+      source_content_profile: {
+        detected_primary_structure: 'mixed',
+        detected_secondary_structures: [],
+        content_density_assessment: selected.content_density || 'standard',
+        document_signals: ['관리자 직접 선택', meta.label || selected.macro_shell_id, '업로드 PDF 기반'],
+        learning_opportunity: '관리자가 선택한 교육 구성 방식과 학습 조건을 기준으로 화면 설계안을 생성합니다.',
+        risks_for_planning: []
+      },
+      recommended_ui_selection: selected,
+      narrative_preview: {
+        lesson_title: '관리자 지정 교육 과정',
+        lesson_subtitle: `${meta.label || selected.macro_shell_id} 기반 교육 구성`,
+        learner_promise: '업로드한 원문을 바탕으로 핵심 내용을 이해하고 업무에 적용합니다.',
+        completion_goal: '학습자가 주요 개념과 실천 항목을 확인하고 자신의 업무에 연결합니다.',
+        narrative_arc: Array.from({ length: screenCount }, (_, index) => `화면 ${index + 1} 학습 흐름`),
+        screen_outline: []
+      },
+      recommendation_rationale: {
+        decision_confidence: 'high',
+        primary_reason: '관리자가 교육 구성 방식을 직접 선택했습니다.',
+        source_signals: ['관리자 직접 선택', '학습 조건 직접 지정', 'PDF 원문 업로드'],
+        alternatives: []
+      },
+      admin_review_items: [],
+      next_step_contract: {
+        next_workflow: 'UC5 / 02 Template-bound Blueprint Planner',
+        next_workflow_stage: 'template_bound_blueprint_planning',
+        component_selection_status: 'deferred_to_template_bound_blueprint',
+        slot_assignment_status: 'deferred_to_template_bound_blueprint',
+        render_plan_status: 'not_started',
+        use_current_ui_selection_as_source_of_truth: true,
+        handoff_instruction: '관리자 직접 선택값을 current_ui_selection으로 사용하여 화면 설계안을 생성합니다.'
+      }
+    };
   }
 
   function getUC5FieldValue(el, fallback) {
@@ -1398,8 +1578,24 @@ Customer: Thank you. Goodbye.`
   function validateUC5RunBtn() {
     if (!uc5RunBtn) return;
 
-    const hasShell = Array.from(macroShellInputs).some(r => r.checked) || legacyTemplateInputs.length > 0;
-    uc5RunBtn.disabled = !(hasShell && uc5UploadedFile);
+    const hasFile = Boolean(uc5UploadedFile);
+    const selectedMode = getUC5SelectedMacroShell();
+    const hasAiRecommendation = Boolean(uc5PlanningDraftData && uc5CurrentUiSelectionData);
+    const canCreateBlueprint = hasFile && (selectedMode !== 'auto' || hasAiRecommendation);
+
+    uc5RunBtn.disabled = !canCreateBlueprint;
+
+    if (uc5AiRecommendBtn) {
+      uc5AiRecommendBtn.disabled = !hasFile;
+    }
+
+    if (uc5RunBtn) {
+      uc5RunBtn.textContent = uc5TemplateBoundBlueprintData
+        ? '교육 기획안 다시 만들기'
+        : '교육 기획안 만들기';
+    }
+
+    updateUC5LearningConditionState();
   }
 
   // 4. File Drop & Input Event Handling
@@ -1457,7 +1653,33 @@ Customer: Thank you. Goodbye.`
   // 5. Macro Shell Selection Handler
   macroShellInputs.forEach(input => {
     input.addEventListener('change', (e) => {
-      setUC5SelectedMacroShell(e.target.value);
+      const nextValue = e.target.value;
+      const wasAuto = uc5SelectedMacroShell === 'auto';
+      setUC5SelectedMacroShell(nextValue);
+
+      if (nextValue !== 'auto') {
+        uc5PlanningDraftData = null;
+        uc5CurrentUiSelectionData = getUC5CurrentUiSelectionFromControls();
+        uc5TemplateBoundBlueprintData = null;
+        uc5SlotPayloadSeedData = null;
+        uc5SourceCoverageSummaryData = null;
+        uc5RenderPlanData = null;
+        if (uc5PlanningMode) uc5PlanningMode.value = 'manual_shell';
+        setUC5PipelineStatus('blueprint', 'idle');
+        if (activeLayoutText) activeLayoutText.textContent = '직접 선택 · 교육 기획 대기';
+      } else if (!wasAuto) {
+        uc5PlanningDraftData = null;
+        uc5CurrentUiSelectionData = null;
+        uc5TemplateBoundBlueprintData = null;
+        uc5SlotPayloadSeedData = null;
+        uc5SourceCoverageSummaryData = null;
+        uc5RenderPlanData = null;
+        if (uc5PlanningMode) uc5PlanningMode.value = 'ai_recommend_shell';
+        setUC5PipelineStatus('planning', 'idle');
+        if (activeLayoutText) activeLayoutText.textContent = 'AI 추천 대기';
+      }
+
+      updateUC5LearningConditionState();
       validateUC5RunBtn();
     });
   });
@@ -1908,18 +2130,26 @@ Customer: Thank you. Goodbye.`
   }
 
   function buildUC5TemplateBlueprintFormData() {
-    if (!uc5PlanningDraftData) {
-      throw new Error('승인할 교육 기획안이 없습니다. 먼저 기획안을 생성해 주세요.');
-    }
-
     if (!uc5UploadedFile) {
       throw new Error('화면 설계에 사용할 원본 PDF가 없습니다. 파일을 다시 업로드해 주세요.');
     }
 
-    const currentUiSelection = uc5CurrentUiSelectionData || getUC5CurrentUiSelectionFromDraft(uc5PlanningDraftData) || {};
+    const fromAiRecommendation = Boolean(uc5PlanningDraftData && uc5CurrentUiSelectionData);
+    const currentUiSelection = fromAiRecommendation
+      ? { ...(uc5CurrentUiSelectionData || {}) }
+      : getUC5CurrentUiSelectionFromControls();
+
+    const planningDraft = fromAiRecommendation
+      ? uc5PlanningDraftData
+      : buildUC5ManualPlanningDraft(currentUiSelection);
+
+    uc5CurrentUiSelectionData = currentUiSelection;
+    uc5PlanningDraftData = planningDraft;
+
     const planningContext = {
       ...getUC5PlanningContext(),
       planning_mode: 'template_bound_blueprint_planning',
+      selection_source: fromAiRecommendation ? 'ai_recommendation_reviewed' : 'manual_admin_selection',
       content_density: currentUiSelection.content_density || getUC5FieldValue(uc5ContentDensity, 'standard'),
       target_audience: currentUiSelection.target_audience || getUC5FieldValue(uc5TargetAudience, 'general_employee'),
       target_duration_minutes: Number(currentUiSelection.target_duration_minutes || getUC5FieldValue(uc5TargetDuration, '7')),
@@ -1934,14 +2164,14 @@ Customer: Thank you. Goodbye.`
     formData.append('workflow_version', 'uc5_v2');
     formData.append('workflow_stage', 'template_bound_blueprint_planning');
     formData.append('workflow_mode', 'template_bound_blueprint_planning');
-    formData.append('selection_source', 'approved_narrative_planning_draft');
+    formData.append('selection_source', fromAiRecommendation ? 'w01_narrative_planning_draft' : 'manual_admin_selection');
     formData.append('template_id', currentUiSelection.template_id || '');
     formData.append('macro_shell_id', currentUiSelection.macro_shell_id || '');
     formData.append('screen_count', String(currentUiSelection.screen_count || ''));
     formData.append('file_name', fileProfile.file_name);
     formData.append('file_type', fileProfile.file_type || 'application/pdf');
     formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
-    formData.append('narrative_planning_draft', JSON.stringify(uc5PlanningDraftData));
+    formData.append('narrative_planning_draft', JSON.stringify(planningDraft));
     formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
     formData.append('planning_context', JSON.stringify(planningContext));
     formData.append('file_profile', JSON.stringify(fileProfile));
@@ -2441,7 +2671,7 @@ Customer: Thank you. Goodbye.`
 
     if (loadingOverlay) loadingOverlay.style.display = 'none';
     if (paginationFooter) paginationFooter.style.display = 'none';
-    if (activeLayoutText) activeLayoutText.textContent = `Final Render · ${shell}`;
+    if (activeLayoutText) activeLayoutText.textContent = `최종 교육 미리보기 · ${shell}`;
 
     previewStage.innerHTML = `
       <div class="uc5-inner-scroll-container uc5-rp-scroll uc5-fade-in-up">
@@ -2449,7 +2679,7 @@ Customer: Thank you. Goodbye.`
           <header class="uc5-rp-screen-header">
             <div>
               <div class="uc5-rp-kicker">${escapeHtml(lesson.lesson_title || 'UC5 Learning Module')}</div>
-              <h2>${escapeHtml(screen.screen_title || `Screen ${uc5RenderPlanScreenIndex + 1}`)}</h2>
+              <h2>${escapeHtml(screen.screen_title || `화면 ${uc5RenderPlanScreenIndex + 1}`)}</h2>
               <p>${escapeHtml(screen.learning_goal || screen.narrative_function || '')}</p>
             </div>
             <div class="uc5-rp-progress-card">
@@ -2473,7 +2703,7 @@ Customer: Thank you. Goodbye.`
       </div>
       <div class="uc5-inner-pagination uc5-rp-pagination">
         <button class="uc5-inner-nav-btn uc5-v2-prev-btn" ${uc5RenderPlanScreenIndex === 0 ? 'disabled' : ''}>Previous</button>
-        <span class="uc5-inner-page-indicator">Screen ${uc5RenderPlanScreenIndex + 1} / ${screenCount}</span>
+        <span class="uc5-inner-page-indicator">화면 ${uc5RenderPlanScreenIndex + 1} / ${screenCount}</span>
         <button class="uc5-inner-nav-btn uc5-v2-next-btn">${uc5RenderPlanScreenIndex === screenCount - 1 ? 'Complete' : 'Next'}</button>
       </div>
     `;
@@ -2497,18 +2727,144 @@ Customer: Thank you. Goodbye.`
   }
 
 
-  async function requestUC5RenderPlanFromApprovedDraft() {
-    if (!uc5PlanningDraftData) {
-      alert('승인할 교육 기획안이 없습니다.');
+  function renderUC5TemplateBlueprintPreview(blueprint) {
+    uc5TemplateBoundBlueprintData = blueprint;
+    uc5SlotPayloadSeedData = null;
+    uc5SourceCoverageSummaryData = null;
+    uc5RenderPlanData = null;
+    uc5RenderPlanScreenIndex = 0;
+    uc5RenderPlanInteractionState = {};
+
+    if (paginationFooter) {
+      paginationFooter.style.display = 'none';
+    }
+
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'none';
+    }
+
+    if (activeLayoutText) {
+      activeLayoutText.textContent = '화면 설계안 검토';
+    }
+
+    setUC5PipelineStatus('blueprint', 'done');
+    updateUC5LearningConditionState();
+
+    const screens = Array.isArray(blueprint?.screen_blueprints) ? blueprint.screen_blueprints : [];
+    const sectionCount = countUC5BlueprintSections(blueprint);
+    const summary = blueprint?.narrative_summary || {};
+    const selectedTemplate = blueprint?.selected_template || {};
+
+    const screenHtml = screens.map((screen) => {
+      const positions = Array.isArray(screen.skeleton_positions) ? screen.skeleton_positions : [];
+      const positionHtml = positions.map((position, index) => `
+        <div class="uc5-blueprint-position">
+          <span>${escapeHtml(index + 1)}</span>
+          <strong>${escapeHtml(position.position_purpose || position.slot_hint || '콘텐츠 영역')}</strong>
+          <em>${escapeHtml(position.selected_component_type || 'component')}</em>
+        </div>
+      `).join('');
+
+      return `
+        <article class="uc5-blueprint-screen-card">
+          <div class="uc5-blueprint-screen-head">
+            <span>화면 ${escapeHtml(screen.screen_index || '')}</span>
+            <strong>${escapeHtml(screen.screen_title || '교육 화면')}</strong>
+          </div>
+          <p>${escapeHtml(screen.learning_goal || screen.narrative_function || '')}</p>
+          <div class="uc5-blueprint-position-list">
+            ${positionHtml}
+          </div>
+        </article>
+      `;
+    }).join('');
+
+    if (previewStage) {
+      previewStage.innerHTML = `
+        <div class="uc5-blueprint-preview uc5-fade-in-up">
+          <div class="uc5-planning-review-head">
+            <div>
+              <div class="uc5-planning-review-kicker">교육 화면 설계안</div>
+              <h3>${escapeHtml(summary.lesson_title || '교육 화면 설계안')}</h3>
+              <p class="uc5-planning-review-subtitle">
+                ${escapeHtml(summary.lesson_subtitle || summary.learner_promise || '화면별 역할과 콘텐츠 영역을 구성했습니다.')}
+              </p>
+            </div>
+            <div class="uc5-planning-status-badge">내용 작성 대기</div>
+          </div>
+
+          <div class="uc5-planning-summary-grid">
+            <div class="uc5-planning-summary-card">
+              <span>화면 수</span>
+              <strong>${escapeHtml(screens.length)}</strong>
+            </div>
+            <div class="uc5-planning-summary-card">
+              <span>콘텐츠 블록</span>
+              <strong>${escapeHtml(sectionCount)}</strong>
+            </div>
+            <div class="uc5-planning-summary-card">
+              <span>교육 구성</span>
+              <strong>${escapeHtml(selectedTemplate.macro_shell_id || '-')}</strong>
+            </div>
+            <div class="uc5-planning-summary-card">
+              <span>템플릿</span>
+              <strong>${escapeHtml(selectedTemplate.template_id || '-')}</strong>
+            </div>
+          </div>
+
+          <div class="uc5-blueprint-screen-grid">
+            ${screenHtml || '<div class="uc5-empty-preview"><h3>화면 설계안 없음</h3></div>'}
+          </div>
+
+          <div class="uc5-planning-review-actions">
+            <button
+              type="button"
+              class="uc5-review-btn uc5-review-btn-ghost"
+              data-uc5-action="back-to-input"
+            >
+              조건 수정
+            </button>
+
+            <button
+              type="button"
+              class="uc5-review-btn uc5-review-btn-secondary"
+              data-uc5-action="regenerate-blueprint"
+            >
+              설계안 다시 만들기
+            </button>
+
+            <button
+              type="button"
+              class="uc5-review-btn uc5-review-btn-primary"
+              data-uc5-action="create-final-preview"
+            >
+              내용 작성하고 최종 미리보기 만들기
+            </button>
+          </div>
+        </div>
+      `;
+      scheduleUC5PreviewFit();
+    }
+  }
+
+  async function requestUC5TemplateBlueprintFromCurrentSelection() {
+    if (!uc5UploadedFile) {
+      alert('교육 원문 PDF를 먼저 업로드해 주세요.');
       return;
     }
 
+    const actionBtn = uc5RunBtn;
     const approveBtn = previewStage?.querySelector('[data-uc5-action="approve-planning"]');
     const regenerateBtn = previewStage?.querySelector('[data-uc5-action="regenerate-planning"]');
 
+    if (actionBtn) {
+      actionBtn.disabled = true;
+      actionBtn.textContent = '화면 설계안 만드는 중...';
+    }
+
     if (approveBtn) {
       approveBtn.disabled = true;
-      approveBtn.textContent = '교육 화면과 내용을 생성하는 중...';
+      approveBtn.textContent = '화면 설계안 만드는 중...';
     }
 
     if (regenerateBtn) {
@@ -2520,6 +2876,13 @@ Customer: Thank you. Goodbye.`
     }
 
     try {
+      uc5TemplateBoundBlueprintData = null;
+      uc5SlotPayloadSeedData = null;
+      uc5SourceCoverageSummaryData = null;
+      uc5RenderPlanData = null;
+      uc5RenderPlanScreenIndex = 0;
+      uc5RenderPlanInteractionState = {};
+
       setUC5PipelineStatus('blueprint', 'active');
       setUC5LoadingCopy('blueprint');
       scheduleUC5PreviewFit();
@@ -2527,16 +2890,69 @@ Customer: Thank you. Goodbye.`
       const blueprintResponse = await postUC5Workflow(
         CONFIG.UC5_W02_WEBHOOK,
         buildUC5TemplateBlueprintFormData(),
-        '화면 구성 설계 생성 실패'
+        '교육 화면 설계안 생성 실패'
       );
 
       const blueprintPayload = getUC5ResponsePayload(blueprintResponse);
-      uc5TemplateBoundBlueprintData = getUC5TemplateBoundBlueprint(blueprintResponse);
+      const blueprint = getUC5TemplateBoundBlueprint(blueprintResponse);
 
-      if (blueprintPayload.validation_status !== 'pass' || !uc5TemplateBoundBlueprintData) {
-        throw new Error('화면 구성 설계 검증에 실패했습니다. 관리자 검토가 필요합니다.');
+      if (blueprintPayload.validation_status !== 'pass' || !blueprint) {
+        throw new Error('교육 화면 설계안 검증에 실패했습니다. 관리자 검토가 필요합니다.');
       }
 
+      renderUC5TemplateBlueprintPreview(blueprint);
+    } catch (err) {
+      console.error(err);
+      setUC5PipelineStatus('blueprint', 'error');
+
+      if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+      }
+
+      if (previewStage) {
+        previewStage.innerHTML = `
+          <div class="uc5-empty-preview">
+            <span class="uc5-empty-icon" style="color: var(--danger);">⚠️</span>
+            <h3 style="color: var(--danger);">교육 화면 설계안 생성 실패</h3>
+            <p>${escapeHtml(err.message || '네트워크 통신 중 에러가 발생했습니다.')}</p>
+          </div>
+        `;
+        scheduleUC5PreviewFit();
+      }
+    } finally {
+      validateUC5RunBtn();
+      if (actionBtn) actionBtn.textContent = '교육 기획안 만들기';
+      if (approveBtn) {
+        approveBtn.disabled = false;
+        approveBtn.textContent = '이 구성으로 교육 기획안 만들기';
+      }
+      if (regenerateBtn) regenerateBtn.disabled = false;
+    }
+  }
+
+  async function requestUC5FinalPreviewFromBlueprint() {
+    if (!uc5TemplateBoundBlueprintData) {
+      alert('먼저 교육 화면 설계안을 만들어 주세요.');
+      return;
+    }
+
+    const finalBtn = previewStage?.querySelector('[data-uc5-action="create-final-preview"]');
+    const regenerateBtn = previewStage?.querySelector('[data-uc5-action="regenerate-blueprint"]');
+
+    if (finalBtn) {
+      finalBtn.disabled = true;
+      finalBtn.textContent = '최종 미리보기 만드는 중...';
+    }
+
+    if (regenerateBtn) {
+      regenerateBtn.disabled = true;
+    }
+
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'flex';
+    }
+
+    try {
       setUC5PipelineStatus('payload', 'active');
       setUC5LoadingCopy('payload');
       scheduleUC5PreviewFit();
@@ -2544,7 +2960,7 @@ Customer: Thank you. Goodbye.`
       const payloadResponse = await postUC5Workflow(
         CONFIG.UC5_W03_WEBHOOK,
         buildUC5SlotPayloadSeedFormData(),
-        '학습 화면 내용 생성 실패'
+        '학습 내용 작성 실패'
       );
 
       const slotPayload = getUC5ResponsePayload(payloadResponse);
@@ -2552,7 +2968,7 @@ Customer: Thank you. Goodbye.`
       uc5SourceCoverageSummaryData = getUC5SourceCoverageSummary(payloadResponse);
 
       if (slotPayload.validation_status !== 'pass' || !uc5SlotPayloadSeedData) {
-        throw new Error('학습 화면 내용 검증에 실패했습니다. 원문 근거 또는 payload 구성을 확인해 주세요.');
+        throw new Error('학습 내용 검증에 실패했습니다. 원문 근거 또는 화면 내용을 확인해 주세요.');
       }
 
       setUC5PipelineStatus('render', 'active');
@@ -2575,17 +2991,21 @@ Customer: Thank you. Goodbye.`
         loadingOverlay.style.display = 'none';
       }
 
-      if (approveBtn) {
-        approveBtn.disabled = false;
-        approveBtn.textContent = '승인하고 교육 미리보기 생성';
+      if (finalBtn) {
+        finalBtn.disabled = false;
+        finalBtn.textContent = '내용 작성하고 최종 미리보기 만들기';
       }
 
       if (regenerateBtn) {
         regenerateBtn.disabled = false;
       }
 
-      alert(err.message || '교육 미리보기 생성 중 오류가 발생했습니다.');
+      alert(err.message || '최종 교육 미리보기 생성 중 오류가 발생했습니다.');
     }
+  }
+
+  async function requestUC5RenderPlanFromApprovedDraft() {
+    await requestUC5TemplateBlueprintFromCurrentSelection();
   }
 
   function renderUC5PlanningDraft(plan) {
@@ -2618,10 +3038,9 @@ Customer: Thank you. Goodbye.`
     const confidence = rationale.decision_confidence || '-';
 
     if (selection.macro_shell_id && UC5_MACRO_SHELL_META[selection.macro_shell_id]) {
-      setUC5SelectedMacroShell(selection.macro_shell_id);
-      macroShellInputs.forEach((input) => {
-        input.checked = input.value === selection.macro_shell_id;
-      });
+      applyUC5SelectionToControls(selection);
+    } else {
+      updateUC5LearningConditionState();
     }
 
     const screenHtml = screens.slice(0, 12).map((screen, idx) => {
@@ -2660,7 +3079,7 @@ Customer: Thank you. Goodbye.`
     }
 
     if (activeLayoutText) {
-      activeLayoutText.textContent = `기획안 검토 · ${selectedShell}`;
+      activeLayoutText.textContent = `AI 추천 적용 · ${selectedShell}`;
     }
 
     setUC5PipelineStatus('planning', 'done');
@@ -2669,13 +3088,13 @@ Customer: Thank you. Goodbye.`
       <div class="uc5-planning-review uc5-fade-in-up">
         <div class="uc5-planning-review-head">
           <div>
-            <div class="uc5-planning-review-kicker">교육 기획안 생성 완료</div>
+            <div class="uc5-planning-review-kicker">AI가 추천한 교육 구성</div>
             <h3>${escapeHtml(narrative.lesson_title || '교육 기획안 검토')}</h3>
             <p class="uc5-planning-review-subtitle">
               ${escapeHtml(narrative.lesson_subtitle || narrative.learner_promise || '원문 PDF와 관리자 조건을 바탕으로 교육 흐름을 제안했습니다.')}
             </p>
           </div>
-          <div class="uc5-planning-status-badge">검토 대기</div>
+          <div class="uc5-planning-status-badge">추천 적용됨</div>
         </div>
 
         <div class="uc5-planning-summary-grid">
@@ -2744,16 +3163,18 @@ Customer: Thank you. Goodbye.`
             class="uc5-review-btn uc5-review-btn-primary"
             data-uc5-action="approve-planning"
           >
-            승인하고 교육 미리보기 생성
+            이 구성으로 교육 기획안 만들기
           </button>
         </div>
 
         <div class="uc5-planning-next-note">
-          승인하면 화면 구성 설계와 원문 근거 기반 학습 문구 작성이 자동으로 이어집니다.
+          다음 단계에서 화면별 구성과 콘텐츠 영역을 설계합니다.
         </div>
       </div>
     `;
     scheduleUC5PreviewFit();
+    updateUC5LearningConditionState();
+    validateUC5RunBtn();
   }
 
   if (previewStage) {
@@ -2765,22 +3186,25 @@ Customer: Thank you. Goodbye.`
 
       if (action === 'approve-planning') {
         e.preventDefault();
-        requestUC5RenderPlanFromApprovedDraft();
+        requestUC5TemplateBlueprintFromCurrentSelection();
+        return;
+      }
+
+      if (action === 'create-final-preview') {
+        e.preventDefault();
+        requestUC5FinalPreviewFromBlueprint();
         return;
       }
 
       if (action === 'regenerate-planning') {
         e.preventDefault();
+        requestUC5AiRecommendation();
+        return;
+      }
 
-        if (!uc5UploadedFile) {
-          alert('파일을 다시 업로드해 주세요.');
-          return;
-        }
-
-        if (uc5RunBtn) {
-          uc5RunBtn.click();
-        }
-
+      if (action === 'regenerate-blueprint') {
+        e.preventDefault();
+        requestUC5TemplateBlueprintFromCurrentSelection();
         return;
       }
 
@@ -2795,8 +3219,93 @@ Customer: Thank you. Goodbye.`
           activeLayoutText.textContent = '조건 수정 대기';
         }
 
+        updateUC5LearningConditionState();
         return;
       }
+    });
+  }
+
+  async function requestUC5AiRecommendation() {
+    if (!uc5UploadedFile) {
+      alert('교육 원문 PDF를 먼저 업로드해 주세요.');
+      return;
+    }
+
+    setUC5PipelineStatus('planning', 'active');
+    setUC5LoadingCopy('planning');
+    if (loadingOverlay) loadingOverlay.style.display = 'flex';
+    scheduleUC5PreviewFit();
+    if (paginationFooter) paginationFooter.style.display = 'none';
+    if (previewStage) previewStage.innerHTML = '';
+
+    if (uc5AiRecommendBtn) {
+      uc5AiRecommendBtn.disabled = true;
+      uc5AiRecommendBtn.textContent = '분석 중...';
+    }
+
+    if (uc5RunBtn) {
+      uc5RunBtn.disabled = true;
+    }
+
+    uc5PlanningDraftData = null;
+    uc5CurrentUiSelectionData = null;
+    uc5TemplateBoundBlueprintData = null;
+    uc5SlotPayloadSeedData = null;
+    uc5SourceCoverageSummaryData = null;
+    uc5RenderPlanData = null;
+    uc5RenderPlanScreenIndex = 0;
+    uc5RenderPlanInteractionState = {};
+
+    try {
+      const data = await postUC5Workflow(
+        CONFIG.UC5_W01_WEBHOOK,
+        buildUC5PlanningFormData(),
+        'AI 추천 생성 실패'
+      );
+
+      const payload = getUC5ResponsePayload(data);
+      const draft = getUC5NarrativePlanningDraft(data);
+
+      if (payload.validation_status !== 'pass' || !draft) {
+        throw new Error('AI 추천 결과 검증에 실패했습니다. 응답 내용을 확인해 주세요.');
+      }
+
+      renderUC5PlanningDraft(draft);
+    } catch (err) {
+      console.error(err);
+      setUC5PipelineStatus('planning', 'error');
+      if (loadingOverlay) loadingOverlay.style.display = 'none';
+
+      if (previewStage) {
+        previewStage.innerHTML = `
+          <div class="uc5-empty-preview">
+            <span class="uc5-empty-icon" style="color: var(--danger);">⚠️</span>
+            <h3 style="color: var(--danger);">AI 추천 생성 실패</h3>
+            <p>${escapeHtml(err.message || '네트워크 통신 중 에러가 발생했습니다.')}</p>
+          </div>
+        `;
+        scheduleUC5PreviewFit();
+      }
+    } finally {
+      if (uc5AiRecommendBtn) {
+        uc5AiRecommendBtn.disabled = !uc5UploadedFile;
+        uc5AiRecommendBtn.textContent = '추천 받기';
+      }
+      validateUC5RunBtn();
+      updateUC5LearningConditionState();
+    }
+  }
+
+  if (uc5AiRecommendBtn) {
+    uc5AiRecommendBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      macroShellInputs.forEach((input) => {
+        input.checked = input.value === 'auto';
+      });
+      setUC5SelectedMacroShell('auto');
+      requestUC5AiRecommendation();
     });
   }
 
@@ -2805,59 +3314,15 @@ Customer: Thank you. Goodbye.`
     uc5RunBtn.addEventListener('click', async () => {
       if (!uc5UploadedFile) return;
 
-      setUC5PipelineStatus('planning', 'active');
-      setUC5LoadingCopy('planning');
-      if (loadingOverlay) loadingOverlay.style.display = 'flex';
-      scheduleUC5PreviewFit();
-      if (paginationFooter) paginationFooter.style.display = 'none';
-      if (previewStage) previewStage.innerHTML = '';
+      const selectedMode = getUC5SelectedMacroShell();
 
-      uc5RunBtn.disabled = true;
-      uc5RunBtn.textContent = '교육 기획안 작성 중...';
-
-      uc5PlanningDraftData = null;
-      uc5CurrentUiSelectionData = null;
-      uc5TemplateBoundBlueprintData = null;
-      uc5SlotPayloadSeedData = null;
-      uc5SourceCoverageSummaryData = null;
-      uc5RenderPlanData = null;
-      uc5RenderPlanScreenIndex = 0;
-      uc5RenderPlanInteractionState = {};
-
-      try {
-        const data = await postUC5Workflow(
-          CONFIG.UC5_W01_WEBHOOK,
-          buildUC5PlanningFormData(),
-          '교육 기획안 생성 실패'
-        );
-
-        const payload = getUC5ResponsePayload(data);
-        const draft = getUC5NarrativePlanningDraft(data);
-
-        if (payload.validation_status !== 'pass' || !draft) {
-          throw new Error('교육 기획안 검증에 실패했습니다. 응답 내용을 확인해 주세요.');
-        }
-
-        renderUC5PlanningDraft(draft);
-      } catch (err) {
-        console.error(err);
-        setUC5PipelineStatus('planning', 'error');
-        if (loadingOverlay) loadingOverlay.style.display = 'none';
-
-        if (previewStage) {
-          previewStage.innerHTML = `
-            <div class="uc5-empty-preview">
-              <span class="uc5-empty-icon" style="color: var(--danger);">⚠️</span>
-              <h3 style="color: var(--danger);">교육 기획안 생성 실패</h3>
-              <p>${escapeHtml(err.message || '네트워크 통신 중 에러가 발생했습니다.')}</p>
-            </div>
-          `;
-          scheduleUC5PreviewFit();
-        }
-      } finally {
+      if (selectedMode === 'auto' && !(uc5PlanningDraftData && uc5CurrentUiSelectionData)) {
+        alert('AI 추천을 먼저 받아 주세요. 직접 지정하려면 개념 이해형, 업무 절차형, 상황 판단형 중 하나를 선택하세요.');
         validateUC5RunBtn();
-        uc5RunBtn.textContent = '▶ 교육 기획안 만들기';
+        return;
       }
+
+      await requestUC5TemplateBlueprintFromCurrentSelection();
     });
   }
 
@@ -2877,7 +3342,7 @@ Customer: Thank you. Goodbye.`
   });
 
   function updatePaginationUI() {
-    pageIndicator.textContent = `Slide ${uc5ActivePageIndex} / 5`;
+    pageIndicator.textContent = `화면 ${uc5ActivePageIndex} / 5`;
     prevBtn.disabled = (uc5ActivePageIndex === 1);
     nextBtn.disabled = (uc5ActivePageIndex === 5);
   }

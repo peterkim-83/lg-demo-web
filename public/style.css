@@ -4537,3 +4537,506 @@ body:has(#view-uc5.active) #main-content {
 .uc5-viewport-canvas.uc5-mobile-frame .uc5-rp-timeline-step p {
     font-size: 0.72rem;
 }
+
+/* ============================================================
+   UC5 관리자용 3단계 교육 생성 흐름 보강
+   Scope: #view-uc5 / .uc5-* only
+   ============================================================ */
+
+#view-uc5 .uc5-control-helper {
+    margin: 6px 0 12px;
+    color: rgba(71, 85, 105, 0.82);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+#view-uc5 .uc5-card-title {
+    letter-spacing: -0.02em;
+}
+
+#view-uc5 .uc5-card-desc {
+    line-height: 1.35;
+}
+
+#view-uc5 .uc5-pipeline-status {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    margin: 10px 0 14px;
+}
+
+#view-uc5 .uc5-pipeline-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.42);
+    background: rgba(248, 250, 252, 0.78);
+    color: rgba(71, 85, 105, 0.9);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+#view-uc5 .uc5-pipeline-step.is-active {
+    border-color: rgba(79, 70, 229, 0.52);
+    background: rgba(79, 70, 229, 0.1);
+    color: #4338ca;
+    transform: translateY(-1px);
+}
+
+#view-uc5 .uc5-pipeline-step.is-done {
+    border-color: rgba(16, 185, 129, 0.45);
+    background: rgba(16, 185, 129, 0.11);
+    color: #047857;
+}
+
+#view-uc5 .uc5-pipeline-step.is-error {
+    border-color: rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.1);
+    color: #b91c1c;
+}
+
+#view-uc5 .uc5-action-helper {
+    margin: 10px 0 0;
+    color: rgba(71, 85, 105, 0.75);
+    font-size: 11px;
+    line-height: 1.45;
+    text-align: center;
+}
+
+#view-uc5 .uc5-planning-template-note {
+    margin-top: 14px;
+}
+
+#view-uc5 .uc5-admin-review-list {
+    display: grid;
+    gap: 8px;
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+#view-uc5 .uc5-admin-review-list li {
+    display: grid;
+    grid-template-columns: minmax(120px, 0.36fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 14px;
+    background: rgba(248, 250, 252, 0.82);
+    padding: 10px 12px;
+}
+
+#view-uc5 .uc5-admin-review-list strong {
+    color: #1e293b;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+#view-uc5 .uc5-admin-review-list span {
+    color: rgba(71, 85, 105, 0.9);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+#view-uc5 .uc5-planning-status-badge {
+    white-space: nowrap;
+}
+
+#view-uc5 .uc5-review-btn-primary {
+    min-width: 210px;
+}
+
+@media (max-width: 1100px) {
+    #view-uc5 .uc5-pipeline-status {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    #view-uc5 .uc5-admin-review-list li {
+        grid-template-columns: 1fr;
+    }
+
+    #view-uc5 .uc5-pipeline-status {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* =========================================================
+   UC5 Admin Flow v2 - scoped polish
+   ========================================================= */
+#view-uc5.active {
+    min-height: calc(100vh - 0px);
+}
+
+#view-uc5 .uc5-dashboard-container {
+    min-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+#view-uc5 .uc5-admin-flow-top,
+#view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+    display: grid;
+    grid-template-columns: minmax(360px, 1.35fr) minmax(420px, 1.45fr) minmax(240px, .82fr) minmax(210px, .72fr);
+    gap: 16px;
+    align-items: stretch;
+}
+
+#view-uc5 .uc5-admin-card,
+#view-uc5 .uc5-control-box.uc5-admin-card {
+    border: 1px solid #e5ebf4;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
+    padding: 18px;
+    min-height: 142px;
+}
+
+#view-uc5 .uc5-card-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+#view-uc5 .uc5-control-label {
+    font-size: 13px;
+    font-weight: 800;
+    color: #172033;
+    letter-spacing: -.01em;
+}
+
+#view-uc5 .uc5-mode-chip,
+#view-uc5 .uc5-lock-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4f46e5;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+#view-uc5 .uc5-lock-chip {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+#view-uc5 .uc5-admin-template-grid,
+#view-uc5 .uc5-template-selector-row.uc5-admin-template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+#view-uc5 .uc5-template-card .uc5-card-inner {
+    min-height: 62px;
+    padding: 13px 14px;
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #e5ebf4;
+    box-shadow: 0 2px 7px rgba(15, 23, 42, .035);
+}
+
+#view-uc5 .uc5-template-card:hover .uc5-card-inner {
+    border-color: #c7d2fe;
+    transform: translateY(-1px);
+}
+
+#view-uc5 .uc5-template-card input[type="radio"]:checked+.uc5-card-inner {
+    border-color: #7c6df5;
+    background: linear-gradient(135deg, #fbfaff 0%, #f4f2ff 100%);
+    box-shadow: 0 9px 22px rgba(99, 102, 241, .16);
+}
+
+#view-uc5 .uc5-card-title {
+    color: #101828;
+    font-size: 13px;
+    font-weight: 850;
+}
+
+#view-uc5 .uc5-card-desc {
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+#view-uc5 .uc5-ai-recommend-card .uc5-card-inner {
+    position: relative;
+    padding-right: 94px;
+}
+
+#view-uc5 .uc5-inline-ai-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    border-radius: 999px;
+    height: 30px;
+    padding: 0 12px;
+    background: #5b5cf6;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 850;
+    cursor: pointer;
+    box-shadow: 0 8px 16px rgba(79, 70, 229, .22);
+}
+
+#view-uc5 .uc5-inline-ai-btn:hover:not(:disabled) {
+    background: #4338ca;
+}
+
+#view-uc5 .uc5-inline-ai-btn:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+}
+
+#view-uc5 .uc5-planning-box.is-disabled {
+    background: #f8fafc;
+    border-color: #e6edf5;
+    box-shadow: none;
+}
+
+#view-uc5 .uc5-planning-box.is-disabled .uc5-mini-field,
+#view-uc5 .uc5-planning-box.is-disabled .uc5-admin-notes {
+    opacity: .55;
+}
+
+#view-uc5 .uc5-planning-box.is-disabled::after {
+    content: "AI 추천 결과가 들어오면 자동으로 채워집니다.";
+    display: block;
+    margin-top: 10px;
+    padding: 9px 11px;
+    border-radius: 12px;
+    background: #eef2f7;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+#view-uc5 .uc5-planning-grid {
+    gap: 10px;
+}
+
+#view-uc5 .uc5-mini-field span {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+#view-uc5 .uc5-mini-field select,
+#view-uc5 .uc5-admin-notes {
+    height: 34px;
+    border-radius: 10px;
+    border-color: #dbe4ef;
+    font-size: 12px;
+}
+
+#view-uc5 .uc5-upload-wrapper {
+    min-height: 92px;
+    border-radius: 16px;
+    background: #fbfdff;
+}
+
+#view-uc5 .uc5-action-box {
+    justify-content: space-between;
+}
+
+#view-uc5 .uc5-action-box .btn-primary {
+    height: 48px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 850;
+    box-shadow: 0 12px 22px rgba(79, 70, 229, .2);
+}
+
+#view-uc5 .uc5-action-helper {
+    margin: 9px 0 0;
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+#view-uc5 .uc5-pipeline-status {
+    margin: 0 0 10px;
+}
+
+#view-uc5 .uc5-bottom-preview-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 18px;
+}
+
+#view-uc5 .uc5-preview-header {
+    min-height: 50px;
+}
+
+#view-uc5 .uc5-viewport-canvas {
+    flex: 1 1 auto;
+    min-height: 560px;
+    padding: 18px;
+    border-radius: 0 0 16px 16px;
+}
+
+#view-uc5 .uc5-chassis-wrapper {
+    box-shadow: 0 18px 50px rgba(15, 23, 42, .08);
+}
+
+#view-uc5 .uc5-admin-empty-preview {
+    padding: 44px;
+}
+
+#view-uc5 .uc5-planning-review,
+#view-uc5 .uc5-blueprint-preview {
+    width: 100%;
+    min-height: 100%;
+    padding: 28px;
+    overflow: auto;
+}
+
+#view-uc5 .uc5-blueprint-screen-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+#view-uc5 .uc5-blueprint-screen-card {
+    border: 1px solid #e5ebf4;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 15px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, .04);
+}
+
+#view-uc5 .uc5-blueprint-screen-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+#view-uc5 .uc5-blueprint-screen-head span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 52px;
+    height: 26px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4f46e5;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+#view-uc5 .uc5-blueprint-screen-head strong {
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+#view-uc5 .uc5-blueprint-screen-card p {
+    margin: 0 0 12px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+#view-uc5 .uc5-blueprint-position-list {
+    display: grid;
+    gap: 7px;
+}
+
+#view-uc5 .uc5-blueprint-position {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 9px;
+    border-radius: 11px;
+    background: #f8fafc;
+}
+
+#view-uc5 .uc5-blueprint-position span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+#view-uc5 .uc5-blueprint-position strong {
+    color: #334155;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#view-uc5 .uc5-blueprint-position em {
+    color: #6366f1;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+@media (max-width: 1500px) {
+
+    #view-uc5 .uc5-admin-flow-top,
+    #view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+        grid-template-columns: minmax(340px, 1.1fr) minmax(390px, 1.25fr) minmax(220px, .8fr) minmax(200px, .72fr);
+        gap: 12px;
+    }
+
+    #view-uc5 .uc5-admin-card,
+    #view-uc5 .uc5-control-box.uc5-admin-card {
+        padding: 14px;
+    }
+}
+
+@media (max-width: 1180px) {
+
+    #view-uc5 .uc5-admin-flow-top,
+    #view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    #view-uc5 .uc5-blueprint-screen-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 760px) {
+
+    #view-uc5 .uc5-admin-flow-top,
+    #view-uc5 .uc5-top-control-bar.uc5-admin-flow-top,
+    #view-uc5 .uc5-admin-template-grid,
+    #view-uc5 .uc5-template-selector-row.uc5-admin-template-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #view-uc5 .uc5-viewport-canvas {
+        min-height: 520px;
+        padding: 12px;
+    }
+}
