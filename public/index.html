@@ -212,9 +212,24 @@
         <div class="uc5-dashboard-container">
 
           <div class="uc5-top-control-bar uc5-admin-flow-top">
+            <div class="uc5-control-box uc5-upload-box uc5-admin-card">
+              <span class="uc5-control-label">1. 교육 원문 PDF</span>
+              <div class="uc5-uploader-container">
+                <label class="uc5-upload-wrapper" id="uc5-dropzone" for="uc5-fileInput">
+                  <span class="uc5-upload-icon">📤</span>
+                  <div class="uc5-upload-content" id="uc5-uploadPrompt">
+                    <span class="uc5-upload-text">PDF를 드롭하거나 선택하세요</span>
+                    <span class="uc5-upload-hint">PDF 1개 · 최대 10MB</span>
+                  </div>
+                  <span class="uc5-file-name" id="uc5-fileNameDisplay" style="display: none;"></span>
+                </label>
+                <input type="file" id="uc5-fileInput" accept=".pdf,application/pdf" hidden />
+              </div>
+            </div>
+
             <div class="uc5-control-box uc5-template-box uc5-shell-box uc5-admin-card">
               <div class="uc5-card-heading-row">
-                <span class="uc5-control-label">1. 교육 구성 방식</span>
+                <span class="uc5-control-label">2. 교육 구성 방식</span>
                 <span class="uc5-mode-chip" id="uc5-selectionModeChip">AI 추천 대기</span>
               </div>
 
@@ -268,7 +283,7 @@
 
             <div class="uc5-control-box uc5-planning-box uc5-admin-card is-disabled" id="uc5-learningConditionsBox">
               <div class="uc5-card-heading-row">
-                <span class="uc5-control-label">2. 학습 조건</span>
+                <span class="uc5-control-label">3. 학습 조건</span>
                 <span class="uc5-lock-chip" id="uc5-conditionStateChip">AI 추천 후 편집 가능</span>
               </div>
 
@@ -332,21 +347,6 @@
 
               <input class="uc5-admin-notes" id="uc5-adminNotes" type="text"
                 placeholder="관리자 메모: 예) 모바일 학습자 중심, 실무 적용 사례 중심" />
-            </div>
-
-            <div class="uc5-control-box uc5-upload-box uc5-admin-card">
-              <span class="uc5-control-label">3. 교육 원문 PDF</span>
-              <div class="uc5-uploader-container">
-                <label class="uc5-upload-wrapper" id="uc5-dropzone" for="uc5-fileInput">
-                  <span class="uc5-upload-icon">📤</span>
-                  <div class="uc5-upload-content" id="uc5-uploadPrompt">
-                    <span class="uc5-upload-text">PDF를 드롭하거나 선택하세요</span>
-                    <span class="uc5-upload-hint">PDF 1개 · 최대 10MB</span>
-                  </div>
-                  <span class="uc5-file-name" id="uc5-fileNameDisplay" style="display: none;"></span>
-                </label>
-                <input type="file" id="uc5-fileInput" accept=".pdf,application/pdf" hidden />
-              </div>
             </div>
 
             <div class="uc5-control-box uc5-action-box uc5-admin-card">
