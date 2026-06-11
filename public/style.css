@@ -5566,3 +5566,39 @@ body:has(#view-uc5.active) #main-content {
         gap: 7px !important;
     }
 }
+
+/* =========================================================
+   UC5 Preview Action Button Hover Contrast Fix
+   Scope: #view-uc5 / preview review buttons only
+   Purpose: keep CTA labels visible when hover/overlay effects lighten the button background.
+   ========================================================= */
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary,
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:hover:not(:disabled),
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:focus-visible,
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:active:not(:disabled) {
+    background: #eef2ff !important;
+    color: #3730a3 !important;
+    border-color: #c7d2fe !important;
+    box-shadow: 0 10px 22px rgba(79, 70, 229, .14) !important;
+    opacity: 1 !important;
+    text-shadow: none !important;
+}
+
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:hover:not(:disabled),
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:focus-visible {
+    background: #ffffff !important;
+    color: #312e81 !important;
+    border-color: #818cf8 !important;
+    box-shadow: 0 12px 26px rgba(79, 70, 229, .18) !important;
+}
+
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:disabled,
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:disabled:hover,
+#view-uc5 .uc5-blueprint-preview .uc5-review-btn-primary:disabled:focus {
+    background: #f8fafc !important;
+    color: #64748b !important;
+    border-color: #e2e8f0 !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+    cursor: not-allowed !important;
+}
