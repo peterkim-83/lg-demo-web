@@ -2084,15 +2084,35 @@ Customer: Thank you. Goodbye.`
     }
   }
 
-  function parseUC5WebhookResponse(rawText) {
-    const firstParsed = JSON.parse(rawText);
+  function normalizeUC5WebhookEnvelope(value) {
+    let data = value;
 
-    // Some n8n Respond to Webhook configurations return the model JSON as a string.
-    if (typeof firstParsed === 'string') {
-      return JSON.parse(firstParsed);
+    if (typeof data === 'string') {
+      data = JSON.parse(data);
     }
 
-    return firstParsed;
+    if (Array.isArray(data)) {
+      data = data.find(item =>
+        item &&
+        typeof item === 'object' &&
+        (item.response_payload || item.workflow_response_version || item.status || item.json)
+      ) || data[0] || {};
+    }
+
+    if (data && typeof data === 'object' && data.json && typeof data.json === 'object') {
+      data = data.json;
+    }
+
+    if (typeof data === 'string') {
+      data = JSON.parse(data);
+    }
+
+    return data && typeof data === 'object' ? data : {};
+  }
+
+  function parseUC5WebhookResponse(rawText) {
+    const firstParsed = JSON.parse(rawText);
+    return normalizeUC5WebhookEnvelope(firstParsed);
   }
 
   function getUC5PrimaryComponentLabel(screen) {
@@ -2108,10 +2128,10 @@ Customer: Thank you. Goodbye.`
   }
 
   function getUC5ResponsePayload(data) {
-    if (!data || typeof data !== 'object') return {};
-    return data.response_payload && typeof data.response_payload === 'object'
-      ? data.response_payload
-      : data;
+    const normalized = normalizeUC5WebhookEnvelope(data);
+    return normalized.response_payload && typeof normalized.response_payload === 'object'
+      ? normalized.response_payload
+      : normalized;
   }
 
   function getUC5NarrativePlanningDraft(data) {
@@ -2604,6 +2624,150 @@ Customer: Thank you. Goodbye.`
     `;
   }
 
+  function renderUC5V2PrimaryEntries(payload, preferredArrays = []) {
+    const arrays = Array.isArray(preferredArrays) && preferredArrays.length
+      ? preferredArrays
+      : ['cards', 'items', 'steps', 'checklist_items', 'options'];
+
+    for (const key of arrays) {
+      const values = getUC5V2Array(payload?.[key]);
+      if (values.length) return values;
+    }
+
+    return getUC5V2PayloadCollection(payload);
+  }
+
+  function renderUC5V2PlaybookScopeCard(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['cards', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-playbook-scope-card">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-scope-grid">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-scope-item">
+              <div class="uc5-rp-scope-badge">${escapeHtml(entry.badge || entry.label || String(idx + 1))}</div>
+              <h4>${escapeHtml(entry.title || `적용 기준 ${idx + 1}`)}</h4>
+              ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2DecisionGatePanel(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['cards', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-decision-gate-panel">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-gate-flow">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-gate-card">
+              <span class="uc5-rp-gate-index">${escapeHtml(entry.label || String(idx + 1))}</span>
+              <div>
+                <h4>${escapeHtml(entry.title || `판단 ${idx + 1}`)}</h4>
+                ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+              </div>
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2ResponseStepTable(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['checklist_items', 'steps']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-response-step-table">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-step-table" role="table" aria-label="${escapeHtml(getUC5V2SectionTitle(section))}">
+          <div class="uc5-rp-step-table-row uc5-rp-step-table-head" role="row">
+            <span role="columnheader">Step</span>
+            <span role="columnheader">Action</span>
+          </div>
+          ${entries.slice(0, 8).map((item, idx) => `
+            <div class="uc5-rp-step-table-row" role="row">
+              <span role="cell">${escapeHtml(item.label || String(idx + 1))}</span>
+              <span role="cell">
+                <strong>${escapeHtml(item.title || `실행 항목 ${idx + 1}`)}</strong>
+                ${item.body ? `<em>${escapeHtml(item.body)}</em>` : ''}
+              </span>
+            </div>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2CoordinationMatrix(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['cards', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-coordination-matrix">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-matrix-grid">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-matrix-card">
+              <div class="uc5-rp-matrix-role">${escapeHtml(entry.label || entry.badge || `Role ${idx + 1}`)}</div>
+              <h4>${escapeHtml(entry.title || `역할 ${idx + 1}`)}</h4>
+              ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+              ${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2ReportingTimeline(section) {
+    const payload = getUC5V2Payload(section);
+    const steps = renderUC5V2PrimaryEntries(payload, ['steps']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-reporting-timeline">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-reporting-rail">
+          ${steps.slice(0, 8).map((step, idx) => `
+            <article class="uc5-rp-reporting-step">
+              <span>${escapeHtml(step.label || String(idx + 1))}</span>
+              <div>
+                <h4>${escapeHtml(step.title || `보고 단계 ${idx + 1}`)}</h4>
+                ${step.body ? `<p>${escapeHtml(step.body)}</p>` : ''}
+              </div>
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2StatusClassifier(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['cards', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-status-classifier">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-status-grid">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-status-card">
+              <div class="uc5-rp-status-pill">${escapeHtml(entry.badge || entry.label || String(idx + 1))}</div>
+              <h4>${escapeHtml(entry.title || `상태 ${idx + 1}`)}</h4>
+              ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
   function renderUC5V2FallbackSection(section) {
     const payload = getUC5V2Payload(section);
     const entries = getUC5V2PayloadCollection(payload);
@@ -2629,6 +2793,12 @@ Customer: Thank you. Goodbye.`
     attribute_stack: renderUC5V2AttributeStack,
     concept_card_grid: renderUC5V2AttributeStack,
     stakeholder_map: renderUC5V2AttributeStack,
+    playbook_scope_card: renderUC5V2PlaybookScopeCard,
+    decision_gate_panel: renderUC5V2DecisionGatePanel,
+    response_step_table: renderUC5V2ResponseStepTable,
+    coordination_matrix: renderUC5V2CoordinationMatrix,
+    reporting_timeline: renderUC5V2ReportingTimeline,
+    status_classifier: renderUC5V2StatusClassifier,
     process_timeline: renderUC5V2ProcessTimeline,
     method_stepper: renderUC5V2ProcessTimeline,
     phase_cards: renderUC5V2PhaseCards,
