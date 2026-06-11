@@ -5803,3 +5803,174 @@ body:has(#view-uc5.active) #main-content {
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================================================
+   UC5-DS-4 Decision Simulator Renderer Extensions
+   Scope: #view-uc5 only
+   ========================================================================== */
+
+#view-uc5 .uc5-rp-scenario-inject-timeline,
+#view-uc5 .uc5-rp-decision-option-panel,
+#view-uc5 .uc5-rp-tradeoff-consequence-map,
+#view-uc5 .uc5-rp-discussion-question-deck,
+#view-uc5 .uc5-rp-outcome-capture-panel,
+#view-uc5 .uc5-rp-information-sharing-matrix {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+#view-uc5 .uc5-rp-inject-rail,
+#view-uc5 .uc5-rp-question-deck,
+#view-uc5 .uc5-rp-outcome-list {
+    display: grid;
+    gap: 9px;
+    margin-top: 10px;
+}
+
+#view-uc5 .uc5-rp-decision-options,
+#view-uc5 .uc5-rp-tradeoff-grid,
+#view-uc5 .uc5-rp-sharing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+#view-uc5 .uc5-rp-inject-step,
+#view-uc5 .uc5-rp-question-card,
+#view-uc5 .uc5-rp-outcome-item {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 10px;
+    align-items: flex-start;
+    border: 1px solid #e0e7ff;
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 10px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+}
+
+#view-uc5 .uc5-rp-decision-option-card,
+#view-uc5 .uc5-rp-tradeoff-card,
+#view-uc5 .uc5-rp-sharing-card {
+    min-width: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 11px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+}
+
+#view-uc5 .uc5-rp-inject-marker,
+#view-uc5 .uc5-rp-question-mark,
+#view-uc5 .uc5-rp-outcome-item>span {
+    width: 32px;
+    height: 32px;
+    border-radius: 12px;
+    background: #4f46e5;
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+#view-uc5 .uc5-rp-question-mark {
+    background: #7c3aed;
+}
+
+#view-uc5 .uc5-rp-outcome-item>span {
+    background: #0f766e;
+}
+
+#view-uc5 .uc5-rp-decision-option-label,
+#view-uc5 .uc5-rp-tradeoff-axis,
+#view-uc5 .uc5-rp-sharing-label {
+    display: inline-flex;
+    max-width: 100%;
+    border-radius: 999px;
+    padding: 2px 7px;
+    font-size: 0.64rem;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#view-uc5 .uc5-rp-decision-option-label {
+    border: 1px solid #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+}
+
+#view-uc5 .uc5-rp-tradeoff-axis {
+    border: 1px solid #fecdd3;
+    background: #fff1f2;
+    color: #be123c;
+}
+
+#view-uc5 .uc5-rp-sharing-label {
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+#view-uc5 .uc5-rp-inject-step h4,
+#view-uc5 .uc5-rp-question-card h4,
+#view-uc5 .uc5-rp-outcome-item h4,
+#view-uc5 .uc5-rp-decision-option-card h4,
+#view-uc5 .uc5-rp-tradeoff-card h4,
+#view-uc5 .uc5-rp-sharing-card h4 {
+    margin: 6px 0 5px;
+    color: #0f172a;
+    font-size: 0.84rem;
+    line-height: 1.3;
+}
+
+#view-uc5 .uc5-rp-inject-step p,
+#view-uc5 .uc5-rp-question-card p,
+#view-uc5 .uc5-rp-outcome-item p,
+#view-uc5 .uc5-rp-decision-option-card p,
+#view-uc5 .uc5-rp-decision-option-card small,
+#view-uc5 .uc5-rp-tradeoff-card p,
+#view-uc5 .uc5-rp-sharing-card p,
+#view-uc5 .uc5-rp-sharing-card small {
+    display: block;
+    margin: 0;
+    color: #475569;
+    font-size: 0.74rem;
+    line-height: 1.45;
+    word-break: keep-all;
+}
+
+#view-uc5 .uc5-rp-tradeoff-card {
+    border-color: #fecdd3;
+    background: linear-gradient(180deg, #ffffff 0%, #fff7f9 100%);
+}
+
+#view-uc5 .uc5-rp-sharing-card {
+    border-color: #dbeafe;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame .uc5-rp-decision-options,
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame .uc5-rp-tradeoff-grid,
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame .uc5-rp-sharing-grid {
+    grid-template-columns: 1fr;
+}
+
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame .uc5-rp-inject-step,
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame .uc5-rp-question-card,
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame .uc5-rp-outcome-item {
+    grid-template-columns: 36px minmax(0, 1fr);
+}
+
+@media (max-width: 860px) {
+
+    #view-uc5 .uc5-rp-decision-options,
+    #view-uc5 .uc5-rp-tradeoff-grid,
+    #view-uc5 .uc5-rp-sharing-grid {
+        grid-template-columns: 1fr;
+    }
+}

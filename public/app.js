@@ -2768,6 +2768,136 @@ Customer: Thank you. Goodbye.`
     `;
   }
 
+
+  function renderUC5V2ScenarioInjectTimeline(section) {
+    const payload = getUC5V2Payload(section);
+    const steps = renderUC5V2PrimaryEntries(payload, ['steps', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-scenario-inject-timeline">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-inject-rail">
+          ${steps.slice(0, 8).map((step, idx) => `
+            <article class="uc5-rp-inject-step">
+              <div class="uc5-rp-inject-marker">${escapeHtml(step.label || `T${idx + 1}`)}</div>
+              <div>
+                <h4>${escapeHtml(step.title || `인젝트 ${idx + 1}`)}</h4>
+                ${step.body ? `<p>${escapeHtml(step.body)}</p>` : ''}
+              </div>
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2DecisionOptionPanel(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['cards', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-decision-option-panel">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-decision-options">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-decision-option-card">
+              <span class="uc5-rp-decision-option-label">${escapeHtml(entry.badge || entry.label || String(idx + 1))}</span>
+              <h4>${escapeHtml(entry.title || `선택지 ${idx + 1}`)}</h4>
+              ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+              ${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2TradeoffConsequenceMap(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['cards', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-tradeoff-consequence-map">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-tradeoff-grid">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-tradeoff-card">
+              <div class="uc5-rp-tradeoff-axis">${escapeHtml(entry.label || entry.badge || `영향 ${idx + 1}`)}</div>
+              <h4>${escapeHtml(entry.title || `결과 ${idx + 1}`)}</h4>
+              ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+              ${entry.value ? `<strong>${escapeHtml(entry.value)}</strong>` : ''}
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2DiscussionQuestionDeck(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['items', 'cards']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-discussion-question-deck">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-question-deck">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-question-card">
+              <span class="uc5-rp-question-mark">${escapeHtml(entry.label || `Q${idx + 1}`)}</span>
+              <div>
+                <h4>${escapeHtml(entry.title || `토론 질문 ${idx + 1}`)}</h4>
+                ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+              </div>
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2OutcomeCapturePanel(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['checklist_items', 'items', 'cards']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-outcome-capture-panel">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-outcome-list">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-outcome-item">
+              <span>${escapeHtml(entry.label || String(idx + 1))}</span>
+              <div>
+                <h4>${escapeHtml(entry.title || `회고 항목 ${idx + 1}`)}</h4>
+                ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+              </div>
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
+  function renderUC5V2InformationSharingMatrix(section) {
+    const payload = getUC5V2Payload(section);
+    const entries = renderUC5V2PrimaryEntries(payload, ['cards', 'items']);
+    return `
+      <section class="uc5-rp-standard-block uc5-rp-information-sharing-matrix">
+        ${renderUC5V2PayloadIntro(section, { compact: true })}
+        <div class="uc5-rp-sharing-grid">
+          ${entries.slice(0, 6).map((entry, idx) => `
+            <article class="uc5-rp-sharing-card">
+              <div class="uc5-rp-sharing-label">${escapeHtml(entry.label || entry.badge || `공유 ${idx + 1}`)}</div>
+              <h4>${escapeHtml(entry.title || `공유 대상 ${idx + 1}`)}</h4>
+              ${entry.body ? `<p>${escapeHtml(entry.body)}</p>` : ''}
+              ${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}
+            </article>
+          `).join('')}
+        </div>
+        ${renderUC5V2SourceEvidence(section)}
+      </section>
+    `;
+  }
+
   function renderUC5V2FallbackSection(section) {
     const payload = getUC5V2Payload(section);
     const entries = getUC5V2PayloadCollection(payload);
@@ -2793,6 +2923,12 @@ Customer: Thank you. Goodbye.`
     attribute_stack: renderUC5V2AttributeStack,
     concept_card_grid: renderUC5V2AttributeStack,
     stakeholder_map: renderUC5V2AttributeStack,
+    scenario_inject_timeline: renderUC5V2ScenarioInjectTimeline,
+    decision_option_panel: renderUC5V2DecisionOptionPanel,
+    tradeoff_consequence_map: renderUC5V2TradeoffConsequenceMap,
+    discussion_question_deck: renderUC5V2DiscussionQuestionDeck,
+    outcome_capture_panel: renderUC5V2OutcomeCapturePanel,
+    information_sharing_matrix: renderUC5V2InformationSharingMatrix,
     playbook_scope_card: renderUC5V2PlaybookScopeCard,
     decision_gate_panel: renderUC5V2DecisionGatePanel,
     response_step_table: renderUC5V2ResponseStepTable,
