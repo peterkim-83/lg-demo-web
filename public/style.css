@@ -5040,3 +5040,426 @@ body:has(#view-uc5.active) #main-content {
         padding: 12px;
     }
 }
+
+/* =========================================================
+   UC5 Admin Flow v3 - compact top controls and full-height preview
+   Scope: #view-uc5 / .uc5-* only
+   Purpose: remove page-level scroll, reduce empty top gaps, keep final lesson scroll inside preview.
+   ========================================================= */
+body:has(#view-uc5.active) {
+    overflow: hidden !important;
+}
+
+body:has(#view-uc5.active) #main-content {
+    height: 100dvh !important;
+    overflow: hidden !important;
+    padding: 14px 20px !important;
+}
+
+#view-uc5.active {
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+#view-uc5 .uc5-dashboard-container {
+    height: calc(100dvh - 28px) !important;
+    min-height: 0 !important;
+    gap: 10px !important;
+    overflow: hidden !important;
+}
+
+#view-uc5 .uc5-admin-flow-top,
+#view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+    flex: 0 0 auto !important;
+    display: grid !important;
+    grid-template-columns: minmax(350px, 1.24fr) minmax(390px, 1.34fr) minmax(230px, .76fr) minmax(170px, .52fr) !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+    max-height: 174px !important;
+    overflow: hidden !important;
+}
+
+#view-uc5 .uc5-admin-card,
+#view-uc5 .uc5-control-box.uc5-admin-card {
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: 174px !important;
+    padding: 12px !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    justify-content: flex-start !important;
+}
+
+#view-uc5 .uc5-card-heading-row {
+    margin-bottom: 8px !important;
+    min-height: 20px !important;
+}
+
+#view-uc5 .uc5-control-label {
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+    margin: 0 !important;
+}
+
+#view-uc5 .uc5-mode-chip,
+#view-uc5 .uc5-lock-chip {
+    height: 20px !important;
+    padding: 0 8px !important;
+    font-size: 10px !important;
+}
+
+#view-uc5 .uc5-admin-template-grid,
+#view-uc5 .uc5-template-selector-row.uc5-admin-template-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: minmax(48px, 1fr) !important;
+    gap: 8px !important;
+    flex: 1 1 auto !important;
+}
+
+#view-uc5 .uc5-template-card .uc5-card-inner {
+    min-height: 0 !important;
+    height: 48px !important;
+    padding: 8px 10px !important;
+    border-radius: 13px !important;
+    gap: 8px !important;
+}
+
+#view-uc5 .uc5-card-emoji {
+    font-size: 17px !important;
+}
+
+#view-uc5 .uc5-card-title {
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+}
+
+#view-uc5 .uc5-card-desc {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+}
+
+#view-uc5 .uc5-ai-recommend-card .uc5-card-inner {
+    padding-right: 78px !important;
+}
+
+#view-uc5 .uc5-inline-ai-btn {
+    right: 8px !important;
+    height: 26px !important;
+    padding: 0 10px !important;
+    font-size: 10px !important;
+    box-shadow: 0 5px 12px rgba(79, 70, 229, .18) !important;
+}
+
+#view-uc5 .uc5-planning-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+}
+
+#view-uc5 .uc5-mini-field span {
+    font-size: 10px !important;
+    margin-bottom: 3px !important;
+}
+
+#view-uc5 .uc5-mini-field select,
+#view-uc5 .uc5-admin-notes {
+    height: 28px !important;
+    min-height: 28px !important;
+    border-radius: 9px !important;
+    font-size: 11px !important;
+    padding: 0 9px !important;
+}
+
+#view-uc5 .uc5-admin-notes {
+    margin-top: 7px !important;
+}
+
+#view-uc5 .uc5-planning-box.is-disabled::after {
+    display: none !important;
+    content: none !important;
+}
+
+#view-uc5 .uc5-uploader-container {
+    min-height: 0 !important;
+    align-items: stretch !important;
+}
+
+#view-uc5 .uc5-upload-wrapper {
+    min-height: 0 !important;
+    height: 82px !important;
+    padding: 8px 10px !important;
+    border-radius: 14px !important;
+    gap: 8px !important;
+}
+
+#view-uc5 .uc5-upload-icon {
+    font-size: 18px !important;
+}
+
+#view-uc5 .uc5-upload-text,
+#view-uc5 .uc5-file-name {
+    font-size: 11px !important;
+}
+
+#view-uc5 .uc5-upload-hint {
+    font-size: 10px !important;
+}
+
+#view-uc5 .uc5-file-name {
+    max-width: 138px !important;
+    padding: 4px 8px !important;
+}
+
+#view-uc5 .uc5-action-box {
+    min-width: 0 !important;
+    width: auto !important;
+    padding: 12px !important;
+    border: 1px solid #e5ebf4 !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .05) !important;
+    justify-content: flex-start !important;
+}
+
+#view-uc5 .uc5-action-box .uc5-control-label {
+    margin-bottom: 8px !important;
+}
+
+#view-uc5 .uc5-action-box .btn-primary,
+#view-uc5 .uc5-action-box button#uc5-runBtn {
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    min-width: 0 !important;
+    border-radius: 14px !important;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+    padding: 0 12px !important;
+    box-shadow: 0 8px 16px rgba(79, 70, 229, .16) !important;
+}
+
+#view-uc5 .uc5-pipeline-status {
+    margin: 0 0 8px !important;
+    gap: 5px !important;
+}
+
+#view-uc5 .uc5-pipeline-step {
+    height: 23px !important;
+    min-height: 23px !important;
+    padding: 0 8px !important;
+    font-size: 10px !important;
+    border-radius: 999px !important;
+}
+
+#view-uc5 .uc5-action-helper {
+    display: none !important;
+}
+
+#view-uc5 .uc5-bottom-preview-panel {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    gap: 8px !important;
+    padding: 10px !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+
+#view-uc5 .uc5-preview-header {
+    min-height: 38px !important;
+    padding: 6px 10px !important;
+    border-radius: 10px !important;
+    flex: 0 0 auto !important;
+}
+
+#view-uc5 .uc5-info-label,
+#view-uc5 .uc5-info-value,
+#view-uc5 .uc5-switch-btn {
+    font-size: 11px !important;
+}
+
+#view-uc5 .uc5-switch-btn {
+    padding: 3px 7px !important;
+}
+
+#view-uc5 .uc5-viewport-canvas {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 8px !important;
+    border-radius: 12px !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    overflow: hidden !important;
+}
+
+#view-uc5 .uc5-chassis-wrapper {
+    aspect-ratio: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    border-radius: 12px !important;
+    box-shadow: 0 10px 34px rgba(15, 23, 42, .08) !important;
+}
+
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame {
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+#view-uc5 .uc5-viewport-canvas.uc5-mobile-frame .uc5-chassis-wrapper {
+    aspect-ratio: 9 / 19.5 !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: min(420px, 100%) !important;
+    max-height: 100% !important;
+    border-radius: 28px !important;
+}
+
+#view-uc5 .uc5-preview-stage {
+    height: 100% !important;
+    min-height: 0 !important;
+}
+
+#view-uc5 .uc5-inner-scroll-container {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 12px 12px 52px !important;
+    overflow-y: auto !important;
+}
+
+#view-uc5 .uc5-render-plan-shell {
+    gap: 10px !important;
+    min-height: auto !important;
+}
+
+#view-uc5 .uc5-rp-screen-header {
+    padding: 12px !important;
+    border-radius: 14px !important;
+    gap: 12px !important;
+}
+
+#view-uc5 .uc5-rp-screen-header h2 {
+    font-size: clamp(1rem, 1.55vw, 1.28rem) !important;
+    margin: 2px 0 4px !important;
+}
+
+#view-uc5 .uc5-rp-screen-header p {
+    font-size: 0.78rem !important;
+    line-height: 1.35 !important;
+}
+
+#view-uc5 .uc5-rp-progress-card {
+    min-width: 64px !important;
+    padding: 8px 10px !important;
+    border-radius: 12px !important;
+}
+
+#view-uc5 .uc5-rp-progress-track {
+    height: 6px !important;
+}
+
+#view-uc5 .uc5-rp-screen-grid {
+    gap: 10px !important;
+}
+
+#view-uc5 .uc5-rp-section {
+    border-radius: 14px !important;
+}
+
+#view-uc5 .uc5-rp-section-meta {
+    padding: 6px 10px !important;
+}
+
+#view-uc5 .uc5-rp-hero-card,
+#view-uc5 .uc5-rp-principle-card,
+#view-uc5 .uc5-rp-definition-block,
+#view-uc5 .uc5-rp-standard-block,
+#view-uc5 .uc5-rp-commitment-card {
+    padding: 12px !important;
+}
+
+#view-uc5 .uc5-inner-pagination {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 10px !important;
+}
+
+#view-uc5 .uc5-inner-nav-btn {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 12px !important;
+    font-size: 11px !important;
+}
+
+@media (max-width: 1500px) {
+
+    #view-uc5 .uc5-admin-flow-top,
+    #view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+        grid-template-columns: minmax(320px, 1.18fr) minmax(360px, 1.34fr) minmax(210px, .72fr) minmax(155px, .5fr) !important;
+        gap: 8px !important;
+        max-height: 158px !important;
+    }
+
+    #view-uc5 .uc5-admin-card,
+    #view-uc5 .uc5-control-box.uc5-admin-card {
+        max-height: 158px !important;
+        padding: 10px !important;
+    }
+
+    #view-uc5 .uc5-template-card .uc5-card-inner {
+        height: 44px !important;
+        padding: 7px 9px !important;
+    }
+
+    #view-uc5 .uc5-card-desc {
+        max-width: 150px !important;
+    }
+
+    #view-uc5 .uc5-mini-field select,
+    #view-uc5 .uc5-admin-notes {
+        height: 26px !important;
+        min-height: 26px !important;
+    }
+
+    #view-uc5 .uc5-upload-wrapper {
+        height: 72px !important;
+    }
+
+    #view-uc5 .uc5-action-box .btn-primary,
+    #view-uc5 .uc5-action-box button#uc5-runBtn {
+        height: 42px !important;
+        min-height: 42px !important;
+        max-height: 42px !important;
+    }
+}
+
+@media (max-width: 1180px) {
+    body:has(#view-uc5.active) #main-content {
+        overflow-y: auto !important;
+    }
+
+    #view-uc5.active,
+    #view-uc5 .uc5-dashboard-container {
+        height: auto !important;
+        min-height: 100dvh !important;
+        overflow: visible !important;
+    }
+
+    #view-uc5 .uc5-admin-flow-top,
+    #view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+        grid-template-columns: 1fr 1fr !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    #view-uc5 .uc5-admin-card,
+    #view-uc5 .uc5-control-box.uc5-admin-card {
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    #view-uc5 .uc5-viewport-canvas {
+        min-height: 520px !important;
+    }
+}

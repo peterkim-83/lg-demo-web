@@ -1282,8 +1282,17 @@ Customer: Thank you. Goodbye.`
       if (!availableWidth || !availableHeight) return;
 
       const isMobileFrame = viewportCanvas.classList.contains('uc5-mobile-frame');
-      const ratio = isMobileFrame ? (9 / 19.5) : (16 / 9);
-      const safetyGap = isMobileFrame ? 0 : 2;
+
+      if (!isMobileFrame) {
+        // Desktop preview should fill the available preview work area.
+        // The final lesson content itself can scroll inside the chassis when needed.
+        chassisWrapper.style.width = `${Math.max(0, Math.floor(availableWidth))}px`;
+        chassisWrapper.style.height = `${Math.max(0, Math.floor(availableHeight))}px`;
+        return;
+      }
+
+      const ratio = 9 / 19.5;
+      const safetyGap = 0;
       let targetWidth = Math.min(availableWidth, availableHeight * ratio) - safetyGap;
       let targetHeight = targetWidth / ratio;
 
