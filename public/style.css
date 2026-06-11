@@ -5463,3 +5463,106 @@ body:has(#view-uc5.active) #main-content {
         min-height: 520px !important;
     }
 }
+
+/* =========================================================
+   UC5 Admin Flow v4 - minor top alignment polish
+   Scope: #view-uc5 / .uc5-* only
+   Purpose: keep admin memo visible, add PDF upload breathing room, and balance action button spacing.
+   ========================================================= */
+#view-uc5 .uc5-admin-flow-top,
+#view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+    max-height: 190px !important;
+}
+
+#view-uc5 .uc5-admin-card,
+#view-uc5 .uc5-control-box.uc5-admin-card {
+    max-height: 190px !important;
+}
+
+#view-uc5 .uc5-planning-box,
+#view-uc5 .uc5-control-box.uc5-planning-box {
+    overflow: hidden !important;
+}
+
+#view-uc5 .uc5-planning-grid {
+    gap: 7px 8px !important;
+}
+
+#view-uc5 .uc5-admin-notes {
+    display: block !important;
+    width: 100% !important;
+    margin-top: 8px !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+}
+
+#view-uc5 .uc5-upload-box .uc5-control-label {
+    display: block !important;
+    margin-bottom: 11px !important;
+}
+
+#view-uc5 .uc5-upload-box .uc5-uploader-container {
+    height: calc(100% - 28px) !important;
+}
+
+#view-uc5 .uc5-upload-box .uc5-upload-wrapper {
+    height: 100% !important;
+    min-height: 92px !important;
+}
+
+#view-uc5 .uc5-action-box,
+#view-uc5 .uc5-control-box.uc5-action-box {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+}
+
+#view-uc5 .uc5-action-box .uc5-control-label {
+    margin-bottom: 0 !important;
+}
+
+#view-uc5 .uc5-action-box .uc5-pipeline-status {
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+}
+
+#view-uc5 .uc5-action-box .btn-primary,
+#view-uc5 .uc5-action-box button#uc5-runBtn {
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+}
+
+@media (max-width: 1500px) {
+
+    #view-uc5 .uc5-admin-flow-top,
+    #view-uc5 .uc5-top-control-bar.uc5-admin-flow-top {
+        max-height: 178px !important;
+    }
+
+    #view-uc5 .uc5-admin-card,
+    #view-uc5 .uc5-control-box.uc5-admin-card {
+        max-height: 178px !important;
+    }
+
+    #view-uc5 .uc5-admin-notes {
+        margin-top: 7px !important;
+    }
+
+    #view-uc5 .uc5-upload-box .uc5-control-label {
+        margin-bottom: 9px !important;
+    }
+
+    #view-uc5 .uc5-upload-box .uc5-uploader-container {
+        height: calc(100% - 26px) !important;
+    }
+
+    #view-uc5 .uc5-upload-box .uc5-upload-wrapper {
+        min-height: 82px !important;
+    }
+
+    #view-uc5 .uc5-action-box,
+    #view-uc5 .uc5-control-box.uc5-action-box {
+        gap: 7px !important;
+    }
+}
