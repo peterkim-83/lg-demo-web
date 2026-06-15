@@ -1,0 +1,39 @@
+{
+  "template_catalog_version": "uc5_template_catalog.v1",
+  "catalog_id": "uc5_template_catalog",
+  "templates": [
+    {
+      "template_id": "learning_canvas.core_concept_flow",
+      "macro_shell_id": "learning_canvas",
+      "label": "Learning Canvas",
+      "best_for": [
+        "concept learning",
+        "principle understanding",
+        "basic compliance education"
+      ],
+      "screen_count_default": 8
+    },
+    {
+      "template_id": "process_playbook.operational_step_flow",
+      "macro_shell_id": "process_playbook",
+      "label": "Process Playbook",
+      "best_for": [
+        "procedure training",
+        "incident response",
+        "step-by-step operations"
+      ],
+      "screen_count_default": 8
+    },
+    {
+      "template_id": "decision_simulator.scenario_decision_flow",
+      "macro_shell_id": "decision_simulator",
+      "label": "Decision Simulator",
+      "best_for": [
+        "scenario training",
+        "judgment practice",
+        "tradeoff decisions"
+      ],
+      "screen_count_default": 8
+    }
+  ]
+}

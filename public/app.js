@@ -1164,6 +1164,201 @@ Customer: Thank you. Goodbye.`
     }
   };
 
+
+  const UC5_CANONICAL_REGISTRY_URL = './uc5_component_registry.canonical.json';
+  const UC5_CANONICAL_REGISTRY_VERSION_FALLBACK = 'uc5_component_registry.v1';
+
+  let uc5CanonicalRegistryData = null;
+  let uc5CanonicalRegistryLoadPromise = null;
+  let uc5CanonicalRegistryLoadStatus = 'idle';
+
+  function isPlainObject(value) {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+  }
+
+  function dedupeSortedStrings(values) {
+    return Array.from(new Set((Array.isArray(values) ? values : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  function pickUC5RegistryFields(source, fields) {
+    const picked = {};
+    if (!isPlainObject(source)) return picked;
+
+    fields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(source, field)) {
+        picked[field] = source[field];
+      }
+    });
+
+    return picked;
+  }
+
+  function validateUC5CanonicalRegistry(registry) {
+    if (!isPlainObject(registry)) return false;
+    if (registry.registry_version !== UC5_CANONICAL_REGISTRY_VERSION_FALLBACK) return false;
+    if (!isPlainObject(registry.components)) return false;
+    if (!isPlainObject(registry.templates)) return false;
+    return Object.keys(registry.components).length === Number(registry.component_count_expected || 33);
+  }
+
+  async function loadUC5CanonicalRegistry({ force = false } = {}) {
+    if (!force && uc5CanonicalRegistryData) {
+      return uc5CanonicalRegistryData;
+    }
+
+    if (!force && uc5CanonicalRegistryLoadPromise) {
+      return uc5CanonicalRegistryLoadPromise;
+    }
+
+    uc5CanonicalRegistryLoadStatus = 'loading';
+    uc5CanonicalRegistryLoadPromise = fetch(UC5_CANONICAL_REGISTRY_URL, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`UC5 canonical registry load failed (HTTP ${res.status})`);
+        }
+
+        const registry = await res.json();
+        if (!validateUC5CanonicalRegistry(registry)) {
+          throw new Error('UC5 canonical registry shape is invalid.');
+        }
+
+        uc5CanonicalRegistryData = registry;
+        uc5CanonicalRegistryLoadStatus = 'ready';
+        return registry;
+      })
+      .catch((error) => {
+        uc5CanonicalRegistryData = null;
+        uc5CanonicalRegistryLoadStatus = 'fallback';
+        console.warn('[UC5] canonical registry unavailable; continuing with legacy workflow contract.', error);
+        return null;
+      })
+      .finally(() => {
+        uc5CanonicalRegistryLoadPromise = null;
+      });
+
+    return uc5CanonicalRegistryLoadPromise;
+  }
+
+  function getUC5CanonicalRegistryVersion() {
+    return uc5CanonicalRegistryData?.registry_version || UC5_CANONICAL_REGISTRY_VERSION_FALLBACK;
+  }
+
+  function buildTemplateRegistryBundle(templateId) {
+    const registry = uc5CanonicalRegistryData;
+    const safeTemplateId = String(templateId || '').trim();
+    const template = registry?.templates?.[safeTemplateId];
+
+    if (!registry || !template || !isPlainObject(registry.components)) {
+      return null;
+    }
+
+    const allowedComponents = dedupeSortedStrings(template.allowed_components);
+    const componentCapabilities = {};
+
+    allowedComponents.forEach((componentType) => {
+      const component = registry.components[componentType];
+      if (!isPlainObject(component)) return;
+
+      componentCapabilities[componentType] = {
+        component_type: component.component_type || componentType,
+        renderer_key: component.renderer_key || componentType,
+        frontend_renderer_name: component.frontend_renderer_name || component.renderer_key || componentType,
+        allowed_slots: Array.isArray(component.allowed_slots) ? component.allowed_slots : [],
+        required_payload_fields: Array.isArray(component.required_payload_fields) ? component.required_payload_fields : [],
+        preferred_for: Array.isArray(component.preferred_for) ? component.preferred_for : [],
+        allowed_primary_arrays: Array.isArray(component.allowed_primary_arrays) ? component.allowed_primary_arrays : [],
+        preferred_primary_arrays: Array.isArray(component.preferred_primary_arrays) ? component.preferred_primary_arrays : [],
+        min_primary_array_items: Number(component.min_primary_array_items || 0),
+        text_budget_profile: component.text_budget_profile || 'standard',
+        allowed_interactions: Array.isArray(component.allowed_interactions) ? component.allowed_interactions : [],
+        semantic_contract: component.semantic_contract || ''
+      };
+    });
+
+    return {
+      bundle_version: 'uc5_template_registry_bundle.v1',
+      registry_version: registry.registry_version || UC5_CANONICAL_REGISTRY_VERSION_FALLBACK,
+      registry_id: registry.registry_id || 'uc5_component_registry',
+      template_id: template.template_id || safeTemplateId,
+      macro_shell_id: template.macro_shell_id || '',
+      allowed_component_count: allowedComponents.length,
+      allowed_components: allowedComponents,
+      template_contract: pickUC5RegistryFields(template, [
+        'allowed_screen_roles',
+        'allowed_slots',
+        'allowed_interactions',
+        'screen_role_component_preferences',
+        'slot_component_preferences',
+        'component_selection_guardrails'
+      ]),
+      component_capabilities: componentCapabilities
+    };
+  }
+
+  function getUC5SelectedComponentTypesFromBlueprint(blueprint) {
+    const screenBlueprints = Array.isArray(blueprint?.screen_blueprints) ? blueprint.screen_blueprints : [];
+    const selected = [];
+
+    screenBlueprints.forEach((screen) => {
+      const positions = Array.isArray(screen?.skeleton_positions) ? screen.skeleton_positions : [];
+      positions.forEach((position) => {
+        const componentType = String(position?.selected_component_type || '').trim();
+        if (componentType) selected.push(componentType);
+      });
+    });
+
+    return dedupeSortedStrings(selected);
+  }
+
+  function buildPayloadPolicyBundle(componentTypes) {
+    const registry = uc5CanonicalRegistryData;
+    const selectedComponentTypes = dedupeSortedStrings(componentTypes);
+
+    if (!registry || !isPlainObject(registry.components) || selectedComponentTypes.length < 1) {
+      return null;
+    }
+
+    const payloadPolicies = {};
+
+    selectedComponentTypes.forEach((componentType) => {
+      const component = registry.components[componentType];
+      if (!isPlainObject(component)) return;
+
+      payloadPolicies[componentType] = {
+        component_type: component.component_type || componentType,
+        required_payload_fields: Array.isArray(component.required_payload_fields) ? component.required_payload_fields : [],
+        payload_policy: isPlainObject(component.payload_policy) ? component.payload_policy : {}
+      };
+    });
+
+    return {
+      bundle_version: 'uc5_payload_policy_bundle.v1',
+      registry_version: registry.registry_version || UC5_CANONICAL_REGISTRY_VERSION_FALLBACK,
+      registry_id: registry.registry_id || 'uc5_component_registry',
+      selected_component_count: Object.keys(payloadPolicies).length,
+      component_types: Object.keys(payloadPolicies).sort((a, b) => a.localeCompare(b)),
+      payload_policies: payloadPolicies
+    };
+  }
+
+  function appendUC5RegistryJsonField(formData, fieldName, value) {
+    if (!formData || !fieldName || !value) return;
+    formData.append(fieldName, JSON.stringify(value));
+  }
+
+  loadUC5CanonicalRegistry();
+
   // 2. DOM Queries
   const macroShellInputs = document.querySelectorAll('input[name="uc5-macroShell"]');
   const legacyTemplateInputs = document.querySelectorAll('input[name="uc5-template"]'); // backward compatibility only
@@ -2158,7 +2353,7 @@ Customer: Thank you. Goodbye.`
     return draft?.recommended_ui_selection || null;
   }
 
-  function buildUC5TemplateBlueprintFormData() {
+  async function buildUC5TemplateBlueprintFormData() {
     if (!uc5UploadedFile) {
       throw new Error('화면 설계에 사용할 원본 PDF가 없습니다. 파일을 다시 업로드해 주세요.');
     }
@@ -2188,6 +2383,9 @@ Customer: Thank you. Goodbye.`
     };
     const fileProfile = getUC5FileProfile(uc5UploadedFile);
 
+    await loadUC5CanonicalRegistry();
+    const templateRegistryBundle = buildTemplateRegistryBundle(currentUiSelection.template_id);
+
     const formData = new FormData();
     formData.append('request_type', 'uc5_template_bound_blueprint_planning');
     formData.append('workflow_version', 'uc5_v2');
@@ -2204,12 +2402,14 @@ Customer: Thank you. Goodbye.`
     formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
     formData.append('planning_context', JSON.stringify(planningContext));
     formData.append('file_profile', JSON.stringify(fileProfile));
+    formData.append('registry_version', getUC5CanonicalRegistryVersion());
+    appendUC5RegistryJsonField(formData, 'template_registry_bundle', templateRegistryBundle);
     formData.append('file', uc5UploadedFile);
 
     return formData;
   }
 
-  function buildUC5SlotPayloadSeedFormData() {
+  async function buildUC5SlotPayloadSeedFormData() {
     if (!uc5TemplateBoundBlueprintData) {
       throw new Error('화면 구성 설계 결과가 없습니다. 먼저 기획안을 승인해 주세요.');
     }
@@ -2220,6 +2420,10 @@ Customer: Thank you. Goodbye.`
 
     const currentUiSelection = uc5TemplateBoundBlueprintData.current_ui_selection || uc5CurrentUiSelectionData || {};
     const fileProfile = getUC5FileProfile(uc5UploadedFile);
+
+    await loadUC5CanonicalRegistry();
+    const selectedComponentTypes = getUC5SelectedComponentTypesFromBlueprint(uc5TemplateBoundBlueprintData);
+    const payloadPolicyBundle = buildPayloadPolicyBundle(selectedComponentTypes);
 
     const formData = new FormData();
     formData.append('request_type', 'uc5_slot_payload_seed_composition');
@@ -2235,6 +2439,8 @@ Customer: Thank you. Goodbye.`
     formData.append('template_bound_blueprint', JSON.stringify(uc5TemplateBoundBlueprintData));
     formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
     formData.append('file_profile', JSON.stringify(fileProfile));
+    formData.append('registry_version', getUC5CanonicalRegistryVersion());
+    appendUC5RegistryJsonField(formData, 'payload_policy_bundle', payloadPolicyBundle);
     formData.append('file', uc5UploadedFile);
 
     return formData;
@@ -2360,6 +2566,11 @@ Customer: Thank you. Goodbye.`
         template_bound_blueprint_version: templateBoundBlueprint.blueprint_version,
         slot_payload_seed_version: slotPayloadSeed.slot_payload_seed_version,
         source_file_name: slotPayloadSeed.source_lineage?.source_file_name || templateBoundBlueprint.source_lineage?.source_file_name || ''
+      },
+      registry_lineage: {
+        registry_version: getUC5CanonicalRegistryVersion(),
+        canonical_registry_loaded: Boolean(uc5CanonicalRegistryData),
+        registry_load_status: uc5CanonicalRegistryLoadStatus
       },
       source_coverage_summary: sourceCoverageSummary || slotPayloadSeed.seed_validation?.source_coverage_summary || null,
       screens
@@ -3204,7 +3415,7 @@ Customer: Thank you. Goodbye.`
 
       const blueprintResponse = await postUC5Workflow(
         CONFIG.UC5_W02_WEBHOOK,
-        buildUC5TemplateBlueprintFormData(),
+        await buildUC5TemplateBlueprintFormData(),
         '교육 화면 설계안 생성 실패'
       );
 
@@ -3274,7 +3485,7 @@ Customer: Thank you. Goodbye.`
 
       const payloadResponse = await postUC5Workflow(
         CONFIG.UC5_W03_WEBHOOK,
-        buildUC5SlotPayloadSeedFormData(),
+        await buildUC5SlotPayloadSeedFormData(),
         '학습 내용 작성 실패'
       );
 

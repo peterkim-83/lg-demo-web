@@ -1,0 +1,2184 @@
+{
+  "component_count_expected": 33,
+  "components": {
+    "application_checklist": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "checklist_items"
+      ],
+      "allowed_slots": [
+        "main",
+        "interaction",
+        "assessment",
+        "footer"
+      ],
+      "component_type": "application_checklist",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2Checklist",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "checklist_items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "checklist_items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "practice_bridge",
+        "reflection",
+        "closure",
+        "assessment"
+      ],
+      "preferred_primary_arrays": [
+        "checklist_items"
+      ],
+      "renderer_key": "application_checklist",
+      "required_payload_fields": [
+        "title",
+        "checklist_items"
+      ],
+      "semantic_contract": "Use for application checklist sections in UC5 render plans, especially practice_bridge, reflection, closure, assessment screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "attribute_stack": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "attribute_stack",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2AttributeStack",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "deep_dive"
+      ],
+      "preferred_primary_arrays": [
+        "items"
+      ],
+      "renderer_key": "attribute_stack",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for attribute stack sections in UC5 render plans, especially deep_dive screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "checklist_table": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "checklist_items"
+      ],
+      "allowed_slots": [
+        "main",
+        "interaction",
+        "assessment"
+      ],
+      "component_type": "checklist_table",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2Checklist",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "checklist_items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "checklist_items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "practice_bridge",
+        "deep_dive",
+        "assessment"
+      ],
+      "preferred_primary_arrays": [
+        "checklist_items"
+      ],
+      "renderer_key": "checklist_table",
+      "required_payload_fields": [
+        "title",
+        "checklist_items"
+      ],
+      "semantic_contract": "Use for checklist table sections in UC5 render plans, especially practice_bridge, deep_dive, assessment screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "commitment_card": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "checklist_items",
+        "items"
+      ],
+      "allowed_slots": [
+        "footer",
+        "main",
+        "assessment"
+      ],
+      "component_type": "commitment_card",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2CommitmentCard",
+      "min_primary_array_items": 1,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "checklist_items",
+          "items"
+        ],
+        "min_primary_array_items": 1,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "checklist_items",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "reflection",
+        "closure"
+      ],
+      "preferred_primary_arrays": [
+        "checklist_items",
+        "items"
+      ],
+      "renderer_key": "commitment_card",
+      "required_payload_fields": [
+        "title",
+        "checklist_items"
+      ],
+      "semantic_contract": "Use for commitment card sections in UC5 render plans, especially reflection, closure screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "concept_card_grid": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "concept_card_grid",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2AttributeStack",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "concept_map",
+        "deep_dive"
+      ],
+      "preferred_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "renderer_key": "concept_card_grid",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for concept card grid sections in UC5 render plans, especially concept_map, deep_dive screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "concept_explainer": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "concept_explainer",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2DefinitionBlock",
+      "min_primary_array_items": 0,
+      "payload_policy": {
+        "allowed_primary_arrays": [],
+        "min_primary_array_items": 0,
+        "one_of_non_empty_field_groups": [
+          [
+            "body",
+            "summary"
+          ]
+        ],
+        "preferred_primary_arrays": [],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "concept_map",
+        "deep_dive"
+      ],
+      "preferred_primary_arrays": [],
+      "renderer_key": "concept_explainer",
+      "required_payload_fields": [
+        "title",
+        "body"
+      ],
+      "semantic_contract": "Use for concept explainer sections in UC5 render plans, especially concept_map, deep_dive screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "coordination_matrix": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "none"
+      ],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "aside",
+        "support"
+      ],
+      "component_type": "coordination_matrix",
+      "fallback_renderer_name": "renderUC5V2AttributeStack",
+      "frontend_renderer_name": "renderUC5V2CoordinationMatrix",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "pb_semantic_role": "role_responsibility_and_handoff_matrix",
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "coordination",
+        "closure",
+        "decision_gate"
+      ],
+      "preferred_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "renderer_key": "coordination_matrix",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for stakeholder roles, responsibilities, handoffs, CISA/FBI/agency/provider coordination and whole-of-government role mapping.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "matrix_compact"
+    },
+    "decision_gate_panel": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "checklist_complete",
+        "progress_unlock"
+      ],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "interaction",
+        "assessment",
+        "support"
+      ],
+      "component_type": "decision_gate_panel",
+      "fallback_renderer_name": "renderUC5V2PhaseCards",
+      "frontend_renderer_name": "renderUC5V2DecisionGatePanel",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [
+          [
+            "body",
+            "summary",
+            "cards",
+            "items"
+          ]
+        ],
+        "pb_semantic_role": "decision_condition_without_quiz_options",
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "decision_gate",
+        "assessment",
+        "entry_criteria"
+      ],
+      "preferred_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "renderer_key": "decision_gate_panel",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for yes/no operational branches, escalation gates, exploitation signs, patchability, containment/re-scope gates. Do not use options[]; options[] remains quiz-only.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "decision_compact"
+    },
+    "decision_option_panel": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "checklist_complete"
+      ],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "interaction",
+        "support"
+      ],
+      "component_type": "decision_option_panel",
+      "fallback_renderer_name": "renderUC5V2CardGrid",
+      "frontend_renderer_name": "renderUC5V2DecisionOptionPanel",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "ds_semantic_role": "decision_options_without_quiz_options",
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [
+          [
+            "body",
+            "summary",
+            "cards",
+            "items"
+          ]
+        ],
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "decision_point",
+        "escalation",
+        "inject"
+      ],
+      "preferred_primary_arrays": [
+        "cards"
+      ],
+      "renderer_key": "decision_option_panel",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for response paths, action choices, decision criteria, and branch implications. Do not use options[]; options[] remains quiz-only.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "decision_compact"
+    },
+    "definition_block": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "definition_block",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2DefinitionBlock",
+      "min_primary_array_items": 0,
+      "payload_policy": {
+        "allowed_primary_arrays": [],
+        "min_primary_array_items": 0,
+        "one_of_non_empty_field_groups": [
+          [
+            "body",
+            "summary"
+          ]
+        ],
+        "preferred_primary_arrays": [],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "concept_map",
+        "deep_dive"
+      ],
+      "preferred_primary_arrays": [],
+      "renderer_key": "definition_block",
+      "required_payload_fields": [
+        "title",
+        "body"
+      ],
+      "semantic_contract": "Use for definition block sections in UC5 render plans, especially concept_map, deep_dive screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "definition_compare": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "definition_compare",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2DefinitionCompare",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "concept_map",
+        "deep_dive"
+      ],
+      "preferred_primary_arrays": [
+        "items"
+      ],
+      "renderer_key": "definition_compare",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for definition compare sections in UC5 render plans, especially concept_map, deep_dive screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "discussion_question_deck": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "checklist_complete"
+      ],
+      "allowed_primary_arrays": [
+        "items",
+        "cards",
+        "checklist_items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support",
+        "interaction",
+        "assessment"
+      ],
+      "component_type": "discussion_question_deck",
+      "fallback_renderer_name": "renderUC5V2Checklist",
+      "frontend_renderer_name": "renderUC5V2DiscussionQuestionDeck",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "ds_semantic_role": "facilitated_discussion_questions",
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "inject",
+        "decision_point",
+        "debrief",
+        "assessment"
+      ],
+      "preferred_primary_arrays": [
+        "items"
+      ],
+      "renderer_key": "discussion_question_deck",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for facilitator questions, participant prompts, redirect/refocus questions, and comparison prompts.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "question_deck_compact"
+    },
+    "hero_statement": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [],
+      "allowed_slots": [
+        "hero",
+        "main"
+      ],
+      "component_type": "hero_statement",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2HeroStatement",
+      "min_primary_array_items": 0,
+      "payload_policy": {
+        "allowed_primary_arrays": [],
+        "min_primary_array_items": 0,
+        "one_of_non_empty_field_groups": [
+          [
+            "summary",
+            "body"
+          ]
+        ],
+        "preferred_primary_arrays": [],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "opening",
+        "concept_map",
+        "deep_dive",
+        "briefing"
+      ],
+      "preferred_primary_arrays": [],
+      "renderer_key": "hero_statement",
+      "required_payload_fields": [
+        "title",
+        "summary"
+      ],
+      "semantic_contract": "Use for hero statement sections in UC5 render plans, especially opening, concept_map, deep_dive, briefing screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "information_sharing_matrix": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "checklist_complete"
+      ],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support",
+        "aside",
+        "interaction"
+      ],
+      "component_type": "information_sharing_matrix",
+      "fallback_renderer_name": "renderUC5V2StakeholderMap",
+      "frontend_renderer_name": "renderUC5V2InformationSharingMatrix",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "ds_semantic_role": "information_sharing_stakeholder_channel_matrix",
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "role_setup",
+        "escalation",
+        "debrief"
+      ],
+      "preferred_primary_arrays": [
+        "cards"
+      ],
+      "renderer_key": "information_sharing_matrix",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for who shares what information, with whom, through which channel, at what timing, and under what disclosure constraint such as TLP.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "matrix_compact"
+    },
+    "key_message_banner": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [],
+      "allowed_slots": [
+        "hero",
+        "support",
+        "footer"
+      ],
+      "component_type": "key_message_banner",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2KeyMessageBanner",
+      "min_primary_array_items": 0,
+      "payload_policy": {
+        "allowed_primary_arrays": [],
+        "min_primary_array_items": 0,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "key_message"
+        ]
+      },
+      "preferred_for": [
+        "opening",
+        "reflection",
+        "closure"
+      ],
+      "preferred_primary_arrays": [],
+      "renderer_key": "key_message_banner",
+      "required_payload_fields": [
+        "key_message"
+      ],
+      "semantic_contract": "Use for key message banner sections in UC5 render plans, especially opening, reflection, closure screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "method_stepper": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "steps"
+      ],
+      "allowed_slots": [
+        "main",
+        "interaction"
+      ],
+      "component_type": "method_stepper",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2ProcessTimeline",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "steps"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "steps"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "practice_bridge",
+        "process_overview",
+        "phase_detail"
+      ],
+      "preferred_primary_arrays": [
+        "steps"
+      ],
+      "renderer_key": "method_stepper",
+      "required_payload_fields": [
+        "title",
+        "steps"
+      ],
+      "semantic_contract": "Use for method stepper sections in UC5 render plans, especially practice_bridge, process_overview, phase_detail screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "module_intro": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [],
+      "allowed_slots": [
+        "hero",
+        "main"
+      ],
+      "component_type": "module_intro",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2HeroStatement",
+      "min_primary_array_items": 0,
+      "payload_policy": {
+        "allowed_primary_arrays": [],
+        "min_primary_array_items": 0,
+        "one_of_non_empty_field_groups": [
+          [
+            "summary",
+            "body"
+          ]
+        ],
+        "preferred_primary_arrays": [],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "opening"
+      ],
+      "preferred_primary_arrays": [],
+      "renderer_key": "module_intro",
+      "required_payload_fields": [
+        "title",
+        "summary"
+      ],
+      "semantic_contract": "Use for module intro sections in UC5 render plans, especially opening screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "objective_list": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "items",
+        "cards"
+      ],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "objective_list",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2OutcomeBadges",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "opening"
+      ],
+      "preferred_primary_arrays": [
+        "items",
+        "cards"
+      ],
+      "renderer_key": "objective_list",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for objective list sections in UC5 render plans, especially opening screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "outcome_badges": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "items",
+        "cards"
+      ],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "outcome_badges",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2OutcomeBadges",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "opening",
+        "reflection",
+        "closure"
+      ],
+      "preferred_primary_arrays": [
+        "items",
+        "cards"
+      ],
+      "renderer_key": "outcome_badges",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for outcome badges sections in UC5 render plans, especially opening, reflection, closure screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "outcome_capture_panel": {
+      "allowed_interactions": [
+        "progress_unlock",
+        "completion_badge",
+        "checklist_complete",
+        "none"
+      ],
+      "allowed_primary_arrays": [
+        "items",
+        "cards",
+        "checklist_items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support",
+        "aside",
+        "assessment",
+        "footer"
+      ],
+      "component_type": "outcome_capture_panel",
+      "fallback_renderer_name": "renderUC5V2OutcomeBadges",
+      "frontend_renderer_name": "renderUC5V2OutcomeCapturePanel",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "items",
+          "checklist_items"
+        ],
+        "ds_semantic_role": "desired_outcomes_and_debrief_capture",
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [
+          [
+            "summary",
+            "body",
+            "items",
+            "checklist_items"
+          ]
+        ],
+        "preferred_primary_arrays": [
+          "items",
+          "checklist_items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "debrief",
+        "assessment",
+        "consequence",
+        "opening"
+      ],
+      "preferred_primary_arrays": [
+        "items"
+      ],
+      "renderer_key": "outcome_capture_panel",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for desired discussion outcomes, lessons learned, decision records, improvement actions, and post-exercise takeaways.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "outcome_compact"
+    },
+    "phase_cards": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "cards",
+        "steps"
+      ],
+      "allowed_slots": [
+        "main",
+        "support"
+      ],
+      "component_type": "phase_cards",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2PhaseCards",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "steps"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "cards",
+          "steps"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "process_overview",
+        "phase_detail"
+      ],
+      "preferred_primary_arrays": [
+        "cards",
+        "steps"
+      ],
+      "renderer_key": "phase_cards",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for phase cards sections in UC5 render plans, especially process_overview, phase_detail screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "playbook_scope_card": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "none"
+      ],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "hero",
+        "main",
+        "support"
+      ],
+      "component_type": "playbook_scope_card",
+      "fallback_renderer_name": "renderUC5V2PhaseCards",
+      "frontend_renderer_name": "renderUC5V2PlaybookScopeCard",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [
+          [
+            "summary",
+            "body",
+            "cards",
+            "items"
+          ]
+        ],
+        "pb_semantic_role": "scope_and_entry_criteria",
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "opening",
+        "entry_criteria"
+      ],
+      "preferred_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "renderer_key": "playbook_scope_card",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for applicability, scope, exclusions, target audience, triggering conditions, and when-to-use criteria.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "compact_scope"
+    },
+    "principle_card": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "items",
+        "cards"
+      ],
+      "allowed_slots": [
+        "hero",
+        "main",
+        "support"
+      ],
+      "component_type": "principle_card",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2PrincipleCard",
+      "min_primary_array_items": 0,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "min_primary_array_items": 0,
+        "one_of_non_empty_field_groups": [
+          [
+            "body",
+            "summary",
+            "items"
+          ]
+        ],
+        "preferred_primary_arrays": [
+          "items",
+          "cards"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "deep_dive",
+        "concept_map"
+      ],
+      "preferred_primary_arrays": [
+        "items",
+        "cards"
+      ],
+      "renderer_key": "principle_card",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for principle card sections in UC5 render plans, especially deep_dive, concept_map screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "process_timeline": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "steps"
+      ],
+      "allowed_slots": [
+        "hero",
+        "main"
+      ],
+      "component_type": "process_timeline",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2ProcessTimeline",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "steps"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "steps"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "process_overview",
+        "practice_bridge",
+        "phase_detail"
+      ],
+      "preferred_primary_arrays": [
+        "steps"
+      ],
+      "renderer_key": "process_timeline",
+      "required_payload_fields": [
+        "title",
+        "steps"
+      ],
+      "semantic_contract": "Use for process timeline sections in UC5 render plans, especially process_overview, practice_bridge, phase_detail screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "quiz_mcq": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "options"
+      ],
+      "allowed_slots": [
+        "interaction",
+        "assessment",
+        "main"
+      ],
+      "component_type": "quiz_mcq",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2Quiz",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "options"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "options"
+        ],
+        "quiz": true,
+        "required_non_empty_fields": [
+          "title"
+        ],
+        "requires_scenario_body": false
+      },
+      "preferred_for": [
+        "assessment",
+        "reflection",
+        "decision_point"
+      ],
+      "preferred_primary_arrays": [
+        "options"
+      ],
+      "renderer_key": "quiz_mcq",
+      "required_payload_fields": [
+        "title",
+        "options"
+      ],
+      "semantic_contract": "Use for quiz mcq sections in UC5 render plans, especially assessment, reflection, decision_point screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "reflection_prompt": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "checklist_items",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support",
+        "footer"
+      ],
+      "component_type": "reflection_prompt",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2CommitmentCard",
+      "min_primary_array_items": 0,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "checklist_items",
+          "items"
+        ],
+        "min_primary_array_items": 0,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "checklist_items",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title",
+          "body"
+        ]
+      },
+      "preferred_for": [
+        "reflection",
+        "closure",
+        "debrief"
+      ],
+      "preferred_primary_arrays": [
+        "checklist_items",
+        "items"
+      ],
+      "renderer_key": "reflection_prompt",
+      "required_payload_fields": [
+        "title",
+        "body"
+      ],
+      "semantic_contract": "Use for reflection prompt sections in UC5 render plans, especially reflection, closure, debrief screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "reporting_timeline": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "completion_badge"
+      ],
+      "allowed_primary_arrays": [
+        "steps"
+      ],
+      "allowed_slots": [
+        "main",
+        "support",
+        "footer"
+      ],
+      "component_type": "reporting_timeline",
+      "fallback_renderer_name": "renderUC5V2ProcessTimeline",
+      "frontend_renderer_name": "renderUC5V2ReportingTimeline",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "steps"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [
+          [
+            "summary",
+            "body",
+            "steps"
+          ]
+        ],
+        "pb_semantic_role": "reporting_and_notification_sequence",
+        "preferred_primary_arrays": [
+          "steps"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "coordination",
+        "tracking",
+        "closure"
+      ],
+      "preferred_primary_arrays": [
+        "steps"
+      ],
+      "renderer_key": "reporting_timeline",
+      "required_payload_fields": [
+        "title",
+        "steps"
+      ],
+      "semantic_contract": "Use for reporting deadlines, update cadence, notification path, CISA tracking, post-incident reporting and closure timing.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "timeline_compact"
+    },
+    "response_step_table": {
+      "allowed_interactions": [
+        "checklist_complete",
+        "progress_unlock",
+        "tap_to_reveal"
+      ],
+      "allowed_primary_arrays": [
+        "checklist_items",
+        "steps"
+      ],
+      "allowed_slots": [
+        "main",
+        "interaction",
+        "assessment"
+      ],
+      "component_type": "response_step_table",
+      "fallback_renderer_name": "renderUC5V2Checklist",
+      "frontend_renderer_name": "renderUC5V2ResponseStepTable",
+      "min_primary_array_items": 3,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "checklist_items",
+          "steps"
+        ],
+        "min_primary_array_items": 3,
+        "one_of_non_empty_field_groups": [],
+        "pb_semantic_role": "procedure_action_tracking_table",
+        "preferred_primary_arrays": [
+          "checklist_items",
+          "steps"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "phase_detail",
+        "tracking",
+        "assessment"
+      ],
+      "preferred_primary_arrays": [
+        "checklist_items",
+        "steps"
+      ],
+      "renderer_key": "response_step_table",
+      "required_payload_fields": [
+        "title",
+        "checklist_items"
+      ],
+      "semantic_contract": "Use for numbered procedures, checklist rows, action tracking, incident/vulnerability response steps.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "table_compact"
+    },
+    "scenario_inject_timeline": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "none"
+      ],
+      "allowed_primary_arrays": [
+        "steps",
+        "cards"
+      ],
+      "allowed_slots": [
+        "hero",
+        "main",
+        "support"
+      ],
+      "component_type": "scenario_inject_timeline",
+      "fallback_renderer_name": "renderUC5V2ProcessTimeline",
+      "frontend_renderer_name": "renderUC5V2ScenarioInjectTimeline",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "steps"
+        ],
+        "ds_semantic_role": "scenario_inject_sequence",
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [
+          [
+            "summary",
+            "body",
+            "steps"
+          ]
+        ],
+        "preferred_primary_arrays": [
+          "steps"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "briefing",
+        "inject",
+        "consequence"
+      ],
+      "preferred_primary_arrays": [
+        "steps"
+      ],
+      "renderer_key": "scenario_inject_timeline",
+      "required_payload_fields": [
+        "title",
+        "steps"
+      ],
+      "semantic_contract": "Use for time-stamped or staged scenario injects, including Day/Time updates, alerts, discoveries, and public disclosure milestones.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "timeline_compact"
+    },
+    "scenario_quiz": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "options"
+      ],
+      "allowed_slots": [
+        "interaction",
+        "assessment",
+        "main"
+      ],
+      "component_type": "scenario_quiz",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2Quiz",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "options"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "options"
+        ],
+        "quiz": true,
+        "required_non_empty_fields": [
+          "title",
+          "body"
+        ],
+        "requires_scenario_body": true
+      },
+      "preferred_for": [
+        "decision_point",
+        "assessment",
+        "inject"
+      ],
+      "preferred_primary_arrays": [
+        "options"
+      ],
+      "renderer_key": "scenario_quiz",
+      "required_payload_fields": [
+        "title",
+        "options"
+      ],
+      "semantic_contract": "Use for scenario quiz sections in UC5 render plans, especially decision_point, assessment, inject screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "stakeholder_map": {
+      "allowed_interactions": [],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "aside",
+        "support"
+      ],
+      "component_type": "stakeholder_map",
+      "fallback_renderer_name": null,
+      "frontend_renderer_name": "renderUC5V2AttributeStack",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "coordination",
+        "decision_gate",
+        "deep_dive"
+      ],
+      "preferred_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "renderer_key": "stakeholder_map",
+      "required_payload_fields": [
+        "title",
+        "items"
+      ],
+      "semantic_contract": "Use for stakeholder map sections in UC5 render plans, especially coordination, decision_gate, deep_dive screen roles.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "standard"
+    },
+    "status_classifier": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "completion_badge"
+      ],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support",
+        "assessment",
+        "aside"
+      ],
+      "component_type": "status_classifier",
+      "fallback_renderer_name": "renderUC5V2OutcomeBadges",
+      "frontend_renderer_name": "renderUC5V2StatusClassifier",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [],
+        "pb_semantic_role": "operational_status_categories",
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "decision_gate",
+        "tracking",
+        "assessment"
+      ],
+      "preferred_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "renderer_key": "status_classifier",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for operational state categories such as Not Affected, Susceptible, Compromised, Remediated, Mitigated, open/closed, or response status classes.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "classifier_compact"
+    },
+    "tradeoff_consequence_map": {
+      "allowed_interactions": [
+        "tap_to_reveal",
+        "progress_unlock",
+        "none"
+      ],
+      "allowed_primary_arrays": [
+        "cards",
+        "items"
+      ],
+      "allowed_slots": [
+        "main",
+        "support",
+        "aside"
+      ],
+      "component_type": "tradeoff_consequence_map",
+      "fallback_renderer_name": "renderUC5V2CardGrid",
+      "frontend_renderer_name": "renderUC5V2TradeoffConsequenceMap",
+      "min_primary_array_items": 2,
+      "payload_policy": {
+        "allowed_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "ds_semantic_role": "tradeoff_and_consequence_mapping",
+        "min_primary_array_items": 2,
+        "one_of_non_empty_field_groups": [
+          [
+            "summary",
+            "body",
+            "cards",
+            "items"
+          ]
+        ],
+        "preferred_primary_arrays": [
+          "cards",
+          "items"
+        ],
+        "quiz": false,
+        "required_non_empty_fields": [
+          "title"
+        ]
+      },
+      "preferred_for": [
+        "consequence",
+        "decision_point",
+        "debrief"
+      ],
+      "preferred_primary_arrays": [
+        "cards"
+      ],
+      "renderer_key": "tradeoff_consequence_map",
+      "required_payload_fields": [
+        "title",
+        "cards"
+      ],
+      "semantic_contract": "Use for consequences, tradeoffs, risks, continuity implications, reputational concerns, and mitigation effects.",
+      "source_provenance": {
+        "capability_source": "W02::B03::RENDERABLE_COMPONENTS",
+        "frontend_renderer_source": "W02::B03::RENDERABLE_COMPONENTS.renderer_name",
+        "payload_policy_source": "W03::C03::payloadPolicyFor"
+      },
+      "text_budget_profile": "comparison_compact"
+    }
+  },
+  "registry_id": "uc5_component_registry",
+  "registry_version": "uc5_component_registry.v1",
+  "source_contract": {
+    "category_policy": "R2-2A does not include category because no source field exists in W02 RENDERABLE_COMPONENTS.",
+    "frontend_renderer_source": "app.js::UC5_RENDER_PLAN_COMPONENTS",
+    "w02_component_source": "W02::B03 Build Template-bound Blueprint Package::RENDERABLE_COMPONENTS",
+    "w02_template_source": "W02::B03 Build Template-bound Blueprint Package::TEMPLATE_CAPABILITIES",
+    "w03_payload_policy_source": "W03::C03 Build Slot Filling Render Package::payloadPolicyFor"
+  },
+  "templates": {
+    "decision_simulator.scenario_decision_flow": {
+      "allowed_component_count_expected": 20,
+      "allowed_components": [
+        "hero_statement",
+        "module_intro",
+        "key_message_banner",
+        "objective_list",
+        "outcome_badges",
+        "definition_block",
+        "concept_explainer",
+        "stakeholder_map",
+        "scenario_quiz",
+        "quiz_mcq",
+        "application_checklist",
+        "checklist_table",
+        "commitment_card",
+        "reflection_prompt",
+        "scenario_inject_timeline",
+        "decision_option_panel",
+        "tradeoff_consequence_map",
+        "discussion_question_deck",
+        "outcome_capture_panel",
+        "information_sharing_matrix"
+      ],
+      "allowed_interactions": [
+        "none",
+        "tap_to_reveal",
+        "checklist_complete",
+        "single_choice_quiz",
+        "progress_unlock",
+        "completion_badge"
+      ],
+      "allowed_screen_roles": [
+        "opening",
+        "briefing",
+        "role_setup",
+        "inject",
+        "decision_point",
+        "escalation",
+        "consequence",
+        "debrief",
+        "assessment"
+      ],
+      "allowed_slots": [
+        "hero",
+        "main",
+        "support",
+        "aside",
+        "interaction",
+        "assessment",
+        "footer"
+      ],
+      "capability_manifest_version": "uc5_renderer_capability_manifest.v1",
+      "component_selection_guardrails": [
+        "Use decision_simulator-only components only after decision_simulator.scenario_decision_flow is selected.",
+        "Use scenario_inject_timeline for day/time injects, scenario progression, and staged facts revealed over time.",
+        "Use decision_option_panel for response choices, action paths, and decision criteria; do not use quiz options unless the section is explicitly assessment or scenario_quiz.",
+        "Use tradeoff_consequence_map for risks, benefits, second-order effects, continuity implications, and impact comparisons.",
+        "Use discussion_question_deck for facilitator questions and participant prompts.",
+        "Use outcome_capture_panel for desired discussion outcomes, debrief takeaways, lessons learned, and improvement items.",
+        "Use information_sharing_matrix for who shares what, with whom, through which channel, and under which disclosure protocol.",
+        "Keep scenario content grounded in the staged tabletop exercise. Do not turn every decision section into a quiz."
+      ],
+      "macro_shell_id": "decision_simulator",
+      "screen_role_component_preferences": {
+        "assessment": [
+          "scenario_quiz",
+          "quiz_mcq",
+          "application_checklist",
+          "commitment_card",
+          "outcome_capture_panel"
+        ],
+        "briefing": [
+          "scenario_inject_timeline",
+          "module_intro",
+          "definition_block",
+          "concept_explainer"
+        ],
+        "consequence": [
+          "tradeoff_consequence_map",
+          "outcome_capture_panel",
+          "scenario_inject_timeline"
+        ],
+        "debrief": [
+          "outcome_capture_panel",
+          "discussion_question_deck",
+          "reflection_prompt",
+          "information_sharing_matrix"
+        ],
+        "decision_point": [
+          "decision_option_panel",
+          "scenario_quiz",
+          "tradeoff_consequence_map",
+          "discussion_question_deck"
+        ],
+        "escalation": [
+          "decision_option_panel",
+          "information_sharing_matrix",
+          "stakeholder_map",
+          "application_checklist"
+        ],
+        "inject": [
+          "scenario_inject_timeline",
+          "discussion_question_deck",
+          "decision_option_panel"
+        ],
+        "opening": [
+          "hero_statement",
+          "module_intro",
+          "objective_list",
+          "key_message_banner"
+        ],
+        "role_setup": [
+          "stakeholder_map",
+          "information_sharing_matrix",
+          "objective_list"
+        ]
+      },
+      "slot_component_preferences": {
+        "aside": [
+          "stakeholder_map",
+          "information_sharing_matrix",
+          "outcome_capture_panel",
+          "key_message_banner"
+        ],
+        "assessment": [
+          "scenario_quiz",
+          "quiz_mcq",
+          "outcome_capture_panel",
+          "application_checklist"
+        ],
+        "footer": [
+          "commitment_card",
+          "reflection_prompt",
+          "outcome_capture_panel",
+          "key_message_banner"
+        ],
+        "hero": [
+          "hero_statement",
+          "module_intro",
+          "scenario_inject_timeline"
+        ],
+        "interaction": [
+          "decision_option_panel",
+          "scenario_quiz",
+          "discussion_question_deck",
+          "application_checklist",
+          "checklist_table"
+        ],
+        "main": [
+          "scenario_inject_timeline",
+          "decision_option_panel",
+          "discussion_question_deck",
+          "tradeoff_consequence_map",
+          "information_sharing_matrix"
+        ],
+        "support": [
+          "outcome_capture_panel",
+          "discussion_question_deck",
+          "stakeholder_map",
+          "key_message_banner",
+          "outcome_badges"
+        ]
+      },
+      "source_provenance": {
+        "template_capability_source": "W02::B03::TEMPLATE_CAPABILITIES"
+      },
+      "template_id": "decision_simulator.scenario_decision_flow"
+    },
+    "learning_canvas.core_concept_flow": {
+      "allowed_component_count_expected": 21,
+      "allowed_components": [
+        "hero_statement",
+        "module_intro",
+        "key_message_banner",
+        "objective_list",
+        "outcome_badges",
+        "definition_block",
+        "concept_explainer",
+        "definition_compare",
+        "principle_card",
+        "attribute_stack",
+        "concept_card_grid",
+        "stakeholder_map",
+        "process_timeline",
+        "method_stepper",
+        "phase_cards",
+        "application_checklist",
+        "checklist_table",
+        "quiz_mcq",
+        "scenario_quiz",
+        "commitment_card",
+        "reflection_prompt"
+      ],
+      "allowed_interactions": [
+        "none",
+        "tap_to_reveal",
+        "checklist_complete",
+        "single_choice_quiz",
+        "progress_unlock",
+        "completion_badge"
+      ],
+      "allowed_screen_roles": [
+        "opening",
+        "concept_map",
+        "deep_dive",
+        "practice_bridge",
+        "reflection",
+        "assessment",
+        "closure"
+      ],
+      "allowed_slots": [
+        "hero",
+        "main",
+        "support",
+        "aside",
+        "interaction",
+        "assessment",
+        "footer"
+      ],
+      "capability_manifest_version": "uc5_renderer_capability_manifest.v1",
+      "macro_shell_id": "learning_canvas",
+      "source_provenance": {
+        "template_capability_source": "W02::B03::TEMPLATE_CAPABILITIES"
+      },
+      "template_id": "learning_canvas.core_concept_flow"
+    },
+    "process_playbook.operational_step_flow": {
+      "allowed_component_count_expected": 20,
+      "allowed_components": [
+        "hero_statement",
+        "module_intro",
+        "key_message_banner",
+        "objective_list",
+        "outcome_badges",
+        "process_timeline",
+        "method_stepper",
+        "phase_cards",
+        "application_checklist",
+        "checklist_table",
+        "stakeholder_map",
+        "quiz_mcq",
+        "commitment_card",
+        "reflection_prompt",
+        "playbook_scope_card",
+        "decision_gate_panel",
+        "response_step_table",
+        "coordination_matrix",
+        "reporting_timeline",
+        "status_classifier"
+      ],
+      "allowed_interactions": [
+        "none",
+        "tap_to_reveal",
+        "checklist_complete",
+        "single_choice_quiz",
+        "progress_unlock",
+        "completion_badge"
+      ],
+      "allowed_screen_roles": [
+        "opening",
+        "entry_criteria",
+        "process_overview",
+        "phase_detail",
+        "decision_gate",
+        "coordination",
+        "tracking",
+        "closure",
+        "assessment"
+      ],
+      "allowed_slots": [
+        "hero",
+        "main",
+        "support",
+        "aside",
+        "interaction",
+        "assessment",
+        "footer"
+      ],
+      "capability_manifest_version": "uc5_renderer_capability_manifest.v1",
+      "component_selection_guardrails": [
+        "Use process_playbook-only components only after process_playbook.operational_step_flow is selected.",
+        "Use playbook_scope_card for scope, audience, applicability, and when-to-use criteria.",
+        "Use response_step_table for procedural rows, checklist rows, and action tracking.",
+        "Use decision_gate_panel for operational branches and escalation decisions, but never require options[] for this component.",
+        "Use coordination_matrix for role, responsibility, and handoff mapping.",
+        "Use reporting_timeline for notification, update, reporting, and closure cadence.",
+        "Use status_classifier for operational state categories such as Not Affected, Susceptible, Compromised, Remediated, or Mitigated."
+      ],
+      "macro_shell_id": "process_playbook",
+      "screen_role_component_preferences": {
+        "assessment": [
+          "status_classifier",
+          "response_step_table",
+          "quiz_mcq",
+          "application_checklist"
+        ],
+        "closure": [
+          "commitment_card",
+          "reporting_timeline",
+          "coordination_matrix",
+          "reflection_prompt"
+        ],
+        "coordination": [
+          "coordination_matrix",
+          "reporting_timeline",
+          "stakeholder_map",
+          "response_step_table"
+        ],
+        "decision_gate": [
+          "decision_gate_panel",
+          "status_classifier",
+          "application_checklist",
+          "stakeholder_map"
+        ],
+        "entry_criteria": [
+          "playbook_scope_card",
+          "decision_gate_panel",
+          "objective_list"
+        ],
+        "opening": [
+          "hero_statement",
+          "module_intro",
+          "playbook_scope_card",
+          "key_message_banner"
+        ],
+        "phase_detail": [
+          "response_step_table",
+          "method_stepper",
+          "checklist_table",
+          "application_checklist",
+          "phase_cards"
+        ],
+        "process_overview": [
+          "process_timeline",
+          "phase_cards",
+          "method_stepper"
+        ],
+        "tracking": [
+          "response_step_table",
+          "reporting_timeline",
+          "status_classifier",
+          "checklist_table"
+        ]
+      },
+      "slot_component_preferences": {
+        "aside": [
+          "coordination_matrix",
+          "stakeholder_map",
+          "status_classifier",
+          "key_message_banner"
+        ],
+        "assessment": [
+          "quiz_mcq",
+          "status_classifier",
+          "application_checklist",
+          "response_step_table"
+        ],
+        "footer": [
+          "commitment_card",
+          "reflection_prompt",
+          "reporting_timeline",
+          "key_message_banner"
+        ],
+        "hero": [
+          "hero_statement",
+          "module_intro",
+          "playbook_scope_card",
+          "process_timeline"
+        ],
+        "interaction": [
+          "application_checklist",
+          "checklist_table",
+          "decision_gate_panel",
+          "response_step_table",
+          "quiz_mcq"
+        ],
+        "main": [
+          "process_timeline",
+          "method_stepper",
+          "phase_cards",
+          "response_step_table",
+          "decision_gate_panel",
+          "coordination_matrix",
+          "status_classifier"
+        ],
+        "support": [
+          "playbook_scope_card",
+          "status_classifier",
+          "stakeholder_map",
+          "key_message_banner",
+          "outcome_badges"
+        ]
+      },
+      "source_provenance": {
+        "template_capability_source": "W02::B03::TEMPLATE_CAPABILITIES"
+      },
+      "template_id": "process_playbook.operational_step_flow"
+    }
+  }
+}
