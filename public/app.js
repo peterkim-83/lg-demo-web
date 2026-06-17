@@ -22,8 +22,9 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.final.uc3-multi-agent 2026-04-24-v2';
+const APP_VERSION = 'app.uc5-r2-2h-strict-canonical-frontend-bundle-2026-06-17-v1';
 console.log(APP_VERSION);
+console.info('[UC5 R2-2H] strict canonical frontend contract patch active');
 
 document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
@@ -2446,6 +2447,11 @@ Customer: Thank you. Goodbye.`
     formData.append('screen_count', String(currentUiSelection.screen_count || ''));
     formData.append('registry_version', UC5_EXPECTED_COMPONENT_REGISTRY_VERSION);
     formData.append('template_registry_bundle', JSON.stringify(templateRegistryBundle));
+    console.info('[UC5 R2-2H] W02 template_registry_bundle attached', {
+      template_id: currentUiSelection.template_id || '',
+      macro_shell_id: currentUiSelection.macro_shell_id || '',
+      allowed_component_count: templateRegistryBundle.allowed_component_count || 0
+    });
     formData.append('file_name', fileProfile.file_name);
     formData.append('file_type', fileProfile.file_type || 'application/pdf');
     formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
@@ -2481,6 +2487,11 @@ Customer: Thank you. Goodbye.`
     formData.append('screen_count', String(currentUiSelection.screen_count || ''));
     formData.append('registry_version', UC5_EXPECTED_COMPONENT_REGISTRY_VERSION);
     formData.append('payload_policy_bundle', JSON.stringify(payloadPolicyBundle));
+    console.info('[UC5 R2-2H] W03 payload_policy_bundle attached', {
+      template_id: payloadPolicyBundle.template_id || '',
+      macro_shell_id: payloadPolicyBundle.macro_shell_id || '',
+      selected_component_count: payloadPolicyBundle.selected_component_count || 0
+    });
     formData.append('file_name', fileProfile.file_name);
     formData.append('file_type', fileProfile.file_type || 'application/pdf');
     formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
