@@ -1553,251 +1553,6 @@ Customer: Thank you. Goodbye.`
     };
   }
 
-
-  const UC5_CANONICAL_REGISTRY_PATH = './uc5_component_registry.canonical.json';
-  const UC5_EXPECTED_COMPONENT_REGISTRY_ID = 'uc5_component_registry';
-  const UC5_EXPECTED_COMPONENT_REGISTRY_VERSION = 'uc5_component_registry.v1';
-  const UC5_TEMPLATE_REGISTRY_BUNDLE_VERSION = 'uc5_template_registry_bundle.v1';
-  const UC5_PAYLOAD_POLICY_BUNDLE_VERSION = 'uc5_payload_policy_bundle.v1';
-
-  let uc5CanonicalRegistryCache = null;
-
-  function isUC5PlainObject(value) {
-    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-  }
-
-  function normalizeUC5String(value, fallback = '') {
-    if (value === undefined || value === null) return fallback;
-    const normalized = String(value).trim();
-    return normalized || fallback;
-  }
-
-  function normalizeUC5StringArray(values) {
-    if (!Array.isArray(values)) return [];
-    return Array.from(new Set(values
-      .map((value) => normalizeUC5String(value))
-      .filter(Boolean)));
-  }
-
-  function cloneUC5Json(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  async function loadUC5CanonicalComponentRegistry() {
-    if (uc5CanonicalRegistryCache) return uc5CanonicalRegistryCache;
-
-    const response = await fetch(`${UC5_CANONICAL_REGISTRY_PATH}?v=${encodeURIComponent(APP_VERSION)}`, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`UC5 canonical registry 로드 실패 (${response.status}). uc5_component_registry.canonical.json 배포 상태를 확인하세요.`);
-    }
-
-    const registry = await response.json();
-    if (!isUC5PlainObject(registry)) {
-      throw new Error('UC5 canonical registry 응답이 JSON object가 아닙니다.');
-    }
-
-    if (registry.registry_id !== UC5_EXPECTED_COMPONENT_REGISTRY_ID) {
-      throw new Error(`UC5 canonical registry_id 불일치: ${registry.registry_id || '(empty)'}`);
-    }
-
-    if (registry.registry_version !== UC5_EXPECTED_COMPONENT_REGISTRY_VERSION) {
-      throw new Error(`UC5 canonical registry_version 불일치: ${registry.registry_version || '(empty)'}`);
-    }
-
-    if (!isUC5PlainObject(registry.templates) || !isUC5PlainObject(registry.components)) {
-      throw new Error('UC5 canonical registry에 templates/components가 없습니다.');
-    }
-
-    uc5CanonicalRegistryCache = registry;
-    return uc5CanonicalRegistryCache;
-  }
-
-  function getUC5TemplateRegistryRecord(registry, currentUiSelection) {
-    const templateId = normalizeUC5String(currentUiSelection?.template_id);
-    const macroShellId = normalizeUC5String(currentUiSelection?.macro_shell_id);
-    const templateRecord = registry?.templates?.[templateId];
-
-    if (!templateId) {
-      throw new Error('UC5 current_ui_selection.template_id가 비어 있습니다.');
-    }
-
-    if (!macroShellId) {
-      throw new Error('UC5 current_ui_selection.macro_shell_id가 비어 있습니다.');
-    }
-
-    if (!isUC5PlainObject(templateRecord)) {
-      throw new Error(`UC5 canonical registry에 template_id가 없습니다: ${templateId}`);
-    }
-
-    if (normalizeUC5String(templateRecord.macro_shell_id) !== macroShellId) {
-      throw new Error(`UC5 template/macro shell 불일치: ${templateId} / ${macroShellId}`);
-    }
-
-    return templateRecord;
-  }
-
-  function buildUC5TemplateRegistryBundleFromRegistry(currentUiSelection, registry) {
-    const templateRecord = getUC5TemplateRegistryRecord(registry, currentUiSelection);
-    const allowedComponents = normalizeUC5StringArray(templateRecord.allowed_components);
-    const allowedComponentSet = new Set(allowedComponents);
-    const componentCapabilities = {};
-
-    if (allowedComponents.length < 1) {
-      throw new Error(`UC5 template ${currentUiSelection.template_id}의 allowed_components가 비어 있습니다.`);
-    }
-
-    for (const componentType of allowedComponents) {
-      const componentSpec = registry.components?.[componentType];
-      if (!isUC5PlainObject(componentSpec)) {
-        throw new Error(`UC5 component registry에 component가 없습니다: ${componentType}`);
-      }
-
-      componentCapabilities[componentType] = {
-        component_type: componentType,
-        renderer_name: normalizeUC5String(componentSpec.renderer_name || componentSpec.frontend_renderer_name || componentSpec.renderer_key || componentType),
-        fallback_renderer_name: normalizeUC5String(componentSpec.fallback_renderer_name),
-        renderer_key: normalizeUC5String(componentSpec.renderer_key || componentType),
-        frontend_renderer_name: normalizeUC5String(componentSpec.frontend_renderer_name || componentSpec.renderer_name || componentSpec.renderer_key || componentType),
-        allowed_slots: normalizeUC5StringArray(componentSpec.allowed_slots),
-        required_payload_fields: normalizeUC5StringArray(componentSpec.required_payload_fields),
-        preferred_for: normalizeUC5StringArray(componentSpec.preferred_for),
-        allowed_primary_arrays: normalizeUC5StringArray(componentSpec.allowed_primary_arrays),
-        preferred_primary_arrays: normalizeUC5StringArray(componentSpec.preferred_primary_arrays),
-        min_primary_array_items: Number(componentSpec.min_primary_array_items || 0),
-        text_budget_profile: normalizeUC5String(componentSpec.text_budget_profile || 'standard'),
-        allowed_interactions: normalizeUC5StringArray(componentSpec.allowed_interactions),
-        semantic_contract: normalizeUC5String(componentSpec.semantic_contract)
-      };
-    }
-
-    for (const componentType of Object.keys(componentCapabilities)) {
-      if (!allowedComponentSet.has(componentType)) {
-        throw new Error(`UC5 unexpected component capability: ${componentType}`);
-      }
-    }
-
-    return {
-      bundle_version: UC5_TEMPLATE_REGISTRY_BUNDLE_VERSION,
-      registry_id: registry.registry_id,
-      registry_version: registry.registry_version,
-      registry_source: 'frontend.uc5_component_registry.canonical.json',
-      template_id: normalizeUC5String(currentUiSelection.template_id),
-      macro_shell_id: normalizeUC5String(currentUiSelection.macro_shell_id),
-      capability_manifest_version: normalizeUC5String(templateRecord.capability_manifest_version || 'uc5_renderer_capability_manifest.v1'),
-      allowed_component_count: allowedComponents.length,
-      allowed_components: allowedComponents,
-      template_contract: {
-        template_id: normalizeUC5String(currentUiSelection.template_id),
-        macro_shell_id: normalizeUC5String(currentUiSelection.macro_shell_id),
-        capability_manifest_version: normalizeUC5String(templateRecord.capability_manifest_version || 'uc5_renderer_capability_manifest.v1'),
-        allowed_screen_roles: normalizeUC5StringArray(templateRecord.allowed_screen_roles),
-        allowed_slots: normalizeUC5StringArray(templateRecord.allowed_slots),
-        allowed_interactions: normalizeUC5StringArray(templateRecord.allowed_interactions),
-        screen_role_component_preferences: isUC5PlainObject(templateRecord.screen_role_component_preferences)
-          ? cloneUC5Json(templateRecord.screen_role_component_preferences)
-          : {},
-        slot_component_preferences: isUC5PlainObject(templateRecord.slot_component_preferences)
-          ? cloneUC5Json(templateRecord.slot_component_preferences)
-          : {},
-        component_selection_guardrails: Array.isArray(templateRecord.component_selection_guardrails)
-          ? normalizeUC5StringArray(templateRecord.component_selection_guardrails)
-          : []
-      },
-      component_capabilities: componentCapabilities
-    };
-  }
-
-  async function buildUC5TemplateRegistryBundle(currentUiSelection) {
-    const registry = await loadUC5CanonicalComponentRegistry();
-    return buildUC5TemplateRegistryBundleFromRegistry(currentUiSelection, registry);
-  }
-
-  function extractUC5SelectedComponentTypesFromBlueprint(templateBoundBlueprint) {
-    const selected = [];
-    const screens = Array.isArray(templateBoundBlueprint?.screen_blueprints)
-      ? templateBoundBlueprint.screen_blueprints
-      : [];
-
-    for (const screen of screens) {
-      const positions = Array.isArray(screen?.skeleton_positions) ? screen.skeleton_positions : [];
-      for (const position of positions) {
-        const componentType = normalizeUC5String(position?.selected_component_type);
-        if (componentType) selected.push(componentType);
-      }
-    }
-
-    return Array.from(new Set(selected)).sort((a, b) => a.localeCompare(b));
-  }
-
-  function buildUC5PayloadPolicyBundleFromRegistry(templateBoundBlueprint, registry) {
-    const selectedComponentTypes = extractUC5SelectedComponentTypesFromBlueprint(templateBoundBlueprint);
-    const payloadPolicies = {};
-
-    if (selectedComponentTypes.length < 1) {
-      throw new Error('W03 payload_policy_bundle 생성 실패: W02 blueprint의 selected_component_type이 비어 있습니다.');
-    }
-
-    for (const componentType of selectedComponentTypes) {
-      const componentSpec = registry.components?.[componentType];
-      if (!isUC5PlainObject(componentSpec)) {
-        throw new Error(`W03 payload_policy_bundle 생성 실패: registry에 component가 없습니다: ${componentType}`);
-      }
-
-      const payloadPolicy = isUC5PlainObject(componentSpec.payload_policy)
-        ? cloneUC5Json(componentSpec.payload_policy)
-        : {};
-
-      payloadPolicies[componentType] = {
-        component_type: componentType,
-        required_payload_fields: normalizeUC5StringArray(componentSpec.required_payload_fields),
-        payload_policy: {
-          required_non_empty_fields: normalizeUC5StringArray(payloadPolicy.required_non_empty_fields),
-          one_of_non_empty_field_groups: Array.isArray(payloadPolicy.one_of_non_empty_field_groups)
-            ? payloadPolicy.one_of_non_empty_field_groups
-                .filter(Array.isArray)
-                .map((group) => normalizeUC5StringArray(group))
-                .filter((group) => group.length > 0)
-            : [],
-          allowed_primary_arrays: normalizeUC5StringArray(payloadPolicy.allowed_primary_arrays),
-          preferred_primary_arrays: normalizeUC5StringArray(payloadPolicy.preferred_primary_arrays),
-          min_primary_array_items: Number(payloadPolicy.min_primary_array_items || 0),
-          quiz: Boolean(payloadPolicy.quiz),
-          ...(Object.prototype.hasOwnProperty.call(payloadPolicy, 'requires_scenario_body')
-            ? { requires_scenario_body: Boolean(payloadPolicy.requires_scenario_body) }
-            : {}),
-          ...(payloadPolicy.pb_semantic_role ? { pb_semantic_role: normalizeUC5String(payloadPolicy.pb_semantic_role) } : {}),
-          ...(payloadPolicy.ds_semantic_role ? { ds_semantic_role: normalizeUC5String(payloadPolicy.ds_semantic_role) } : {})
-        }
-      };
-    }
-
-    return {
-      bundle_version: UC5_PAYLOAD_POLICY_BUNDLE_VERSION,
-      registry_id: registry.registry_id,
-      registry_version: registry.registry_version,
-      registry_source: 'frontend.uc5_component_registry.canonical.json',
-      template_id: normalizeUC5String(templateBoundBlueprint?.selected_template?.template_id || templateBoundBlueprint?.current_ui_selection?.template_id),
-      macro_shell_id: normalizeUC5String(templateBoundBlueprint?.selected_template?.macro_shell_id || templateBoundBlueprint?.current_ui_selection?.macro_shell_id),
-      component_types: selectedComponentTypes,
-      selected_component_count: selectedComponentTypes.length,
-      payload_policies: payloadPolicies
-    };
-  }
-
-  async function buildUC5PayloadPolicyBundle(templateBoundBlueprint) {
-    const registry = await loadUC5CanonicalComponentRegistry();
-    return buildUC5PayloadPolicyBundleFromRegistry(templateBoundBlueprint, registry);
-  }
-
   function buildUC5PlanningFormData() {
     if (!uc5UploadedFile) {
       throw new Error('교육 원문 PDF를 먼저 업로드해 주세요.');
@@ -2404,7 +2159,7 @@ Customer: Thank you. Goodbye.`
     return draft?.recommended_ui_selection || null;
   }
 
-  async function buildUC5TemplateBlueprintFormData() {
+  function buildUC5TemplateBlueprintFormData() {
     if (!uc5UploadedFile) {
       throw new Error('화면 설계에 사용할 원본 PDF가 없습니다. 파일을 다시 업로드해 주세요.');
     }
@@ -2433,7 +2188,6 @@ Customer: Thank you. Goodbye.`
       admin_notes: getUC5FieldValue(uc5AdminNotes, '')
     };
     const fileProfile = getUC5FileProfile(uc5UploadedFile);
-    const templateRegistryBundle = await buildUC5TemplateRegistryBundle(currentUiSelection);
 
     const formData = new FormData();
     formData.append('request_type', 'uc5_template_bound_blueprint_planning');
@@ -2444,8 +2198,6 @@ Customer: Thank you. Goodbye.`
     formData.append('template_id', currentUiSelection.template_id || '');
     formData.append('macro_shell_id', currentUiSelection.macro_shell_id || '');
     formData.append('screen_count', String(currentUiSelection.screen_count || ''));
-    formData.append('registry_version', UC5_EXPECTED_COMPONENT_REGISTRY_VERSION);
-    formData.append('template_registry_bundle', JSON.stringify(templateRegistryBundle));
     formData.append('file_name', fileProfile.file_name);
     formData.append('file_type', fileProfile.file_type || 'application/pdf');
     formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
@@ -2458,7 +2210,7 @@ Customer: Thank you. Goodbye.`
     return formData;
   }
 
-  async function buildUC5SlotPayloadSeedFormData() {
+  function buildUC5SlotPayloadSeedFormData() {
     if (!uc5TemplateBoundBlueprintData) {
       throw new Error('화면 구성 설계 결과가 없습니다. 먼저 기획안을 승인해 주세요.');
     }
@@ -2469,7 +2221,6 @@ Customer: Thank you. Goodbye.`
 
     const currentUiSelection = uc5TemplateBoundBlueprintData.current_ui_selection || uc5CurrentUiSelectionData || {};
     const fileProfile = getUC5FileProfile(uc5UploadedFile);
-    const payloadPolicyBundle = await buildUC5PayloadPolicyBundle(uc5TemplateBoundBlueprintData);
 
     const formData = new FormData();
     formData.append('request_type', 'uc5_slot_payload_seed_composition');
@@ -2479,8 +2230,6 @@ Customer: Thank you. Goodbye.`
     formData.append('template_id', currentUiSelection.template_id || '');
     formData.append('macro_shell_id', currentUiSelection.macro_shell_id || '');
     formData.append('screen_count', String(currentUiSelection.screen_count || ''));
-    formData.append('registry_version', UC5_EXPECTED_COMPONENT_REGISTRY_VERSION);
-    formData.append('payload_policy_bundle', JSON.stringify(payloadPolicyBundle));
     formData.append('file_name', fileProfile.file_name);
     formData.append('file_type', fileProfile.file_type || 'application/pdf');
     formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
@@ -3454,10 +3203,9 @@ Customer: Thank you. Goodbye.`
       setUC5LoadingCopy('blueprint');
       scheduleUC5PreviewFit();
 
-      const blueprintFormData = await buildUC5TemplateBlueprintFormData();
       const blueprintResponse = await postUC5Workflow(
         CONFIG.UC5_W02_WEBHOOK,
-        blueprintFormData,
+        buildUC5TemplateBlueprintFormData(),
         '교육 화면 설계안 생성 실패'
       );
 
@@ -3525,10 +3273,9 @@ Customer: Thank you. Goodbye.`
       setUC5LoadingCopy('payload');
       scheduleUC5PreviewFit();
 
-      const payloadFormData = await buildUC5SlotPayloadSeedFormData();
       const payloadResponse = await postUC5Workflow(
         CONFIG.UC5_W03_WEBHOOK,
-        payloadFormData,
+        buildUC5SlotPayloadSeedFormData(),
         '학습 내용 작성 실패'
       );
 
