@@ -22,6 +22,7 @@
         <button class="menu-item" data-target="view-uc3">🎙️ 3. Voice Agent Callbot</button>
         <button class="menu-item" data-target="view-uc4">🧠 4. Text-to-SQL</button>
         <button class="menu-item" data-target="view-uc5">🎓 5. 임직원 교육 생성</button>
+        <button class="menu-item" data-target="view-uc6">🧾 6. 문서 생성 운영 관리</button>
       </nav>
     </aside>
     <main id="main-content">
@@ -58,6 +59,11 @@
             <div class="card-icon">🎓</div>
             <div class="card-title">임직원 교육 자료 생성</div>
             <div class="card-desc">교안 소스 문서와 템플릿을 기반으로 맞춤형 임직원 교육 스크립트 및 퀴즈를 생성합니다.</div>
+          </div>
+          <div class="demo-card" data-target="view-uc6">
+            <div class="card-icon">🧾</div>
+            <div class="card-title">FetchDoc 문서 생성 운영 관리</div>
+            <div class="card-desc">게시된 문서 템플릿과 실행 데이터를 선택해 Databag 준비 상태, 생성 아티팩트, 다음 렌더링 단계를 확인하는 관리자용 데모입니다.</div>
           </div>
         </div>
       </section>
@@ -401,6 +407,206 @@
             </div>
           </div>
 
+        </div>
+      </section>
+
+      <section class="view-section" id="view-uc6">
+        <div class="uc6-dashboard-container">
+          <div class="uc6-page-hero">
+            <div>
+              <span class="uc6-eyebrow">FetchDoc Admin Stage Controller</span>
+              <h1>🧾 FetchDoc 문서 생성 운영 관리</h1>
+              <p>완성본 PPTX를 템플릿화하고, Slot·Databag·렌더링 준비 상태를 단계별로 확인하는 관리자용 운영 Shell입니다.</p>
+            </div>
+            <div class="uc6-hero-status">
+              <span class="uc6-status-dot"></span>
+              <div>
+                <strong id="uc6-heroStatusText">UI Shell 준비</strong>
+                <small id="uc6-heroStatusSubtext">B1 Databag Prep webhook만 연결됩니다.</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="uc6-top-control-bar">
+            <div class="uc6-control-box uc6-admin-card">
+              <div class="uc6-card-heading-row">
+                <span class="uc6-control-label">1. 완성본 PPTX</span>
+                <span class="uc6-chip is-muted" id="uc6-pptxStateChip">업로드 대기</span>
+              </div>
+              <label class="uc6-upload-wrapper" id="uc6-pptxDropzone" for="uc6-pptxInput">
+                <span class="uc6-upload-icon">📤</span>
+                <div class="uc6-upload-content">
+                  <span class="uc6-upload-text" id="uc6-pptxUploadText">PPTX를 드롭하거나 선택하세요</span>
+                  <span class="uc6-upload-hint">Shell MVP에서는 로컬 파일명만 표시합니다.</span>
+                </div>
+                <span class="uc6-file-name" id="uc6-pptxFileName" style="display: none;"></span>
+              </label>
+              <input type="file" id="uc6-pptxInput" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />
+            </div>
+
+            <div class="uc6-control-box uc6-admin-card">
+              <div class="uc6-card-heading-row">
+                <span class="uc6-control-label">2. 템플릿 확인</span>
+                <span class="uc6-chip is-warning" id="uc6-templateApprovalChip">승인 대기</span>
+              </div>
+              <label class="uc6-mini-field" for="uc6-batchSelect">
+                <span>게시 템플릿 배치</span>
+                <select id="uc6-batchSelect">
+                  <option value="fd_norm_n8n_7f18_lookup_20260606_055620" selected>fd_norm_n8n_7f18_lookup_20260606_055620</option>
+                  <option value="custom">직접 입력</option>
+                </select>
+              </label>
+              <input class="uc6-inline-input" id="uc6-customBatchId" type="text" placeholder="custom published_template_batch_id" style="display: none;" />
+              <div class="uc6-template-gate-row">
+                <button class="uc6-gate-btn active" type="button" data-uc6-approval="pending">검토 중</button>
+                <button class="uc6-gate-btn" type="button" data-uc6-approval="approved">승인 완료</button>
+                <button class="uc6-gate-btn" type="button" data-uc6-approval="needs_review">수정 필요</button>
+              </div>
+            </div>
+
+            <div class="uc6-control-box uc6-admin-card">
+              <div class="uc6-card-heading-row">
+                <span class="uc6-control-label">3. 샘플 Runtime Context</span>
+                <span class="uc6-chip is-ready" id="uc6-contextStateChip">샘플 준비</span>
+              </div>
+              <label class="uc6-mini-field" for="uc6-sampleCase">
+                <span>샘플 케이스</span>
+                <select id="uc6-sampleCase">
+                  <option value="acme_runtime_proposal" selected>Acme 제안서 샘플</option>
+                  <option value="lg_internal_demo">LG 내부 보고서 샘플</option>
+                  <option value="partner_proposal_demo">파트너 제안 샘플</option>
+                </select>
+              </label>
+              <textarea class="uc6-context-editor" id="uc6-runtimeContextEditor" spellcheck="false"></textarea>
+            </div>
+
+            <div class="uc6-control-box uc6-admin-card uc6-action-box">
+              <span class="uc6-control-label">4. 생성 단계 제어</span>
+              <div class="uc6-mini-pipeline" id="uc6-miniPipeline">
+                <span class="uc6-pipeline-pill is-done">템플릿</span>
+                <span class="uc6-pipeline-pill is-active">Context</span>
+                <span class="uc6-pipeline-pill is-idle">Databag</span>
+                <span class="uc6-pipeline-pill is-locked">PDF</span>
+              </div>
+              <button class="btn btn-primary w-full" id="uc6-runBtn">Databag Prep 실행</button>
+              <button class="btn btn-outline w-full" id="uc6-resetBtn" type="button">단계 초기화</button>
+              <p class="uc6-action-helper" id="uc6-actionHelper">B1 Runtime Databag Prep까지 실행합니다. Render Bridge와 PDF 생성은 잠금 상태입니다.</p>
+            </div>
+          </div>
+
+          <div class="uc6-stage-strip" id="uc6-stageTimeline" aria-label="FetchDoc 생성 단계 타임라인"></div>
+
+          <div class="uc6-workbench">
+            <div class="uc6-inspector-panel">
+              <div class="uc6-tabs" role="tablist" aria-label="FetchDoc 운영 정보 탭">
+                <button class="uc6-tab active" type="button" data-uc6-tab="template">템플릿</button>
+                <button class="uc6-tab" type="button" data-uc6-tab="slot">Slot</button>
+                <button class="uc6-tab" type="button" data-uc6-tab="databag">Databag</button>
+                <button class="uc6-tab" type="button" data-uc6-tab="artifacts">Artifacts</button>
+                <button class="uc6-tab" type="button" data-uc6-tab="debug">Debug</button>
+              </div>
+
+              <div class="uc6-tab-panel active" id="uc6-panel-template">
+                <div class="uc6-panel-header">
+                  <h3>템플릿 확인 및 승인 Gate</h3>
+                  <p>현재 Shell에서는 템플릿화 결과를 시뮬레이션하고, 승인 상태만 UI에서 관리합니다.</p>
+                </div>
+                <div class="uc6-template-summary-grid" id="uc6-templateSummary"></div>
+              </div>
+
+              <div class="uc6-tab-panel" id="uc6-panel-slot">
+                <div class="uc6-panel-header">
+                  <h3>Slot 구성 확인</h3>
+                  <p>Runtime Context와 B1 readiness 응답을 기준으로 필수 Slot 상태를 표시합니다.</p>
+                </div>
+                <div class="uc6-slot-table-wrap">
+                  <table class="uc6-table">
+                    <thead>
+                      <tr>
+                        <th>Slot Key</th>
+                        <th>Source</th>
+                        <th>Required</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="uc6-slotTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="uc6-tab-panel" id="uc6-panel-databag">
+                <div class="uc6-panel-header">
+                  <h3>Databag Readiness Summary</h3>
+                  <p>n8n B1 webhook의 public-safe summary만 표시합니다.</p>
+                </div>
+                <div class="uc6-readiness-grid" id="uc6-readinessSummary"></div>
+              </div>
+
+              <div class="uc6-tab-panel" id="uc6-panel-artifacts">
+                <div class="uc6-panel-header">
+                  <h3>Runtime Artifacts</h3>
+                  <p>브라우저는 내부 아티팩트 조회 API나 내부 파일 경로를 직접 호출하지 않습니다.</p>
+                </div>
+                <div class="uc6-artifact-table-wrap">
+                  <table class="uc6-table">
+                    <thead>
+                      <tr>
+                        <th>Alias</th>
+                        <th>Reported File</th>
+                        <th>UI Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="uc6-artifactTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="uc6-tab-panel" id="uc6-panel-debug">
+                <div class="uc6-panel-header">
+                  <h3>Raw JSON / Debug</h3>
+                  <p>내부 인증 헤더, FastAPI 내부 URL, 내부 파일 경로는 표시하지 않습니다.</p>
+                </div>
+                <pre class="uc6-debug-json" id="uc6-debugJson">아직 실행된 요청이 없습니다.</pre>
+              </div>
+            </div>
+
+            <div class="uc6-preview-panel">
+              <div class="uc6-preview-header">
+                <div>
+                  <span class="uc6-preview-kicker">Final Render Simulation</span>
+                  <h3>PDF 미리보기</h3>
+                </div>
+                <span class="uc6-chip is-locked" id="uc6-previewStateChip">Render Bridge 대기</span>
+              </div>
+              <div class="uc6-pdf-placeholder" id="uc6-pdfPlaceholder">
+                <div class="uc6-pdf-mock-toolbar">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="uc6-pdf-mock-page">
+                  <div class="uc6-pdf-mock-line w-72"></div>
+                  <div class="uc6-pdf-mock-line w-56"></div>
+                  <div class="uc6-pdf-mock-block"></div>
+                  <div class="uc6-pdf-mock-line w-84"></div>
+                  <div class="uc6-pdf-mock-line w-48"></div>
+                </div>
+                <div class="uc6-placeholder-copy">
+                  <strong>Render Bridge 대기</strong>
+                  <p>Databag Prep이 완료되면 후속 Slot Assembly / Render Bridge 단계에서 PDF preview URL을 이 영역에 연결합니다.</p>
+                </div>
+              </div>
+              <div class="uc6-download-actions">
+                <button class="btn btn-success" id="uc6-pdfDownloadBtn" disabled>📄 PDF 다운로드</button>
+                <button class="btn btn-warning" id="uc6-pptxDownloadBtn" disabled>📊 PPTX 다운로드</button>
+              </div>
+              <div class="uc6-runtime-context-preview">
+                <div class="uc6-panel-header compact">
+                  <h3>Runtime Context Preview</h3>
+                  <p>샘플 유저의 최종 렌더링 입력값입니다.</p>
+                </div>
+                <pre id="uc6-runtimeContextPreview"></pre>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>

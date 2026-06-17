@@ -15,7 +15,8 @@ const CONFIG = {
   UC4_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/text-to-sql-webapp',
   UC5_W01_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-ai-narrative-plan',
   UC5_W02_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-template-blueprint-plan',
-  UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-slot-fill-render'
+  UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-slot-fill-render',
+  UC6_RUNTIME_DATABAG_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/runtime-databag-prep/mvp'
 };
 
 // ==========================================
@@ -1164,201 +1165,6 @@ Customer: Thank you. Goodbye.`
     }
   };
 
-
-  const UC5_CANONICAL_REGISTRY_URL = './uc5_component_registry.canonical.json';
-  const UC5_CANONICAL_REGISTRY_VERSION_FALLBACK = 'uc5_component_registry.v1';
-
-  let uc5CanonicalRegistryData = null;
-  let uc5CanonicalRegistryLoadPromise = null;
-  let uc5CanonicalRegistryLoadStatus = 'idle';
-
-  function isPlainObject(value) {
-    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-  }
-
-  function dedupeSortedStrings(values) {
-    return Array.from(new Set((Array.isArray(values) ? values : [])
-      .map(value => String(value || '').trim())
-      .filter(Boolean)))
-      .sort((a, b) => a.localeCompare(b));
-  }
-
-  function pickUC5RegistryFields(source, fields) {
-    const picked = {};
-    if (!isPlainObject(source)) return picked;
-
-    fields.forEach((field) => {
-      if (Object.prototype.hasOwnProperty.call(source, field)) {
-        picked[field] = source[field];
-      }
-    });
-
-    return picked;
-  }
-
-  function validateUC5CanonicalRegistry(registry) {
-    if (!isPlainObject(registry)) return false;
-    if (registry.registry_version !== UC5_CANONICAL_REGISTRY_VERSION_FALLBACK) return false;
-    if (!isPlainObject(registry.components)) return false;
-    if (!isPlainObject(registry.templates)) return false;
-    return Object.keys(registry.components).length === Number(registry.component_count_expected || 33);
-  }
-
-  async function loadUC5CanonicalRegistry({ force = false } = {}) {
-    if (!force && uc5CanonicalRegistryData) {
-      return uc5CanonicalRegistryData;
-    }
-
-    if (!force && uc5CanonicalRegistryLoadPromise) {
-      return uc5CanonicalRegistryLoadPromise;
-    }
-
-    uc5CanonicalRegistryLoadStatus = 'loading';
-    uc5CanonicalRegistryLoadPromise = fetch(UC5_CANONICAL_REGISTRY_URL, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
-      }
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`UC5 canonical registry load failed (HTTP ${res.status})`);
-        }
-
-        const registry = await res.json();
-        if (!validateUC5CanonicalRegistry(registry)) {
-          throw new Error('UC5 canonical registry shape is invalid.');
-        }
-
-        uc5CanonicalRegistryData = registry;
-        uc5CanonicalRegistryLoadStatus = 'ready';
-        return registry;
-      })
-      .catch((error) => {
-        uc5CanonicalRegistryData = null;
-        uc5CanonicalRegistryLoadStatus = 'fallback';
-        console.warn('[UC5] canonical registry unavailable; continuing with legacy workflow contract.', error);
-        return null;
-      })
-      .finally(() => {
-        uc5CanonicalRegistryLoadPromise = null;
-      });
-
-    return uc5CanonicalRegistryLoadPromise;
-  }
-
-  function getUC5CanonicalRegistryVersion() {
-    return uc5CanonicalRegistryData?.registry_version || UC5_CANONICAL_REGISTRY_VERSION_FALLBACK;
-  }
-
-  function buildTemplateRegistryBundle(templateId) {
-    const registry = uc5CanonicalRegistryData;
-    const safeTemplateId = String(templateId || '').trim();
-    const template = registry?.templates?.[safeTemplateId];
-
-    if (!registry || !template || !isPlainObject(registry.components)) {
-      return null;
-    }
-
-    const allowedComponents = dedupeSortedStrings(template.allowed_components);
-    const componentCapabilities = {};
-
-    allowedComponents.forEach((componentType) => {
-      const component = registry.components[componentType];
-      if (!isPlainObject(component)) return;
-
-      componentCapabilities[componentType] = {
-        component_type: component.component_type || componentType,
-        renderer_key: component.renderer_key || componentType,
-        frontend_renderer_name: component.frontend_renderer_name || component.renderer_key || componentType,
-        allowed_slots: Array.isArray(component.allowed_slots) ? component.allowed_slots : [],
-        required_payload_fields: Array.isArray(component.required_payload_fields) ? component.required_payload_fields : [],
-        preferred_for: Array.isArray(component.preferred_for) ? component.preferred_for : [],
-        allowed_primary_arrays: Array.isArray(component.allowed_primary_arrays) ? component.allowed_primary_arrays : [],
-        preferred_primary_arrays: Array.isArray(component.preferred_primary_arrays) ? component.preferred_primary_arrays : [],
-        min_primary_array_items: Number(component.min_primary_array_items || 0),
-        text_budget_profile: component.text_budget_profile || 'standard',
-        allowed_interactions: Array.isArray(component.allowed_interactions) ? component.allowed_interactions : [],
-        semantic_contract: component.semantic_contract || ''
-      };
-    });
-
-    return {
-      bundle_version: 'uc5_template_registry_bundle.v1',
-      registry_version: registry.registry_version || UC5_CANONICAL_REGISTRY_VERSION_FALLBACK,
-      registry_id: registry.registry_id || 'uc5_component_registry',
-      template_id: template.template_id || safeTemplateId,
-      macro_shell_id: template.macro_shell_id || '',
-      allowed_component_count: allowedComponents.length,
-      allowed_components: allowedComponents,
-      template_contract: pickUC5RegistryFields(template, [
-        'allowed_screen_roles',
-        'allowed_slots',
-        'allowed_interactions',
-        'screen_role_component_preferences',
-        'slot_component_preferences',
-        'component_selection_guardrails'
-      ]),
-      component_capabilities: componentCapabilities
-    };
-  }
-
-  function getUC5SelectedComponentTypesFromBlueprint(blueprint) {
-    const screenBlueprints = Array.isArray(blueprint?.screen_blueprints) ? blueprint.screen_blueprints : [];
-    const selected = [];
-
-    screenBlueprints.forEach((screen) => {
-      const positions = Array.isArray(screen?.skeleton_positions) ? screen.skeleton_positions : [];
-      positions.forEach((position) => {
-        const componentType = String(position?.selected_component_type || '').trim();
-        if (componentType) selected.push(componentType);
-      });
-    });
-
-    return dedupeSortedStrings(selected);
-  }
-
-  function buildPayloadPolicyBundle(componentTypes) {
-    const registry = uc5CanonicalRegistryData;
-    const selectedComponentTypes = dedupeSortedStrings(componentTypes);
-
-    if (!registry || !isPlainObject(registry.components) || selectedComponentTypes.length < 1) {
-      return null;
-    }
-
-    const payloadPolicies = {};
-
-    selectedComponentTypes.forEach((componentType) => {
-      const component = registry.components[componentType];
-      if (!isPlainObject(component)) return;
-
-      payloadPolicies[componentType] = {
-        component_type: component.component_type || componentType,
-        required_payload_fields: Array.isArray(component.required_payload_fields) ? component.required_payload_fields : [],
-        payload_policy: isPlainObject(component.payload_policy) ? component.payload_policy : {}
-      };
-    });
-
-    return {
-      bundle_version: 'uc5_payload_policy_bundle.v1',
-      registry_version: registry.registry_version || UC5_CANONICAL_REGISTRY_VERSION_FALLBACK,
-      registry_id: registry.registry_id || 'uc5_component_registry',
-      selected_component_count: Object.keys(payloadPolicies).length,
-      component_types: Object.keys(payloadPolicies).sort((a, b) => a.localeCompare(b)),
-      payload_policies: payloadPolicies
-    };
-  }
-
-  function appendUC5RegistryJsonField(formData, fieldName, value) {
-    if (!formData || !fieldName || !value) return;
-    formData.append(fieldName, JSON.stringify(value));
-  }
-
-  loadUC5CanonicalRegistry();
-
   // 2. DOM Queries
   const macroShellInputs = document.querySelectorAll('input[name="uc5-macroShell"]');
   const legacyTemplateInputs = document.querySelectorAll('input[name="uc5-template"]'); // backward compatibility only
@@ -2353,7 +2159,7 @@ Customer: Thank you. Goodbye.`
     return draft?.recommended_ui_selection || null;
   }
 
-  async function buildUC5TemplateBlueprintFormData() {
+  function buildUC5TemplateBlueprintFormData() {
     if (!uc5UploadedFile) {
       throw new Error('화면 설계에 사용할 원본 PDF가 없습니다. 파일을 다시 업로드해 주세요.');
     }
@@ -2383,9 +2189,6 @@ Customer: Thank you. Goodbye.`
     };
     const fileProfile = getUC5FileProfile(uc5UploadedFile);
 
-    await loadUC5CanonicalRegistry();
-    const templateRegistryBundle = buildTemplateRegistryBundle(currentUiSelection.template_id);
-
     const formData = new FormData();
     formData.append('request_type', 'uc5_template_bound_blueprint_planning');
     formData.append('workflow_version', 'uc5_v2');
@@ -2402,14 +2205,12 @@ Customer: Thank you. Goodbye.`
     formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
     formData.append('planning_context', JSON.stringify(planningContext));
     formData.append('file_profile', JSON.stringify(fileProfile));
-    formData.append('registry_version', getUC5CanonicalRegistryVersion());
-    appendUC5RegistryJsonField(formData, 'template_registry_bundle', templateRegistryBundle);
     formData.append('file', uc5UploadedFile);
 
     return formData;
   }
 
-  async function buildUC5SlotPayloadSeedFormData() {
+  function buildUC5SlotPayloadSeedFormData() {
     if (!uc5TemplateBoundBlueprintData) {
       throw new Error('화면 구성 설계 결과가 없습니다. 먼저 기획안을 승인해 주세요.');
     }
@@ -2420,10 +2221,6 @@ Customer: Thank you. Goodbye.`
 
     const currentUiSelection = uc5TemplateBoundBlueprintData.current_ui_selection || uc5CurrentUiSelectionData || {};
     const fileProfile = getUC5FileProfile(uc5UploadedFile);
-
-    await loadUC5CanonicalRegistry();
-    const selectedComponentTypes = getUC5SelectedComponentTypesFromBlueprint(uc5TemplateBoundBlueprintData);
-    const payloadPolicyBundle = buildPayloadPolicyBundle(selectedComponentTypes);
 
     const formData = new FormData();
     formData.append('request_type', 'uc5_slot_payload_seed_composition');
@@ -2439,8 +2236,6 @@ Customer: Thank you. Goodbye.`
     formData.append('template_bound_blueprint', JSON.stringify(uc5TemplateBoundBlueprintData));
     formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
     formData.append('file_profile', JSON.stringify(fileProfile));
-    formData.append('registry_version', getUC5CanonicalRegistryVersion());
-    appendUC5RegistryJsonField(formData, 'payload_policy_bundle', payloadPolicyBundle);
     formData.append('file', uc5UploadedFile);
 
     return formData;
@@ -2566,11 +2361,6 @@ Customer: Thank you. Goodbye.`
         template_bound_blueprint_version: templateBoundBlueprint.blueprint_version,
         slot_payload_seed_version: slotPayloadSeed.slot_payload_seed_version,
         source_file_name: slotPayloadSeed.source_lineage?.source_file_name || templateBoundBlueprint.source_lineage?.source_file_name || ''
-      },
-      registry_lineage: {
-        registry_version: getUC5CanonicalRegistryVersion(),
-        canonical_registry_loaded: Boolean(uc5CanonicalRegistryData),
-        registry_load_status: uc5CanonicalRegistryLoadStatus
       },
       source_coverage_summary: sourceCoverageSummary || slotPayloadSeed.seed_validation?.source_coverage_summary || null,
       screens
@@ -3415,7 +3205,7 @@ Customer: Thank you. Goodbye.`
 
       const blueprintResponse = await postUC5Workflow(
         CONFIG.UC5_W02_WEBHOOK,
-        await buildUC5TemplateBlueprintFormData(),
+        buildUC5TemplateBlueprintFormData(),
         '교육 화면 설계안 생성 실패'
       );
 
@@ -3485,7 +3275,7 @@ Customer: Thank you. Goodbye.`
 
       const payloadResponse = await postUC5Workflow(
         CONFIG.UC5_W03_WEBHOOK,
-        await buildUC5SlotPayloadSeedFormData(),
+        buildUC5SlotPayloadSeedFormData(),
         '학습 내용 작성 실패'
       );
 
@@ -4140,6 +3930,532 @@ Customer: Thank you. Goodbye.`
 
     drawFrame();
   }
+
+
+
+  // ==========================================
+  // 🧾 Use Case 6: FetchDoc 문서 생성 운영 관리
+  // ==========================================
+  const UC6_DEFAULT_BATCH_ID = 'fd_norm_n8n_7f18_lookup_20260606_055620';
+
+  const UC6_SAMPLE_CASES = {
+    acme_runtime_proposal: {
+      label: 'Acme 제안서 샘플',
+      description: 'B1 happy-path smoke와 같은 4개 필수 slot 중심 샘플입니다.',
+      runtime_context: {
+        account_name: 'Acme Corp',
+        proposal_date: '2026-06-16',
+        vendor_contact: 'Peter Kim',
+        vendor_name: 'FetchDoc Runtime'
+      }
+    },
+    lg_internal_demo: {
+      label: 'LG 내부 보고서 샘플',
+      description: '내부 문서 생성 승인 흐름을 시뮬레이션하는 샘플입니다.',
+      runtime_context: {
+        account_name: 'LG Electronics',
+        proposal_date: '2026-06-17',
+        vendor_contact: 'AI Transformation Team',
+        vendor_name: 'FetchDoc Admin'
+      }
+    },
+    partner_proposal_demo: {
+      label: '파트너 제안 샘플',
+      description: '파트너사 대상 문서 생성 조건을 확인하는 샘플입니다.',
+      runtime_context: {
+        account_name: 'Global Partner Co.',
+        proposal_date: '2026-06-20',
+        vendor_contact: 'Partner Success Manager',
+        vendor_name: 'FetchDoc Partner Desk'
+      }
+    }
+  };
+
+  const UC6_STAGE_MODEL = [
+    { id: 'pptx_upload', label: 'PPTX 업로드', detail: '완성본 PPTX 선택', baseState: 'active' },
+    { id: 'template_analysis', label: '템플릿 분석', detail: '슬라이드·레이아웃 추출', baseState: 'idle' },
+    { id: 'template_approval', label: '템플릿 승인', detail: '관리자 Gate', baseState: 'idle' },
+    { id: 'slot_contract', label: 'Slot 구성', detail: '필수 Slot 확인', baseState: 'idle' },
+    { id: 'runtime_context', label: 'Runtime Context', detail: '샘플 입력값', baseState: 'active' },
+    { id: 'databag_prep', label: 'Databag Prep', detail: 'B1 webhook', baseState: 'idle' },
+    { id: 'render_bridge', label: 'Render Bridge', detail: '후속 연결', baseState: 'locked' },
+    { id: 'pdf_preview', label: 'PDF Preview', detail: '후속 연결', baseState: 'locked' },
+    { id: 'download', label: 'Download', detail: '후속 연결', baseState: 'locked' }
+  ];
+
+  const UC6_DEFAULT_ARTIFACTS = {
+    runtime_context_request: 'runtime_context_request.json',
+    runtime_source_collection_plan: 'runtime_source_collection_plan.json',
+    runtime_source_collection_status: 'runtime_source_collection_status.json',
+    runtime_databag_candidate: 'runtime_databag_candidate.json',
+    runtime_databag_readiness_result: 'runtime_databag_readiness_result.json',
+    runtime_databag_readiness_report: 'runtime_databag_readiness_report.md'
+  };
+
+  const uc6State = {
+    selectedSampleId: 'acme_runtime_proposal',
+    selectedBatchId: UC6_DEFAULT_BATCH_ID,
+    approvalStatus: 'pending',
+    pptxFileName: '',
+    requestPayload: null,
+    responsePayload: null,
+    isRunning: false,
+    lastError: null,
+    activeTab: 'template'
+  };
+
+  const uc6Els = {
+    section: document.getElementById('view-uc6'),
+    heroStatusText: document.getElementById('uc6-heroStatusText'),
+    heroStatusSubtext: document.getElementById('uc6-heroStatusSubtext'),
+    pptxInput: document.getElementById('uc6-pptxInput'),
+    pptxUploadText: document.getElementById('uc6-pptxUploadText'),
+    pptxFileName: document.getElementById('uc6-pptxFileName'),
+    pptxStateChip: document.getElementById('uc6-pptxStateChip'),
+    batchSelect: document.getElementById('uc6-batchSelect'),
+    customBatchId: document.getElementById('uc6-customBatchId'),
+    approvalChip: document.getElementById('uc6-templateApprovalChip'),
+    gateButtons: document.querySelectorAll('[data-uc6-approval]'),
+    sampleCase: document.getElementById('uc6-sampleCase'),
+    runtimeEditor: document.getElementById('uc6-runtimeContextEditor'),
+    contextStateChip: document.getElementById('uc6-contextStateChip'),
+    runBtn: document.getElementById('uc6-runBtn'),
+    resetBtn: document.getElementById('uc6-resetBtn'),
+    actionHelper: document.getElementById('uc6-actionHelper'),
+    miniPipeline: document.getElementById('uc6-miniPipeline'),
+    stageTimeline: document.getElementById('uc6-stageTimeline'),
+    tabs: document.querySelectorAll('[data-uc6-tab]'),
+    templateSummary: document.getElementById('uc6-templateSummary'),
+    slotTableBody: document.getElementById('uc6-slotTableBody'),
+    readinessSummary: document.getElementById('uc6-readinessSummary'),
+    artifactTableBody: document.getElementById('uc6-artifactTableBody'),
+    debugJson: document.getElementById('uc6-debugJson'),
+    runtimeContextPreview: document.getElementById('uc6-runtimeContextPreview'),
+    previewStateChip: document.getElementById('uc6-previewStateChip'),
+    pdfDownloadBtn: document.getElementById('uc6-pdfDownloadBtn'),
+    pptxDownloadBtn: document.getElementById('uc6-pptxDownloadBtn')
+  };
+
+  function getUC6SelectedBatchId() {
+    if (uc6Els.batchSelect?.value === 'custom') {
+      return (uc6Els.customBatchId?.value || '').trim();
+    }
+    return uc6Els.batchSelect?.value || UC6_DEFAULT_BATCH_ID;
+  }
+
+  function getUC6RuntimeContext() {
+    const text = uc6Els.runtimeEditor?.value || '{}';
+    return JSON.parse(text);
+  }
+
+  function setUC6Chip(el, text, stateClass) {
+    if (!el) return;
+    el.textContent = text;
+    el.className = `uc6-chip ${stateClass || 'is-muted'}`;
+  }
+
+  function formatUC6Json(value) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (_) {
+      return String(value ?? '');
+    }
+  }
+
+  function getUC6RequiredSlots() {
+    const responseSlots = Array.isArray(uc6State.responsePayload?.required_slot_keys)
+      ? uc6State.responsePayload.required_slot_keys
+      : [];
+
+    if (responseSlots.length) return responseSlots;
+
+    try {
+      return Object.keys(getUC6RuntimeContext());
+    } catch (_) {
+      return ['account_name', 'proposal_date', 'vendor_contact', 'vendor_name'];
+    }
+  }
+
+  function buildUC6RequestPayload() {
+    const runtimeContext = getUC6RuntimeContext();
+    const batchId = getUC6SelectedBatchId();
+
+    if (!batchId) {
+      throw new Error('published_template_batch_id가 비어 있습니다.');
+    }
+
+    if (!runtimeContext || typeof runtimeContext !== 'object' || Array.isArray(runtimeContext)) {
+      throw new Error('Runtime Context는 JSON object여야 합니다.');
+    }
+
+    return {
+      published_template_batch_id: batchId,
+      runtime_context: runtimeContext,
+      collection_options: {
+        use_user_input: true
+      },
+      request_context: {
+        caller: 'webapp',
+        view: 'uc6_fetchdoc_admin_stage_controller',
+        phase: 'ui_shell_mvp',
+        sample_case_id: uc6State.selectedSampleId,
+        template_approval_status: uc6State.approvalStatus
+      }
+    };
+  }
+
+  function renderUC6TemplateSummary() {
+    if (!uc6Els.templateSummary) return;
+
+    const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.acme_runtime_proposal;
+    const batchId = getUC6SelectedBatchId();
+    const response = uc6State.responsePayload || {};
+
+    const summaryItems = [
+      { label: 'Template Batch ID', value: batchId || '미입력' },
+      { label: 'Approval Status', value: uc6State.approvalStatus === 'approved' ? '승인 완료' : uc6State.approvalStatus === 'needs_review' ? '수정 필요' : '검토 중' },
+      { label: 'Sample Case', value: sample.label },
+      { label: 'Runtime Phase', value: response.phase || 'ui_shell_ready' },
+      { label: 'Render Run ID', value: response.render_run_id || 'B1 실행 후 표시' },
+      { label: 'Next Action', value: response.next_action || 'runtime_render_bridge_pending' }
+    ];
+
+    uc6Els.templateSummary.innerHTML = summaryItems.map(item => `
+      <div class="uc6-summary-card">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+      </div>
+    `).join('');
+  }
+
+  function renderUC6SlotTable() {
+    if (!uc6Els.slotTableBody) return;
+
+    let runtimeContext = {};
+    try { runtimeContext = getUC6RuntimeContext(); } catch (_) { runtimeContext = {}; }
+
+    const keys = getUC6RequiredSlots();
+    uc6Els.slotTableBody.innerHTML = keys.map((key) => {
+      const value = runtimeContext[key];
+      const filled = value !== undefined && value !== null && String(value).trim() !== '';
+      return `
+        <tr>
+          <td><code>${escapeHtml(key)}</code></td>
+          <td>runtime_context</td>
+          <td>Yes</td>
+          <td><span class="uc6-table-status ${filled ? 'is-ready' : 'is-warning'}">${filled ? 'filled' : 'missing'}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4">표시할 Slot이 없습니다.</td></tr>';
+  }
+
+  function renderUC6ReadinessSummary() {
+    if (!uc6Els.readinessSummary) return;
+
+    const response = uc6State.responsePayload || {};
+    const cards = [
+      { label: 'success', value: response.success === true ? 'true' : response.success === false ? 'false' : 'not_run', tone: response.success === true ? 'ready' : response.success === false ? 'danger' : 'muted' },
+      { label: 'readiness_status', value: response.readiness_status || 'not_run', tone: response.readiness_status === 'completed' ? 'ready' : 'muted' },
+      { label: 'candidate_slot_value_count', value: response.candidate_slot_value_count ?? '-', tone: 'muted' },
+      { label: 'blocking_issue_count', value: response.blocking_issue_count ?? '-', tone: response.blocking_issue_count === 0 ? 'ready' : 'warning' },
+      { label: 'warning_count', value: response.warning_count ?? '-', tone: response.warning_count === 0 ? 'ready' : 'warning' },
+      { label: 'next_action', value: response.next_action || 'runtime_render_bridge_pending', tone: 'locked' }
+    ];
+
+    uc6Els.readinessSummary.innerHTML = cards.map(card => `
+      <div class="uc6-readiness-card is-${escapeHtml(card.tone)}">
+        <span>${escapeHtml(card.label)}</span>
+        <strong>${escapeHtml(card.value)}</strong>
+      </div>
+    `).join('');
+  }
+
+  function renderUC6ArtifactTable() {
+    if (!uc6Els.artifactTableBody) return;
+
+    const artifacts = uc6State.responsePayload?.artifacts && typeof uc6State.responsePayload.artifacts === 'object'
+      ? uc6State.responsePayload.artifacts
+      : UC6_DEFAULT_ARTIFACTS;
+
+    const ready = uc6State.responsePayload?.success === true;
+
+    uc6Els.artifactTableBody.innerHTML = Object.entries(artifacts).map(([alias, file]) => `
+      <tr>
+        <td><code>${escapeHtml(alias)}</code></td>
+        <td>${escapeHtml(file)}</td>
+        <td><span class="uc6-table-status ${ready ? 'is-ready' : 'is-muted'}">${ready ? 'reported' : 'expected'}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  function renderUC6DebugPanel() {
+    if (!uc6Els.debugJson) return;
+
+    const debugPayload = {
+      safety_boundary: {
+        browser_calls: 'n8n public webhook only',
+        forbidden_in_browser: ['internal auth header', 'FastAPI internal endpoint', 'internal artifact lookup', 'internal file path'],
+        final_render: 'disabled_in_ui_shell_mvp'
+      },
+      request: uc6State.requestPayload,
+      response: uc6State.responsePayload,
+      error: uc6State.lastError
+    };
+
+    uc6Els.debugJson.textContent = formatUC6Json(debugPayload);
+  }
+
+  function getUC6StageState(stageId) {
+    const hasPptx = Boolean(uc6State.pptxFileName);
+    const approved = uc6State.approvalStatus === 'approved';
+    const response = uc6State.responsePayload;
+    const success = response?.success === true;
+    const failed = response?.success === false || Boolean(uc6State.lastError);
+
+    if (stageId === 'pptx_upload') return hasPptx ? 'done' : 'active';
+    if (stageId === 'template_analysis') return hasPptx ? 'done' : 'idle';
+    if (stageId === 'template_approval') return approved ? 'done' : uc6State.approvalStatus === 'needs_review' ? 'error' : 'active';
+    if (stageId === 'slot_contract') return success ? 'done' : approved ? 'active' : 'idle';
+    if (stageId === 'runtime_context') return 'done';
+    if (stageId === 'databag_prep') {
+      if (uc6State.isRunning) return 'active';
+      if (failed) return 'error';
+      return success ? 'done' : 'idle';
+    }
+    return 'locked';
+  }
+
+  function renderUC6StageTimeline() {
+    if (!uc6Els.stageTimeline) return;
+
+    uc6Els.stageTimeline.innerHTML = UC6_STAGE_MODEL.map((stage, idx) => {
+      const state = getUC6StageState(stage.id);
+      return `
+        <div class="uc6-stage-node is-${escapeHtml(state)}">
+          <span class="uc6-stage-index">${idx + 1}</span>
+          <div>
+            <strong>${escapeHtml(stage.label)}</strong>
+            <small>${escapeHtml(stage.detail)}</small>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderUC6MiniPipeline() {
+    if (!uc6Els.miniPipeline) return;
+    const response = uc6State.responsePayload;
+    const databagState = uc6State.isRunning ? 'is-active' : response?.success === true ? 'is-done' : uc6State.lastError ? 'is-error' : 'is-idle';
+    uc6Els.miniPipeline.innerHTML = `
+      <span class="uc6-pipeline-pill is-done">템플릿</span>
+      <span class="uc6-pipeline-pill is-done">Context</span>
+      <span class="uc6-pipeline-pill ${databagState}">Databag</span>
+      <span class="uc6-pipeline-pill is-locked">PDF</span>
+    `;
+  }
+
+  function renderUC6RuntimeContextPreview() {
+    if (!uc6Els.runtimeContextPreview) return;
+    try {
+      const context = getUC6RuntimeContext();
+      uc6Els.runtimeContextPreview.textContent = formatUC6Json(context);
+      setUC6Chip(uc6Els.contextStateChip, 'JSON 정상', 'is-ready');
+    } catch (error) {
+      uc6Els.runtimeContextPreview.textContent = `Runtime Context JSON 오류: ${error.message}`;
+      setUC6Chip(uc6Els.contextStateChip, 'JSON 오류', 'is-danger');
+    }
+  }
+
+  function renderUC6Hero() {
+    const response = uc6State.responsePayload;
+    if (uc6Els.heroStatusText) {
+      if (uc6State.isRunning) uc6Els.heroStatusText.textContent = 'Databag Prep 실행 중';
+      else if (uc6State.lastError) uc6Els.heroStatusText.textContent = 'Databag Prep 실패';
+      else if (response?.success === true) uc6Els.heroStatusText.textContent = 'Databag 준비 완료';
+      else uc6Els.heroStatusText.textContent = 'UI Shell 준비';
+    }
+
+    if (uc6Els.heroStatusSubtext) {
+      if (response?.render_run_id) uc6Els.heroStatusSubtext.textContent = response.render_run_id;
+      else if (uc6State.lastError) uc6Els.heroStatusSubtext.textContent = uc6State.lastError.message || '실행 중 오류가 발생했습니다.';
+      else uc6Els.heroStatusSubtext.textContent = 'B1 Databag Prep webhook만 연결됩니다.';
+    }
+
+    if (uc6Els.actionHelper) {
+      if (uc6State.isRunning) uc6Els.actionHelper.textContent = 'n8n Runtime Databag Prep webhook 응답을 기다리는 중입니다.';
+      else if (uc6State.lastError) uc6Els.actionHelper.textContent = `오류: ${uc6State.lastError.message}`;
+      else if (response?.success === true) uc6Els.actionHelper.textContent = 'Databag readiness가 완료되었습니다. Render Bridge와 PDF 생성은 후속 단계입니다.';
+      else uc6Els.actionHelper.textContent = 'B1 Runtime Databag Prep까지 실행합니다. Render Bridge와 PDF 생성은 잠금 상태입니다.';
+    }
+  }
+
+  function renderUC6DownloadPlaceholders() {
+    if (uc6Els.previewStateChip) {
+      const response = uc6State.responsePayload;
+      if (response?.success === true) setUC6Chip(uc6Els.previewStateChip, 'Render Bridge 대기', 'is-locked');
+      else setUC6Chip(uc6Els.previewStateChip, 'Preview 대기', 'is-locked');
+    }
+
+    if (uc6Els.pdfDownloadBtn) uc6Els.pdfDownloadBtn.disabled = true;
+    if (uc6Els.pptxDownloadBtn) uc6Els.pptxDownloadBtn.disabled = true;
+  }
+
+  function renderUC6All() {
+    if (!uc6Els.section) return;
+    renderUC6TemplateSummary();
+    renderUC6SlotTable();
+    renderUC6ReadinessSummary();
+    renderUC6ArtifactTable();
+    renderUC6DebugPanel();
+    renderUC6StageTimeline();
+    renderUC6MiniPipeline();
+    renderUC6RuntimeContextPreview();
+    renderUC6Hero();
+    renderUC6DownloadPlaceholders();
+  }
+
+  function setUC6ActiveTab(tabId) {
+    uc6State.activeTab = tabId;
+    uc6Els.tabs.forEach((tab) => {
+      tab.classList.toggle('active', tab.dataset.uc6Tab === tabId);
+    });
+
+    document.querySelectorAll('#view-uc6 .uc6-tab-panel').forEach((panel) => {
+      panel.classList.toggle('active', panel.id === `uc6-panel-${tabId}`);
+    });
+  }
+
+  function resetUC6Shell() {
+    uc6State.responsePayload = null;
+    uc6State.requestPayload = null;
+    uc6State.lastError = null;
+    uc6State.isRunning = false;
+    if (uc6Els.runBtn) uc6Els.runBtn.disabled = false;
+    renderUC6All();
+    setUC6ActiveTab('template');
+  }
+
+  async function runUC6DatabagPrep() {
+    if (!uc6Els.runBtn) return;
+
+    try {
+      uc6State.isRunning = true;
+      uc6State.lastError = null;
+      uc6State.responsePayload = null;
+      uc6State.requestPayload = buildUC6RequestPayload();
+      uc6Els.runBtn.disabled = true;
+      renderUC6All();
+      setUC6ActiveTab('databag');
+
+      const res = await fetch(CONFIG.UC6_RUNTIME_DATABAG_PREP_WEBHOOK, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(uc6State.requestPayload)
+      });
+
+      const rawText = await res.text();
+      let data;
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (_) {
+        throw new Error(`n8n 응답 JSON 파싱 실패 (${res.status})`);
+      }
+
+      if (!res.ok) {
+        const message = data.message || data.error || `Databag Prep 실패 (${res.status})`;
+        throw new Error(message);
+      }
+
+      uc6State.responsePayload = data;
+      uc6State.lastError = null;
+      setUC6ActiveTab('artifacts');
+    } catch (error) {
+      uc6State.lastError = {
+        message: error.message || '알 수 없는 오류',
+        name: error.name || 'Error'
+      };
+      setUC6ActiveTab('debug');
+    } finally {
+      uc6State.isRunning = false;
+      if (uc6Els.runBtn) uc6Els.runBtn.disabled = false;
+      renderUC6All();
+    }
+  }
+
+  function initUC6() {
+    if (!uc6Els.section) return;
+
+    const defaultSample = UC6_SAMPLE_CASES[uc6State.selectedSampleId];
+    if (uc6Els.runtimeEditor && defaultSample) {
+      uc6Els.runtimeEditor.value = formatUC6Json(defaultSample.runtime_context);
+    }
+
+    uc6Els.pptxInput?.addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      uc6State.pptxFileName = file?.name || '';
+      if (uc6State.pptxFileName) {
+        if (uc6Els.pptxUploadText) uc6Els.pptxUploadText.textContent = 'PPTX 선택 완료';
+        if (uc6Els.pptxFileName) {
+          uc6Els.pptxFileName.textContent = uc6State.pptxFileName;
+          uc6Els.pptxFileName.style.display = 'block';
+        }
+        setUC6Chip(uc6Els.pptxStateChip, '샘플 선택됨', 'is-ready');
+      } else {
+        setUC6Chip(uc6Els.pptxStateChip, '업로드 대기', 'is-muted');
+      }
+      renderUC6All();
+    });
+
+    uc6Els.batchSelect?.addEventListener('change', () => {
+      const isCustom = uc6Els.batchSelect.value === 'custom';
+      if (uc6Els.customBatchId) uc6Els.customBatchId.style.display = isCustom ? 'block' : 'none';
+      uc6State.selectedBatchId = getUC6SelectedBatchId();
+      resetUC6Shell();
+    });
+
+    uc6Els.customBatchId?.addEventListener('input', () => {
+      uc6State.selectedBatchId = getUC6SelectedBatchId();
+      renderUC6All();
+    });
+
+    uc6Els.gateButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        uc6State.approvalStatus = btn.dataset.uc6Approval || 'pending';
+        uc6Els.gateButtons.forEach((item) => item.classList.toggle('active', item === btn));
+        if (uc6State.approvalStatus === 'approved') setUC6Chip(uc6Els.approvalChip, '승인 완료', 'is-ready');
+        else if (uc6State.approvalStatus === 'needs_review') setUC6Chip(uc6Els.approvalChip, '수정 필요', 'is-danger');
+        else setUC6Chip(uc6Els.approvalChip, '승인 대기', 'is-warning');
+        renderUC6All();
+      });
+    });
+
+    uc6Els.sampleCase?.addEventListener('change', () => {
+      uc6State.selectedSampleId = uc6Els.sampleCase.value;
+      const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.acme_runtime_proposal;
+      if (uc6Els.runtimeEditor) uc6Els.runtimeEditor.value = formatUC6Json(sample.runtime_context);
+      resetUC6Shell();
+    });
+
+    uc6Els.runtimeEditor?.addEventListener('input', () => {
+      uc6State.responsePayload = null;
+      uc6State.lastError = null;
+      renderUC6All();
+    });
+
+    uc6Els.tabs.forEach((tab) => {
+      tab.addEventListener('click', () => setUC6ActiveTab(tab.dataset.uc6Tab || 'template'));
+    });
+
+    uc6Els.runBtn?.addEventListener('click', runUC6DatabagPrep);
+    uc6Els.resetBtn?.addEventListener('click', resetUC6Shell);
+
+    renderUC6All();
+  }
+
+  initUC6();
 
   // Keyboard Left/Right Navigation Hook for UC5 V2.1
   window.addEventListener('keydown', (e) => {
