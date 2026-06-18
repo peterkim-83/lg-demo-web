@@ -1160,8 +1160,6 @@ Customer: Thank you. Goodbye.`
   const UC5_FIREBASE_SDK_VERSION = '10.14.1';
   const UC5_R3D_SCREENS_PER_SHARD = 1;
   const UC5_R3D_MAX_SECTIONS_PER_SHARD = 4;
-  const UC5_R3D_REASONING_EFFORT = 'medium';
-  const UC5_R3D_FILE_SEARCH_MAX_RESULTS = 8;
 
   const UC5_MACRO_SHELL_META = {
     auto: {
@@ -2389,9 +2387,6 @@ Customer: Thank you. Goodbye.`
     formData.append('planning_context', JSON.stringify(planningContext));
     formData.append('file_profile', JSON.stringify(fileProfile));
     appendUC5SourceHandleToFormData(formData, sourceHandle);
-    formData.append('model_deployment', 'gpt-5.5');
-    formData.append('reasoning_effort', 'medium');
-    formData.append('file_search_max_num_results', '12');
 
     return formData;
   }
@@ -3061,9 +3056,6 @@ Customer: Thank you. Goodbye.`
     formData.append('planning_context', JSON.stringify(planningContext));
     formData.append('file_profile', JSON.stringify(fileProfile));
     appendUC5SourceHandleToFormData(formData, sourceHandle);
-    formData.append('model_deployment', 'gpt-5.5');
-    formData.append('reasoning_effort', 'medium');
-    formData.append('file_search_max_num_results', '16');
 
     return formData;
   }
@@ -3094,9 +3086,6 @@ Customer: Thank you. Goodbye.`
     formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
     formData.append('file_profile', JSON.stringify(fileProfile));
     appendUC5SourceHandleToFormData(formData, sourceHandle);
-    formData.append('model_deployment', 'gpt-5.5');
-    formData.append('reasoning_effort', UC5_R3D_REASONING_EFFORT);
-    formData.append('file_search_max_num_results', String(UC5_R3D_FILE_SEARCH_MAX_RESULTS));
 
     return formData;
   }
@@ -4191,8 +4180,6 @@ Customer: Thank you. Goodbye.`
       plan_version: 'uc5_w03_r3d_frontend_shard_plan.v1',
       screens_per_shard: UC5_R3D_SCREENS_PER_SHARD,
       max_sections_per_shard: UC5_R3D_MAX_SECTIONS_PER_SHARD,
-      reasoning_effort: UC5_R3D_REASONING_EFFORT,
-      file_search_max_num_results: UC5_R3D_FILE_SEARCH_MAX_RESULTS,
       expected_section_count: countUC5BlueprintSections(templateBoundBlueprint),
       shard_count: shards.length,
       shards
@@ -4312,8 +4299,7 @@ Customer: Thank you. Goodbye.`
       shard_policy: {
         screens_per_shard: plan.screens_per_shard,
         max_sections_per_shard: plan.max_sections_per_shard,
-        reasoning_effort: plan.reasoning_effort,
-        file_search_max_num_results: plan.file_search_max_num_results
+        execution_parameters_owner: 'n8n'
       },
       shard_count: plan.shard_count,
       successful_shard_count: shardResults.length,
@@ -4350,8 +4336,7 @@ Customer: Thank you. Goodbye.`
     console.info('[UC5 R3D] W03 dynamic shard plan', {
       shard_count: plan.shard_count,
       expected_section_count: plan.expected_section_count,
-      reasoning_effort: plan.reasoning_effort,
-      file_search_max_num_results: plan.file_search_max_num_results
+      execution_parameters_owner: 'n8n'
     });
 
     for (const shard of plan.shards) {
