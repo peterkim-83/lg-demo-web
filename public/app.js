@@ -13,9 +13,11 @@ const CONFIG = {
   UC3_START_CALL: 'https://peter-n8n.duckdns.org/webhook/ultravox-start',
   UC3_END_CALL: 'https://peter-n8n.duckdns.org/webhook/get-call-log',
   UC4_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/text-to-sql-webapp',
-  UC5_W01_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-ai-narrative-plan',
-  UC5_W02_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-template-blueprint-plan',
-  UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-slot-fill-render',
+  UC5_W00_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-source-ingest-responses',
+  UC5_W01_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-ai-narrative-plan-responses',
+  UC5_W02_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-template-blueprint-plan-responses',
+  UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-slot-fill-render-responses',
+  UC5_W99_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-source-cleanup-responses',
   UC6_TEMPLATE_INTAKE_REVIEW_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/intake-review-prep',
   UC6_TEMPLATE_REVIEW_STATUS_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/review-status',
   UC6_TEMPLATE_APPROVAL_PUBLISH_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/approval-publish',
@@ -28,9 +30,9 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc5-r2-2h-uc6-e2e-stage-controller-2026-06-18-v1';
+const APP_VERSION = 'app.uc5-r3d-source-ingest-sharded-w03-2026-06-18-v1';
 console.log(APP_VERSION);
-console.info('[UC5 R2-2H] strict canonical frontend contract patch active');
+console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
 document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
@@ -1129,6 +1131,9 @@ Customer: Thank you. Goodbye.`
   let uc5SelectedMacroShell = 'auto';
   let uc5SelectedTemplate = 'template_matrix'; // legacy renderer fallback
   let uc5UploadedFile = null;
+  let uc5UploadedFileKey = '';
+  let uc5SourceHandleData = null;
+  let uc5SourceHandleFileKey = '';
   let uc5ActivePageIndex = 1;
   let uc5SlidesData = null;
   let uc5PlanningDraftData = null;
@@ -1144,6 +1149,10 @@ Customer: Thank you. Goodbye.`
   let confettiTimer = null;
 
   const UC5_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+  const UC5_R3D_SCREENS_PER_SHARD = 1;
+  const UC5_R3D_MAX_SECTIONS_PER_SHARD = 4;
+  const UC5_R3D_REASONING_EFFORT = 'medium';
+  const UC5_R3D_FILE_SEARCH_MAX_RESULTS = 8;
 
   const UC5_MACRO_SHELL_META = {
     auto: {
@@ -1215,6 +1224,10 @@ Customer: Thank you. Goodbye.`
     if (!uc5LoadingText || !uc5LoadingSubtext) return;
 
     const copies = {
+      ingestion: {
+        text: '교육 원문을 인덱싱하는 중입니다...',
+        subtext: 'PDF를 Foundry vector store에 업로드하고 file_search용 검색 인덱스를 준비합니다.'
+      },
       planning: {
         text: '교육 기획안을 작성하는 중입니다...',
         subtext: '업로드한 PDF를 분석해 교육 흐름, 권장 구성 방식, 화면 수를 제안합니다.'
@@ -1560,6 +1573,96 @@ Customer: Thank you. Goodbye.`
     };
   }
 
+  function buildUC5UploadedFileKey(file) {
+    if (!file) return '';
+    return [file.name || '', file.size || 0, file.lastModified || 0].join('::');
+  }
+
+  function resetUC5SourceHandleState() {
+    uc5SourceHandleData = null;
+    uc5SourceHandleFileKey = '';
+  }
+
+  function getUC5SourceHandleFromResponse(data) {
+    const payload = getUC5ResponsePayload(data);
+    return payload.source_handle || data?.source_handle || null;
+  }
+
+  function appendUC5SourceHandleToFormData(formData, sourceHandle) {
+    if (!sourceHandle || typeof sourceHandle !== 'object') {
+      throw new Error('W00 source_handle이 없습니다. 원문 인덱싱부터 다시 실행해 주세요.');
+    }
+    formData.append('source_handle', JSON.stringify(sourceHandle));
+    if (sourceHandle.vector_store_id) formData.append('vector_store_id', sourceHandle.vector_store_id);
+    if (sourceHandle.file_id) formData.append('file_id', sourceHandle.file_id);
+    if (sourceHandle.batch_id) formData.append('batch_id', sourceHandle.batch_id);
+  }
+
+  function buildUC5SourceIngestionFormData() {
+    if (!uc5UploadedFile) {
+      throw new Error('교육 원문 PDF를 먼저 업로드해 주세요.');
+    }
+
+    const fileProfile = getUC5FileProfile(uc5UploadedFile);
+    const batchStamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+    const batchId = `uc5_webapp_${batchStamp}`;
+
+    const formData = new FormData();
+    formData.append('request_type', 'uc5_source_ingestion');
+    formData.append('workflow_version', 'uc5_r3c_cleanup_safe');
+    formData.append('workflow_stage', 'source_ingestion');
+    formData.append('batch_id', batchId);
+    formData.append('request_id', batchId);
+    formData.append('file_name', fileProfile.file_name);
+    formData.append('file_type', fileProfile.file_type || 'application/pdf');
+    formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
+    formData.append('file_profile', JSON.stringify(fileProfile));
+    formData.append('cleanup_mode', 'ttl_plus_explicit_cleanup');
+    formData.append('cleanup_after_final_render', 'false');
+    formData.append('upload_file_expires_after', 'false');
+    formData.append('vector_store_expires_after_days', '3');
+    formData.append('cleanup_delete_after_hours', '72');
+    formData.append('file', uc5UploadedFile);
+    return formData;
+  }
+
+  async function ensureUC5SourceHandle() {
+    if (!uc5UploadedFile) {
+      throw new Error('교육 원문 PDF를 먼저 업로드해 주세요.');
+    }
+
+    const fileKey = buildUC5UploadedFileKey(uc5UploadedFile);
+    if (uc5SourceHandleData && uc5SourceHandleFileKey === fileKey) {
+      return uc5SourceHandleData;
+    }
+
+    setUC5PipelineStatus('planning', 'active');
+    setUC5LoadingCopy('ingestion');
+    if (loadingOverlay) loadingOverlay.style.display = 'flex';
+    scheduleUC5PreviewFit();
+
+    const ingestionResponse = await postUC5Workflow(
+      CONFIG.UC5_W00_WEBHOOK,
+      buildUC5SourceIngestionFormData(),
+      '교육 원문 인덱싱 실패'
+    );
+
+    const ingestionPayload = getUC5ResponsePayload(ingestionResponse);
+    const sourceHandle = getUC5SourceHandleFromResponse(ingestionResponse);
+    if (ingestionPayload.status !== 'success' || !sourceHandle?.vector_store_id || !sourceHandle?.file_id) {
+      throw new Error('교육 원문 인덱싱 결과 검증에 실패했습니다. W00 응답을 확인해 주세요.');
+    }
+
+    uc5SourceHandleData = sourceHandle;
+    uc5SourceHandleFileKey = fileKey;
+    console.info('[UC5 R3D] W00 source_handle ready', {
+      vector_store_id: sourceHandle.vector_store_id,
+      file_id: sourceHandle.file_id,
+      batch_id: sourceHandle.batch_id
+    });
+    return uc5SourceHandleData;
+  }
+
 
   const UC5_CANONICAL_REGISTRY_PATH = './uc5_component_registry.canonical.json';
   const UC5_EXPECTED_COMPONENT_REGISTRY_ID = 'uc5_component_registry';
@@ -1805,13 +1908,14 @@ Customer: Thank you. Goodbye.`
     return buildUC5PayloadPolicyBundleFromRegistry(templateBoundBlueprint, registry);
   }
 
-  function buildUC5PlanningFormData() {
+  async function buildUC5PlanningFormData() {
     if (!uc5UploadedFile) {
       throw new Error('교육 원문 PDF를 먼저 업로드해 주세요.');
     }
 
+    const sourceHandle = await ensureUC5SourceHandle();
     const planningContext = getUC5PlanningContext();
-    const fileProfile = getUC5FileProfile(uc5UploadedFile);
+    const fileProfile = sourceHandle.file_profile || getUC5FileProfile(uc5UploadedFile);
     const selectedMacroShell = planningContext.preferred_macro_shell_id || 'auto';
     const templateId = selectedMacroShell === 'auto'
       ? 'auto'
@@ -1819,19 +1923,22 @@ Customer: Thank you. Goodbye.`
 
     const formData = new FormData();
     formData.append('request_type', 'uc5_ai_narrative_planning');
-    formData.append('workflow_version', 'uc5_v2');
+    formData.append('workflow_version', 'uc5_r3_responses');
     formData.append('workflow_stage', 'ai_narrative_planning');
     formData.append('workflow_mode', 'ai_narrative_planning');
     formData.append('narrative_choice', selectedMacroShell === 'auto' ? 'ai_recommend' : selectedMacroShell);
     formData.append('planning_input_mode', 'ai_recommend_then_review');
     formData.append('template_id', templateId);
     formData.append('macro_shell_id', selectedMacroShell);
-    formData.append('file_name', fileProfile.file_name);
+    formData.append('file_name', fileProfile.file_name || '');
     formData.append('file_type', fileProfile.file_type || 'application/pdf');
     formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
     formData.append('planning_context', JSON.stringify(planningContext));
     formData.append('file_profile', JSON.stringify(fileProfile));
-    formData.append('file', uc5UploadedFile);
+    appendUC5SourceHandleToFormData(formData, sourceHandle);
+    formData.append('model_deployment', 'gpt-5.5');
+    formData.append('reasoning_effort', 'medium');
+    formData.append('file_search_max_num_results', '12');
 
     return formData;
   }
@@ -1876,6 +1983,16 @@ Customer: Thank you. Goodbye.`
     }
 
     uc5UploadedFile = file;
+    uc5UploadedFileKey = buildUC5UploadedFileKey(file);
+    resetUC5SourceHandleState();
+    uc5PlanningDraftData = null;
+    uc5CurrentUiSelectionData = null;
+    uc5TemplateBoundBlueprintData = null;
+    uc5SlotPayloadSeedData = null;
+    uc5SourceCoverageSummaryData = null;
+    uc5RenderPlanData = null;
+    uc5RenderPlanScreenIndex = 0;
+    uc5RenderPlanInteractionState = {};
 
     if (uc5FileNameDisplay) {
       uc5FileNameDisplay.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
@@ -2428,6 +2545,8 @@ Customer: Thank you. Goodbye.`
     uc5CurrentUiSelectionData = currentUiSelection;
     uc5PlanningDraftData = planningDraft;
 
+    const sourceHandle = await ensureUC5SourceHandle();
+
     const planningContext = {
       ...getUC5PlanningContext(),
       planning_mode: 'template_bound_blueprint_planning',
@@ -2439,12 +2558,12 @@ Customer: Thank you. Goodbye.`
       gamification_level: currentUiSelection.gamification_level || getUC5FieldValue(uc5GamificationLevel, 'medium'),
       admin_notes: getUC5FieldValue(uc5AdminNotes, '')
     };
-    const fileProfile = getUC5FileProfile(uc5UploadedFile);
+    const fileProfile = sourceHandle.file_profile || getUC5FileProfile(uc5UploadedFile);
     const templateRegistryBundle = await buildUC5TemplateRegistryBundle(currentUiSelection);
 
     const formData = new FormData();
     formData.append('request_type', 'uc5_template_bound_blueprint_planning');
-    formData.append('workflow_version', 'uc5_v2');
+    formData.append('workflow_version', 'uc5_r3_responses');
     formData.append('workflow_stage', 'template_bound_blueprint_planning');
     formData.append('workflow_mode', 'template_bound_blueprint_planning');
     formData.append('selection_source', fromAiRecommendation ? 'w01_narrative_planning_draft' : 'manual_admin_selection');
@@ -2465,27 +2584,26 @@ Customer: Thank you. Goodbye.`
     formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
     formData.append('planning_context', JSON.stringify(planningContext));
     formData.append('file_profile', JSON.stringify(fileProfile));
-    formData.append('file', uc5UploadedFile);
+    appendUC5SourceHandleToFormData(formData, sourceHandle);
+    formData.append('model_deployment', 'gpt-5.5');
+    formData.append('reasoning_effort', 'medium');
+    formData.append('file_search_max_num_results', '16');
 
     return formData;
   }
 
-  async function buildUC5SlotPayloadSeedFormData() {
-    if (!uc5TemplateBoundBlueprintData) {
+  async function buildUC5SlotPayloadSeedFormDataForBlueprint(templateBoundBlueprint, payloadPolicyBundle) {
+    if (!templateBoundBlueprint) {
       throw new Error('화면 구성 설계 결과가 없습니다. 먼저 기획안을 승인해 주세요.');
     }
 
-    if (!uc5UploadedFile) {
-      throw new Error('학습 내용 작성에 사용할 원본 PDF가 없습니다. 파일을 다시 업로드해 주세요.');
-    }
-
-    const currentUiSelection = uc5TemplateBoundBlueprintData.current_ui_selection || uc5CurrentUiSelectionData || {};
-    const fileProfile = getUC5FileProfile(uc5UploadedFile);
-    const payloadPolicyBundle = await buildUC5PayloadPolicyBundle(uc5TemplateBoundBlueprintData);
+    const sourceHandle = await ensureUC5SourceHandle();
+    const currentUiSelection = templateBoundBlueprint.current_ui_selection || uc5CurrentUiSelectionData || {};
+    const fileProfile = sourceHandle.file_profile || getUC5FileProfile(uc5UploadedFile);
 
     const formData = new FormData();
     formData.append('request_type', 'uc5_slot_payload_seed_composition');
-    formData.append('workflow_version', 'uc5_v2');
+    formData.append('workflow_version', 'uc5_r3d_frontend_shard');
     formData.append('workflow_stage', 'slot_payload_seed_composition');
     formData.append('workflow_mode', 'slot_payload_seed_composition');
     formData.append('template_id', currentUiSelection.template_id || '');
@@ -2493,20 +2611,28 @@ Customer: Thank you. Goodbye.`
     formData.append('screen_count', String(currentUiSelection.screen_count || ''));
     formData.append('registry_version', UC5_EXPECTED_COMPONENT_REGISTRY_VERSION);
     formData.append('payload_policy_bundle', JSON.stringify(payloadPolicyBundle));
-    console.info('[UC5 R2-2H] W03 payload_policy_bundle attached', {
+    formData.append('file_name', fileProfile.file_name || '');
+    formData.append('file_type', fileProfile.file_type || 'application/pdf');
+    formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
+    formData.append('template_bound_blueprint', JSON.stringify(templateBoundBlueprint));
+    formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
+    formData.append('file_profile', JSON.stringify(fileProfile));
+    appendUC5SourceHandleToFormData(formData, sourceHandle);
+    formData.append('model_deployment', 'gpt-5.5');
+    formData.append('reasoning_effort', UC5_R3D_REASONING_EFFORT);
+    formData.append('file_search_max_num_results', String(UC5_R3D_FILE_SEARCH_MAX_RESULTS));
+
+    return formData;
+  }
+
+  async function buildUC5SlotPayloadSeedFormData() {
+    const payloadPolicyBundle = await buildUC5PayloadPolicyBundle(uc5TemplateBoundBlueprintData);
+    console.info('[UC5 R3D] W03 payload_policy_bundle attached', {
       template_id: payloadPolicyBundle.template_id || '',
       macro_shell_id: payloadPolicyBundle.macro_shell_id || '',
       selected_component_count: payloadPolicyBundle.selected_component_count || 0
     });
-    formData.append('file_name', fileProfile.file_name);
-    formData.append('file_type', fileProfile.file_type || 'application/pdf');
-    formData.append('file_size_bytes', String(fileProfile.file_size_bytes || 0));
-    formData.append('template_bound_blueprint', JSON.stringify(uc5TemplateBoundBlueprintData));
-    formData.append('current_ui_selection', JSON.stringify(currentUiSelection));
-    formData.append('file_profile', JSON.stringify(fileProfile));
-    formData.append('file', uc5UploadedFile);
-
-    return formData;
+    return buildUC5SlotPayloadSeedFormDataForBlueprint(uc5TemplateBoundBlueprintData, payloadPolicyBundle);
   }
 
   async function postUC5Workflow(url, formData, failureMessage) {
@@ -2547,7 +2673,8 @@ Customer: Thank you. Goodbye.`
       throw new Error('화면 구성 설계 결과가 올바르지 않습니다.');
     }
 
-    if (!slotPayloadSeed || slotPayloadSeed.slot_payload_seed_version !== 'uc5_slot_payload_seed.v1') {
+    const acceptedSeedVersions = new Set(['uc5_slot_payload_seed.v1', 'uc5_slot_payload_seed.responses.v1']);
+    if (!slotPayloadSeed || !acceptedSeedVersions.has(slotPayloadSeed.slot_payload_seed_version)) {
       throw new Error('학습 내용 작성 결과가 올바르지 않습니다.');
     }
 
@@ -3515,6 +3642,263 @@ Customer: Thank you. Goodbye.`
     }
   }
 
+  function countUC5ScreenSections(screen) {
+    return Array.isArray(screen?.skeleton_positions) ? screen.skeleton_positions.length : 0;
+  }
+
+  function buildUC5R3DShardPlan(templateBoundBlueprint) {
+    const screens = Array.isArray(templateBoundBlueprint?.screen_blueprints)
+      ? templateBoundBlueprint.screen_blueprints.slice().sort((a, b) => Number(a.screen_index) - Number(b.screen_index))
+      : [];
+
+    const shards = [];
+    let current = [];
+    let currentSectionCount = 0;
+
+    const flush = () => {
+      if (!current.length) return;
+      const shardIndex = shards.length + 1;
+      const expectedIds = [];
+      const components = new Set();
+      for (const screen of current) {
+        const positions = Array.isArray(screen.skeleton_positions) ? screen.skeleton_positions : [];
+        positions.forEach((position, positionIndex) => {
+          expectedIds.push(buildUC5SectionContractId(screen.screen_index, positionIndex));
+          if (position?.selected_component_type) components.add(position.selected_component_type);
+        });
+      }
+      shards.push({
+        shard_id: `shard_${String(shardIndex).padStart(2, '0')}`,
+        shard_index: shardIndex,
+        screen_indexes: current.map(screen => Number(screen.screen_index)),
+        expected_section_ids: expectedIds,
+        expected_section_count: expectedIds.length,
+        components: Array.from(components).sort((a, b) => a.localeCompare(b)),
+        screens: current
+      });
+      current = [];
+      currentSectionCount = 0;
+    };
+
+    for (const screen of screens) {
+      const sectionCount = countUC5ScreenSections(screen);
+      const nextWouldExceedScreenLimit = current.length >= UC5_R3D_SCREENS_PER_SHARD;
+      const nextWouldExceedSectionLimit = current.length && currentSectionCount + sectionCount > UC5_R3D_MAX_SECTIONS_PER_SHARD;
+      if (nextWouldExceedScreenLimit || nextWouldExceedSectionLimit) flush();
+      current.push(screen);
+      currentSectionCount += sectionCount;
+    }
+    flush();
+
+    return {
+      plan_version: 'uc5_w03_r3d_frontend_shard_plan.v1',
+      screens_per_shard: UC5_R3D_SCREENS_PER_SHARD,
+      max_sections_per_shard: UC5_R3D_MAX_SECTIONS_PER_SHARD,
+      reasoning_effort: UC5_R3D_REASONING_EFFORT,
+      file_search_max_num_results: UC5_R3D_FILE_SEARCH_MAX_RESULTS,
+      expected_section_count: countUC5BlueprintSections(templateBoundBlueprint),
+      shard_count: shards.length,
+      shards
+    };
+  }
+
+  function buildUC5R3DShardBlueprint(templateBoundBlueprint, shard) {
+    const allScreens = Array.isArray(templateBoundBlueprint?.screen_blueprints)
+      ? templateBoundBlueprint.screen_blueprints.slice().sort((a, b) => Number(a.screen_index) - Number(b.screen_index))
+      : [];
+    const titleByIndex = new Map(allScreens.map(screen => [Number(screen.screen_index), screen.screen_title || `화면 ${screen.screen_index}`]));
+    const totalScreens = allScreens.length;
+
+    return {
+      ...cloneUC5Json(templateBoundBlueprint),
+      current_ui_selection: {
+        ...(templateBoundBlueprint.current_ui_selection || {}),
+        screen_count: templateBoundBlueprint.current_ui_selection?.screen_count || totalScreens
+      },
+      screen_blueprints: shard.screens.map((screen) => {
+        const screenIndex = Number(screen.screen_index);
+        const previousTitle = titleByIndex.get(screenIndex - 1) || '';
+        const nextTitle = titleByIndex.get(screenIndex + 1) || '';
+        const continuityNote = [
+          `R3D shard context: this is screen ${screenIndex} of ${totalScreens}.`,
+          previousTitle ? `Previous screen: ${previousTitle}` : '',
+          nextTitle ? `Next screen: ${nextTitle}` : ''
+        ].filter(Boolean).join(' ');
+
+        return {
+          ...cloneUC5Json(screen),
+          narrative_function: [screen.narrative_function || '', continuityNote].filter(Boolean).join('\n'),
+          content_notes: [screen.content_notes || '', continuityNote].filter(Boolean).join('\n')
+        };
+      }),
+      r3d_shard_context: {
+        shard_id: shard.shard_id,
+        shard_index: shard.shard_index,
+        shard_count: null,
+        screen_indexes: shard.screen_indexes,
+        expected_section_ids: shard.expected_section_ids,
+        full_screen_outline: allScreens.map(screen => ({
+          screen_index: screen.screen_index,
+          screen_title: screen.screen_title,
+          screen_role: screen.screen_role,
+          learning_goal: screen.learning_goal,
+          narrative_function: screen.narrative_function
+        }))
+      }
+    };
+  }
+
+  function mergeUC5R3DSlotPayloadSeeds(templateBoundBlueprint, shardResults, plan) {
+    const expectedIds = [];
+    const sectionOrder = new Map();
+    const screens = Array.isArray(templateBoundBlueprint?.screen_blueprints) ? templateBoundBlueprint.screen_blueprints : [];
+    for (const screen of screens) {
+      const positions = Array.isArray(screen.skeleton_positions) ? screen.skeleton_positions : [];
+      positions.forEach((_, positionIndex) => {
+        const id = buildUC5SectionContractId(screen.screen_index, positionIndex);
+        sectionOrder.set(id, expectedIds.length);
+        expectedIds.push(id);
+      });
+    }
+
+    const sections = [];
+    const weak = new Set();
+    for (const result of shardResults) {
+      const seed = result.slot_payload_seed;
+      const seedSections = Array.isArray(seed?.sections) ? seed.sections : [];
+      for (const section of seedSections) sections.push(section);
+      const weakSections = Array.isArray(seed?.source_grounding_audit?.weak_or_insufficient_sections)
+        ? seed.source_grounding_audit.weak_or_insufficient_sections
+        : [];
+      weakSections.forEach(id => weak.add(id));
+    }
+
+    sections.sort((a, b) => (sectionOrder.get(a.source_contract_id) ?? 9999) - (sectionOrder.get(b.source_contract_id) ?? 9999));
+
+    const counts = new Map();
+    for (const section of sections) {
+      counts.set(section.source_contract_id, (counts.get(section.source_contract_id) || 0) + 1);
+    }
+    const got = new Set(sections.map(section => section.source_contract_id));
+    const missing = expectedIds.filter(id => !got.has(id));
+    const unexpected = sections.map(section => section.source_contract_id).filter(id => !sectionOrder.has(id));
+    const duplicates = Array.from(counts.entries()).filter(([, count]) => count > 1).map(([id]) => id);
+
+    const firstSeed = shardResults.find(result => result.slot_payload_seed)?.slot_payload_seed || {};
+    const sourceHandle = uc5SourceHandleData || {};
+    const sourceLineage = firstSeed.source_lineage || {
+      source_type: 'foundry_vector_store',
+      vector_store_id: sourceHandle.vector_store_id || templateBoundBlueprint?.source_lineage?.vector_store_id || '',
+      file_id: sourceHandle.file_id || templateBoundBlueprint?.source_lineage?.file_id || '',
+      source_file_name: sourceHandle.file_profile?.file_name || templateBoundBlueprint?.source_lineage?.source_file_name || ''
+    };
+
+    const slotPayloadSeed = {
+      slot_payload_seed_version: 'uc5_slot_payload_seed.responses.v1',
+      slot_payload_seed_status: 'ready_for_deterministic_assembly',
+      source_lineage: sourceLineage,
+      sections,
+      source_grounding_audit: {
+        file_search_used: true,
+        section_count: sections.length,
+        weak_or_insufficient_sections: Array.from(weak),
+        grounding_notes: `Merged from ${shardResults.length} R3D shard responses in the frontend orchestrator.`
+      }
+    };
+
+    const validationStatus = missing.length || unexpected.length || duplicates.length ? 'failed' : 'pass';
+    return {
+      workflow_response_version: 'uc5_w03_slot_payload_sharded_merge.frontend.r3d.v1',
+      status: validationStatus === 'pass' ? 'success' : 'validation_failed',
+      validation_status: validationStatus,
+      execution_mode: 'frontend_dynamic_sharded_multi_call',
+      shard_policy: {
+        screens_per_shard: plan.screens_per_shard,
+        max_sections_per_shard: plan.max_sections_per_shard,
+        reasoning_effort: plan.reasoning_effort,
+        file_search_max_num_results: plan.file_search_max_num_results
+      },
+      shard_count: plan.shard_count,
+      successful_shard_count: shardResults.length,
+      failed_shard_count: 0,
+      expected_section_count: expectedIds.length,
+      actual_section_count: sections.length,
+      missing_section_count: missing.length,
+      unexpected_section_count: unexpected.length,
+      duplicate_section_count: duplicates.length,
+      missing_section_ids: missing,
+      unexpected_section_ids: unexpected,
+      duplicate_section_ids: duplicates,
+      slot_payload_seed: validationStatus === 'pass' ? slotPayloadSeed : null,
+      slot_payload_seed_draft: slotPayloadSeed,
+      source_handle: sourceHandle,
+      source_coverage_summary: slotPayloadSeed.source_grounding_audit,
+      validation_result: { status: validationStatus, errors: [] },
+      frontend_handoff: { assembly_strategy: 'merge_blueprint_static_contract_with_slot_payload_seed' },
+      shard_results: shardResults.map(result => ({
+        shard_id: result.shard_id,
+        screen_indexes: result.screen_indexes,
+        expected_section_count: result.expected_section_count,
+        actual_section_count: Array.isArray(result.slot_payload_seed?.sections) ? result.slot_payload_seed.sections.length : 0,
+        status: result.status,
+        validation_status: result.validation_status
+      }))
+    };
+  }
+
+  async function requestUC5SlotPayloadSeedR3D(templateBoundBlueprint) {
+    const plan = buildUC5R3DShardPlan(templateBoundBlueprint);
+    const shardResults = [];
+
+    console.info('[UC5 R3D] W03 dynamic shard plan', {
+      shard_count: plan.shard_count,
+      expected_section_count: plan.expected_section_count,
+      reasoning_effort: plan.reasoning_effort,
+      file_search_max_num_results: plan.file_search_max_num_results
+    });
+
+    for (const shard of plan.shards) {
+      const shardBlueprint = buildUC5R3DShardBlueprint(templateBoundBlueprint, shard);
+      const shardPolicyBundle = await buildUC5PayloadPolicyBundle(shardBlueprint);
+      const formData = await buildUC5SlotPayloadSeedFormDataForBlueprint(shardBlueprint, shardPolicyBundle);
+
+      if (uc5LoadingText) uc5LoadingText.textContent = `학습 내용을 작성하는 중입니다... (${shard.shard_index}/${plan.shard_count})`;
+      if (uc5LoadingSubtext) {
+        uc5LoadingSubtext.textContent = `현재 화면 ${shard.screen_indexes.join(', ')} · sections ${shard.expected_section_count}개 · components ${shard.components.join(', ')}`;
+      }
+
+      const shardResponse = await postUC5Workflow(
+        CONFIG.UC5_W03_WEBHOOK,
+        formData,
+        `${shard.shard_id} 학습 내용 작성 실패`
+      );
+      const shardPayload = getUC5ResponsePayload(shardResponse);
+      const shardSeed = getUC5SlotPayloadSeed(shardResponse);
+
+      if (shardPayload.validation_status !== 'pass' || !shardSeed) {
+        throw new Error(`${shard.shard_id} 검증 실패: W03 shard 응답을 확인해 주세요.`);
+      }
+
+      shardResults.push({
+        shard_id: shard.shard_id,
+        shard_index: shard.shard_index,
+        screen_indexes: shard.screen_indexes,
+        expected_section_count: shard.expected_section_count,
+        components: shard.components,
+        status: shardPayload.status || 'success',
+        validation_status: shardPayload.validation_status || 'pass',
+        slot_payload_seed: shardSeed,
+        response_payload: shardPayload
+      });
+    }
+
+    const merged = mergeUC5R3DSlotPayloadSeeds(templateBoundBlueprint, shardResults, plan);
+    if (merged.validation_status !== 'pass') {
+      throw new Error(`R3D 병합 검증 실패: missing=${merged.missing_section_count}, unexpected=${merged.unexpected_section_count}, duplicate=${merged.duplicate_section_count}`);
+    }
+    return merged;
+  }
+
   async function requestUC5FinalPreviewFromBlueprint() {
     if (!uc5TemplateBoundBlueprintData) {
       alert('먼저 교육 화면 설계안을 만들어 주세요.');
@@ -3542,12 +3926,7 @@ Customer: Thank you. Goodbye.`
       setUC5LoadingCopy('payload');
       scheduleUC5PreviewFit();
 
-      const payloadFormData = await buildUC5SlotPayloadSeedFormData();
-      const payloadResponse = await postUC5Workflow(
-        CONFIG.UC5_W03_WEBHOOK,
-        payloadFormData,
-        '학습 내용 작성 실패'
-      );
+      const payloadResponse = await requestUC5SlotPayloadSeedR3D(uc5TemplateBoundBlueprintData);
 
       const slotPayload = getUC5ResponsePayload(payloadResponse);
       uc5SlotPayloadSeedData = getUC5SlotPayloadSeed(payloadResponse);
@@ -3845,7 +4224,7 @@ Customer: Thank you. Goodbye.`
     try {
       const data = await postUC5Workflow(
         CONFIG.UC5_W01_WEBHOOK,
-        buildUC5PlanningFormData(),
+        await buildUC5PlanningFormData(),
         'AI 추천 생성 실패'
       );
 
