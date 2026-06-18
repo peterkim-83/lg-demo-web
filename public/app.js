@@ -1147,8 +1147,6 @@ Customer: Thank you. Goodbye.`
   let uc5RenderPlanInteractionState = {};
   let uc5PreviewFitRaf = null;
   let confettiTimer = null;
-
-  const UC5_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const UC5_R3D_SCREENS_PER_SHARD = 1;
   const UC5_R3D_MAX_SECTIONS_PER_SHARD = 4;
   const UC5_R3D_REASONING_EFFORT = 'medium';
@@ -1976,13 +1974,7 @@ Customer: Thank you. Goodbye.`
       alert('현재 교육 원문 분석은 PDF 파일만 지원합니다. PDF 파일을 업로드해 주세요.');
       return;
     }
-
-    if (file.size > UC5_MAX_FILE_SIZE_BYTES) {
-      alert('파일 크기는 최대 10MB까지 업로드 가능합니다.');
-      return;
-    }
-
-    uc5UploadedFile = file;
+uc5UploadedFile = file;
     uc5UploadedFileKey = buildUC5UploadedFileKey(file);
     resetUC5SourceHandleState();
     uc5PlanningDraftData = null;
