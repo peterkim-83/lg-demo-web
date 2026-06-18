@@ -6742,15 +6742,3 @@ body:has(#view-uc5.active) #main-content {
     }
 }
 
-
-
-/* UC6 E2E stage-controller patch: scoped to UC6 only */
-#view-uc6 .uc6-mini-pipeline {
-  flex-wrap: wrap;
-}
-#view-uc6 .uc6-download-actions .btn:not(:disabled) {
-  cursor: pointer;
-}
-#view-uc6 .uc6-readiness-card.is-danger {
-  border-color: rgba(239, 68, 68, 0.4);
-}

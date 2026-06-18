@@ -1,0 +1,16 @@
+{
+  "patch": "uc6_webapp_e2e_stage_controller_patch_v1",
+  "changed_files": [
+    "app.js",
+    "index.html",
+    "style.css",
+    "README_UC6_WEBAPP_E2E_PATCH_V1.md"
+  ],
+  "static_checks": {
+    "node_check_app_js": "PASS",
+    "no_internal_fastapi_url_in_app_js": true,
+    "no_internal_token_in_app_js": true,
+    "uc6_endpoint_constants_present": true,
+    "uc5_config_still_present": true
+  }
+}

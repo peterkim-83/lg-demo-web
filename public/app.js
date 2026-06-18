@@ -16,13 +16,19 @@ const CONFIG = {
   UC5_W01_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-ai-narrative-plan',
   UC5_W02_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-template-blueprint-plan',
   UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-slot-fill-render',
-  UC6_RUNTIME_DATABAG_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/runtime-databag-prep/mvp'
+  UC6_TEMPLATE_INTAKE_REVIEW_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/intake-review-prep',
+  UC6_TEMPLATE_REVIEW_STATUS_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/review-status',
+  UC6_TEMPLATE_APPROVAL_PUBLISH_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/approval-publish',
+  UC6_RUNTIME_CONTEXT_INTELLIGENCE_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/context-intelligence-prep',
+  UC6_RUNTIME_DATABAG_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/databag-prep',
+  UC6_RUNTIME_RENDER_BRIDGE_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/render-bridge',
+  UC6_FINAL_PDF_DELIVERY_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/final/pdf-delivery'
 };
 
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc5-r2-2h-strict-canonical-frontend-bundle-2026-06-17-v1';
+const APP_VERSION = 'app.uc5-r2-2h-uc6-e2e-stage-controller-2026-06-18-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R2-2H] strict canonical frontend contract patch active');
 
@@ -4200,72 +4206,132 @@ Customer: Thank you. Goodbye.`
   // ==========================================
   // 🧾 Use Case 6: FetchDoc 문서 생성 운영 관리
   // ==========================================
-  const UC6_DEFAULT_BATCH_ID = 'fd_norm_n8n_7f18_lookup_20260606_055620';
+  const UC6_DEFAULT_BATCH_ID = 'fd_norm_20260617_052857_8w19ym';
+  const UC6_STORAGE_KEY = 'fetchdoc.uc6.admin_stage_controller.v1';
+  const UC6_POLL_INTERVAL_MS = 3500;
+  const UC6_REVIEW_MAX_ATTEMPTS = 90;
+
+  const UC6_STAGE_SEQUENCE = [
+    'intake_review_prep',
+    'review_status',
+    'approval_publish',
+    'context_intelligence_prep',
+    'runtime_databag_prep',
+    'runtime_render_bridge',
+    'final_pdf_delivery'
+  ];
+
+  const UC6_STAGE_MODEL = [
+    { id: 'intake_review_prep', label: '01A Intake', detail: 'PPTX 분석/정규화' },
+    { id: 'review_status', label: '01B Review', detail: 'Review Ready 확인' },
+    { id: 'approval_publish', label: '01C Publish', detail: '관리자 승인/게시' },
+    { id: 'context_intelligence_prep', label: '02A0 Context', detail: 'Web Research + Databag 수집' },
+    { id: 'runtime_databag_prep', label: '02A Databag', detail: 'Enriched 입력 소비' },
+    { id: 'runtime_render_bridge', label: '02B Bridge', detail: 'Final Render 준비' },
+    { id: 'final_pdf_delivery', label: '02C Delivery', detail: 'PPTX 산출물 생성' }
+  ];
 
   const UC6_SAMPLE_CASES = {
-    acme_runtime_proposal: {
-      label: 'Acme 제안서 샘플',
-      description: 'B1 happy-path smoke와 같은 4개 필수 slot 중심 샘플입니다.',
+    marriott_ai_hospitality: {
+      label: 'Marriott AI Hospitality 제안',
+      description: '02A0~02C smoke에서 검증한 rich runtime context 샘플입니다.',
       runtime_context: {
-        account_name: 'Acme Corp',
-        proposal_date: '2026-06-16',
+        account_name: 'Marriott International',
+        account_website: 'https://www.marriott.com',
+        industry: 'Hospitality',
+        region: 'Global / North America',
+        proposal_date: '2026-06-17',
+        vendor_name: 'LG CNS',
         vendor_contact: 'Peter Kim',
-        vendor_name: 'FetchDoc Runtime'
+        target_audience: 'IT, Operations, Digital Transformation leadership',
+        proposal_objective: 'Prepare an executive proposal about AI-enabled hotel operations and customer experience improvement.',
+        proposal_tone: 'executive proposal',
+        solution_focus: [
+          'AI operations automation',
+          'customer experience personalization',
+          'data integration',
+          'workflow modernization'
+        ],
+        pain_points: [
+          'labor efficiency',
+          'service consistency',
+          'guest experience differentiation',
+          'operational visibility'
+        ],
+        competitors_or_alternatives: [],
+        must_include: ['business value', 'implementation roadmap', 'risk mitigation'],
+        must_exclude: ['unverified financial claims'],
+        notes: ''
       }
     },
     lg_internal_demo: {
       label: 'LG 내부 보고서 샘플',
-      description: '내부 문서 생성 승인 흐름을 시뮬레이션하는 샘플입니다.',
+      description: '내부 보고서 생성 운영 흐름 확인용 샘플입니다.',
       runtime_context: {
         account_name: 'LG Electronics',
-        proposal_date: '2026-06-17',
+        account_website: 'https://www.lg.com',
+        industry: 'Consumer Electronics',
+        region: 'Korea / Global',
+        proposal_date: '2026-06-18',
+        vendor_name: 'LG CNS',
         vendor_contact: 'AI Transformation Team',
-        vendor_name: 'FetchDoc Admin'
+        target_audience: 'DX leadership and operations teams',
+        proposal_objective: 'Prepare an internal executive report about AI document automation operating model.',
+        proposal_tone: 'executive briefing',
+        solution_focus: ['document automation', 'template governance', 'runtime databag readiness'],
+        pain_points: ['manual document preparation', 'inconsistent templates', 'slow approval cycles'],
+        must_include: ['operating model', 'governance', 'implementation roadmap'],
+        must_exclude: ['unverified ROI claims'],
+        notes: ''
       }
     },
     partner_proposal_demo: {
       label: '파트너 제안 샘플',
-      description: '파트너사 대상 문서 생성 조건을 확인하는 샘플입니다.',
+      description: '파트너/고객사 제안서 생성을 위한 범용 샘플입니다.',
       runtime_context: {
         account_name: 'Global Partner Co.',
+        account_website: '',
+        industry: 'Technology Services',
+        region: 'APAC',
         proposal_date: '2026-06-20',
+        vendor_name: 'LG CNS',
         vendor_contact: 'Partner Success Manager',
-        vendor_name: 'FetchDoc Partner Desk'
+        target_audience: 'Partner executives and delivery leaders',
+        proposal_objective: 'Prepare a partner proposal focused on repeatable AI document generation operations.',
+        proposal_tone: 'business proposal',
+        solution_focus: ['template lifecycle', 'runtime context collection', 'final document delivery'],
+        pain_points: ['proposal turnaround time', 'manual content reuse', 'approval visibility'],
+        must_include: ['business value', 'delivery plan', 'risk control'],
+        must_exclude: [],
+        notes: ''
       }
     }
   };
 
-  const UC6_STAGE_MODEL = [
-    { id: 'pptx_upload', label: 'PPTX 업로드', detail: '완성본 PPTX 선택', baseState: 'active' },
-    { id: 'template_analysis', label: '템플릿 분석', detail: '슬라이드·레이아웃 추출', baseState: 'idle' },
-    { id: 'template_approval', label: '템플릿 승인', detail: '관리자 Gate', baseState: 'idle' },
-    { id: 'slot_contract', label: 'Slot 구성', detail: '필수 Slot 확인', baseState: 'idle' },
-    { id: 'runtime_context', label: 'Runtime Context', detail: '샘플 입력값', baseState: 'active' },
-    { id: 'databag_prep', label: 'Databag Prep', detail: 'B1 webhook', baseState: 'idle' },
-    { id: 'render_bridge', label: 'Render Bridge', detail: '후속 연결', baseState: 'locked' },
-    { id: 'pdf_preview', label: 'PDF Preview', detail: '후속 연결', baseState: 'locked' },
-    { id: 'download', label: 'Download', detail: '후속 연결', baseState: 'locked' }
-  ];
-
   const UC6_DEFAULT_ARTIFACTS = {
-    runtime_context_request: 'runtime_context_request.json',
-    runtime_source_collection_plan: 'runtime_source_collection_plan.json',
-    runtime_source_collection_status: 'runtime_source_collection_status.json',
-    runtime_databag_candidate: 'runtime_databag_candidate.json',
-    runtime_databag_readiness_result: 'runtime_databag_readiness_result.json',
-    runtime_databag_readiness_report: 'runtime_databag_readiness_report.md'
+    runtime_context_packet: '02A0 실행 후 표시',
+    runtime_enriched_databag_candidate: '02A0 실행 후 표시',
+    runtime_databag_candidate: '02A 실행 후 표시',
+    published_template_final_render_input: '02B 실행 후 표시',
+    final_render_output_pptx: '02C 실행 후 표시'
   };
 
   const uc6State = {
-    selectedSampleId: 'acme_runtime_proposal',
+    selectedSampleId: 'marriott_ai_hospitality',
     selectedBatchId: UC6_DEFAULT_BATCH_ID,
-    approvalStatus: 'pending',
+    approvalStatus: 'approved',
     pptxFileName: '',
     requestPayload: null,
     responsePayload: null,
+    stageResponses: {},
+    stageErrors: {},
+    currentStage: null,
     isRunning: false,
     lastError: null,
-    activeTab: 'template'
+    activeTab: 'template',
+    contextCollectionId: '',
+    renderRunId: '',
+    download: null
   };
 
   const uc6Els = {
@@ -4300,11 +4366,19 @@ Customer: Thank you. Goodbye.`
     pptxDownloadBtn: document.getElementById('uc6-pptxDownloadBtn')
   };
 
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   function getUC6SelectedBatchId() {
     if (uc6Els.batchSelect?.value === 'custom') {
       return (uc6Els.customBatchId?.value || '').trim();
     }
-    return uc6Els.batchSelect?.value || UC6_DEFAULT_BATCH_ID;
+    return uc6Els.batchSelect?.value || uc6State.selectedBatchId || UC6_DEFAULT_BATCH_ID;
   }
 
   function getUC6RuntimeContext() {
@@ -4326,64 +4400,286 @@ Customer: Thank you. Goodbye.`
     }
   }
 
-  function getUC6RequiredSlots() {
-    const responseSlots = Array.isArray(uc6State.responsePayload?.required_slot_keys)
-      ? uc6State.responsePayload.required_slot_keys
-      : [];
+  function getUC6StageLabel(stageId) {
+    return UC6_STAGE_MODEL.find((stage) => stage.id === stageId)?.label || stageId;
+  }
 
-    if (responseSlots.length) return responseSlots;
+  function getUC6LatestResponse() {
+    return uc6State.responsePayload || uc6State.stageResponses.final_pdf_delivery || uc6State.stageResponses.runtime_render_bridge || uc6State.stageResponses.runtime_databag_prep || uc6State.stageResponses.context_intelligence_prep || uc6State.stageResponses.approval_publish || uc6State.stageResponses.review_status || uc6State.stageResponses.intake_review_prep || null;
+  }
 
+  function saveUC6LocalState() {
     try {
-      return Object.keys(getUC6RuntimeContext());
+      const persisted = {
+        selectedSampleId: uc6State.selectedSampleId,
+        selectedBatchId: uc6State.selectedBatchId,
+        approvalStatus: uc6State.approvalStatus,
+        contextCollectionId: uc6State.contextCollectionId,
+        renderRunId: uc6State.renderRunId,
+        responsePayload: uc6State.responsePayload,
+        stageResponses: uc6State.stageResponses,
+        download: uc6State.download
+      };
+      localStorage.setItem(UC6_STORAGE_KEY, JSON.stringify(persisted));
+    } catch (_) {
+      // localStorage is optional.
+    }
+  }
+
+  function loadUC6LocalState() {
+    try {
+      const raw = localStorage.getItem(UC6_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!isPlainObject(parsed)) return;
+      if (parsed.selectedSampleId && UC6_SAMPLE_CASES[parsed.selectedSampleId]) uc6State.selectedSampleId = parsed.selectedSampleId;
+      if (typeof parsed.selectedBatchId === 'string') uc6State.selectedBatchId = parsed.selectedBatchId;
+      if (typeof parsed.approvalStatus === 'string') uc6State.approvalStatus = parsed.approvalStatus;
+      if (typeof parsed.contextCollectionId === 'string') uc6State.contextCollectionId = parsed.contextCollectionId;
+      if (typeof parsed.renderRunId === 'string') uc6State.renderRunId = parsed.renderRunId;
+      if (isPlainObject(parsed.stageResponses)) uc6State.stageResponses = parsed.stageResponses;
+      if (isPlainObject(parsed.responsePayload)) uc6State.responsePayload = parsed.responsePayload;
+      if (isPlainObject(parsed.download)) uc6State.download = parsed.download;
+    } catch (_) {
+      // Ignore corrupted persisted state.
+    }
+  }
+
+  async function parseUC6JsonResponse(res, stageLabel) {
+    const rawText = await res.text();
+    let data;
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (_) {
+      throw new Error(`${stageLabel} 응답 JSON 파싱 실패 (${res.status})`);
+    }
+    if (!res.ok) {
+      const message = data.message || data.error || data.errorMessage || `${stageLabel} HTTP 실패 (${res.status})`;
+      throw new Error(message);
+    }
+    return data;
+  }
+
+  async function uc6PostJson(url, payload, stageLabel) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    return parseUC6JsonResponse(res, stageLabel);
+  }
+
+  async function uc6GetJson(url, query, stageLabel) {
+    const target = new URL(url);
+    Object.entries(query || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== '') target.searchParams.set(key, value);
+    });
+    const res = await fetch(target.toString(), { method: 'GET', headers: { 'Accept': 'application/json' } });
+    return parseUC6JsonResponse(res, stageLabel);
+  }
+
+  function setUC6StageRunning(stageId) {
+    uc6State.currentStage = stageId;
+    if (uc6Els.actionHelper) uc6Els.actionHelper.textContent = `${getUC6StageLabel(stageId)} 실행 중입니다.`;
+    renderUC6All();
+  }
+
+  function recordUC6Stage(stageId, response) {
+    uc6State.stageResponses[stageId] = response || {};
+    uc6State.responsePayload = response || uc6State.responsePayload;
+    if (response?.batch_id || response?.published_template_batch_id) {
+      uc6State.selectedBatchId = response.published_template_batch_id || response.batch_id;
+    }
+    if (response?.context_collection_id) uc6State.contextCollectionId = response.context_collection_id;
+    if (response?.render_run_id) uc6State.renderRunId = response.render_run_id;
+    if (response?.download && isPlainObject(response.download)) uc6State.download = response.download;
+    saveUC6LocalState();
+    renderUC6All();
+  }
+
+  function assertUC6StageSuccess(response, stageLabel) {
+    if (!response || response.success === false || response.status === 'blocked') {
+      const issue = Array.isArray(response?.blocking_issues) && response.blocking_issues.length
+        ? response.blocking_issues[0]?.message || response.blocking_issues[0]?.check
+        : null;
+      throw new Error(`${stageLabel} 실패: ${issue || response?.phase || response?.status || 'unknown'}`);
+    }
+    return response;
+  }
+
+  function buildUC6RequestContext(stageId) {
+    return {
+      caller: 'webapp',
+      request_source: 'uc6_admin_stage_controller',
+      view: 'uc6_fetchdoc_admin_stage_controller',
+      uc6_stage: stageId,
+      sample_case_id: uc6State.selectedSampleId,
+      template_approval_status: uc6State.approvalStatus,
+      requested_at: new Date().toISOString()
+    };
+  }
+
+  async function callUC6IntakeReviewPrep() {
+    const file = uc6Els.pptxInput?.files?.[0];
+    if (!file) return null;
+    setUC6StageRunning('intake_review_prep');
+    const form = new FormData();
+    form.append('upload', file, file.name);
+    const selectedBatchId = getUC6SelectedBatchId();
+    if (uc6Els.batchSelect?.value === 'custom' && selectedBatchId) form.append('batch_id', selectedBatchId);
+    form.append('request_source', 'uc6_admin_stage_controller');
+    form.append('sample_case_id', uc6State.selectedSampleId);
+
+    const res = await fetch(CONFIG.UC6_TEMPLATE_INTAKE_REVIEW_PREP_WEBHOOK, {
+      method: 'POST',
+      body: form,
+      headers: { 'Accept': 'application/json' }
+    });
+    const data = await parseUC6JsonResponse(res, '01A Intake Review Prep');
+    recordUC6Stage('intake_review_prep', data);
+    return data;
+  }
+
+  async function pollUC6ReviewStatus(batchId) {
+    setUC6StageRunning('review_status');
+    let last = null;
+    for (let attempt = 1; attempt <= UC6_REVIEW_MAX_ATTEMPTS; attempt += 1) {
+      const data = await uc6GetJson(CONFIG.UC6_TEMPLATE_REVIEW_STATUS_WEBHOOK, { batch_id: batchId }, '01B Review Status');
+      last = data;
+      recordUC6Stage('review_status', data);
+      const ready = data.success === true && (
+        data.phase === 'template_review_ready' ||
+        data.template_status === 'review_ready' ||
+        data.approval_allowed === true ||
+        data.publish_ready === true
+      );
+      const alreadyPublished = data.success === true && (
+        data.phase === 'template_approval_publish_accepted' ||
+        data.template_status === 'publish_accepted' ||
+        data.catalog_publish_accepted === true
+      );
+      if (ready || alreadyPublished) return data;
+      if (data.success === false || data.status === 'blocked') {
+        throw new Error(`01B Review Status blocked: ${data.phase || data.status}`);
+      }
+      if (uc6Els.actionHelper) uc6Els.actionHelper.textContent = `01B Review Status 대기 중... (${attempt}/${UC6_REVIEW_MAX_ATTEMPTS})`;
+      await wait(UC6_POLL_INTERVAL_MS);
+    }
+    throw new Error(`01B Review Status timeout: ${last?.phase || last?.status || 'no_status'}`);
+  }
+
+  async function callUC6ApprovalPublish(batchId) {
+    setUC6StageRunning('approval_publish');
+    const payload = {
+      batch_id: batchId,
+      decision: 'approve',
+      admin_id: 'webapp_admin',
+      admin_note: 'UC6 webapp admin approval publish',
+      idempotency_key: `uc6_webapp_approve_${batchId}_${Date.now()}`,
+      request_source: 'uc6_admin_stage_controller'
+    };
+    const data = await uc6PostJson(CONFIG.UC6_TEMPLATE_APPROVAL_PUBLISH_WEBHOOK, payload, '01C Approval Publish');
+    recordUC6Stage('approval_publish', assertUC6StageSuccess(data, '01C Approval Publish'));
+    return data;
+  }
+
+  async function callUC6ContextIntelligencePrep(batchId, runtimeContext) {
+    setUC6StageRunning('context_intelligence_prep');
+    const payload = {
+      published_template_batch_id: batchId,
+      runtime_context: runtimeContext,
+      collection_options: {
+        use_user_input: true,
+        use_web_search: true,
+        use_internal_catalog: false,
+        use_crm_lookup: false,
+        allow_llm_fill_optional_text_slots: true,
+        allow_chart_data_generation: false,
+        max_research_queries: 6,
+        max_synthesized_slots: 40
+      },
+      request_context: buildUC6RequestContext('UC6-02A0')
+    };
+    const data = await uc6PostJson(CONFIG.UC6_RUNTIME_CONTEXT_INTELLIGENCE_PREP_WEBHOOK, payload, '02A0 Context Intelligence Prep');
+    recordUC6Stage('context_intelligence_prep', assertUC6StageSuccess(data, '02A0 Context Intelligence Prep'));
+    return data;
+  }
+
+  async function callUC6RuntimeDatabagPrep(batchId, contextCollectionId) {
+    setUC6StageRunning('runtime_databag_prep');
+    const payload = {
+      published_template_batch_id: batchId,
+      context_collection_id: contextCollectionId,
+      collection_options: {
+        use_enriched_databag: true
+      },
+      request_context: buildUC6RequestContext('UC6-02A')
+    };
+    const data = await uc6PostJson(CONFIG.UC6_RUNTIME_DATABAG_PREP_WEBHOOK, payload, '02A Runtime Databag Prep');
+    recordUC6Stage('runtime_databag_prep', assertUC6StageSuccess(data, '02A Runtime Databag Prep'));
+    return data;
+  }
+
+  async function callUC6RuntimeRenderBridge(batchId, renderRunId, contextCollectionId) {
+    setUC6StageRunning('runtime_render_bridge');
+    const payload = {
+      published_template_batch_id: batchId,
+      render_run_id: renderRunId,
+      context_collection_id: contextCollectionId,
+      request_context: buildUC6RequestContext('UC6-02B')
+    };
+    const data = await uc6PostJson(CONFIG.UC6_RUNTIME_RENDER_BRIDGE_WEBHOOK, payload, '02B Runtime Render Bridge');
+    recordUC6Stage('runtime_render_bridge', assertUC6StageSuccess(data, '02B Runtime Render Bridge'));
+    return data;
+  }
+
+  async function callUC6FinalPdfDelivery(batchId, renderRunId, contextCollectionId) {
+    setUC6StageRunning('final_pdf_delivery');
+    const payload = {
+      published_template_batch_id: batchId,
+      render_run_id: renderRunId,
+      context_collection_id: contextCollectionId,
+      request_context: buildUC6RequestContext('UC6-02C')
+    };
+    const data = await uc6PostJson(CONFIG.UC6_FINAL_PDF_DELIVERY_WEBHOOK, payload, '02C Final PDF Delivery');
+    recordUC6Stage('final_pdf_delivery', assertUC6StageSuccess(data, '02C Final PDF Delivery'));
+    return data;
+  }
+
+  function getUC6RequiredSlots() {
+    const databag = uc6State.stageResponses.runtime_databag_prep || {};
+    const contextPrep = uc6State.stageResponses.context_intelligence_prep || {};
+    const responseSlots = Array.isArray(databag.required_slot_keys)
+      ? databag.required_slot_keys
+      : Array.isArray(contextPrep.required_slot_keys)
+        ? contextPrep.required_slot_keys
+        : [];
+    if (responseSlots.length) return responseSlots;
+    try {
+      const runtimeContext = getUC6RuntimeContext();
+      return Object.keys(runtimeContext).filter((key) => ['string', 'number', 'boolean'].includes(typeof runtimeContext[key]));
     } catch (_) {
       return ['account_name', 'proposal_date', 'vendor_contact', 'vendor_name'];
     }
   }
 
-  function buildUC6RequestPayload() {
-    const runtimeContext = getUC6RuntimeContext();
-    const batchId = getUC6SelectedBatchId();
-
-    if (!batchId) {
-      throw new Error('published_template_batch_id가 비어 있습니다.');
-    }
-
-    if (!runtimeContext || typeof runtimeContext !== 'object' || Array.isArray(runtimeContext)) {
-      throw new Error('Runtime Context는 JSON object여야 합니다.');
-    }
-
-    return {
-      published_template_batch_id: batchId,
-      runtime_context: runtimeContext,
-      collection_options: {
-        use_user_input: true
-      },
-      request_context: {
-        caller: 'webapp',
-        view: 'uc6_fetchdoc_admin_stage_controller',
-        phase: 'ui_shell_mvp',
-        sample_case_id: uc6State.selectedSampleId,
-        template_approval_status: uc6State.approvalStatus
-      }
-    };
-  }
-
   function renderUC6TemplateSummary() {
     if (!uc6Els.templateSummary) return;
-
-    const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.acme_runtime_proposal;
+    const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.marriott_ai_hospitality;
     const batchId = getUC6SelectedBatchId();
-    const response = uc6State.responsePayload || {};
-
+    const latest = getUC6LatestResponse() || {};
     const summaryItems = [
-      { label: 'Template Batch ID', value: batchId || '미입력' },
+      { label: 'Template Batch ID', value: uc6State.selectedBatchId || batchId || '미입력' },
       { label: 'Approval Status', value: uc6State.approvalStatus === 'approved' ? '승인 완료' : uc6State.approvalStatus === 'needs_review' ? '수정 필요' : '검토 중' },
       { label: 'Sample Case', value: sample.label },
-      { label: 'Runtime Phase', value: response.phase || 'ui_shell_ready' },
-      { label: 'Render Run ID', value: response.render_run_id || 'B1 실행 후 표시' },
-      { label: 'Next Action', value: response.next_action || 'runtime_render_bridge_pending' }
+      { label: 'Current Phase', value: latest.phase || 'uc6_frontend_ready' },
+      { label: 'Context Collection ID', value: uc6State.contextCollectionId || latest.context_collection_id || '02A0 이후 표시' },
+      { label: 'Render Run ID', value: uc6State.renderRunId || latest.render_run_id || '02A 이후 표시' },
+      { label: 'Next Action', value: latest.next_action || 'uc6_e2e_ready_to_run' }
     ];
-
     uc6Els.templateSummary.innerHTML = summaryItems.map(item => `
       <div class="uc6-summary-card">
         <span>${escapeHtml(item.label)}</span>
@@ -4394,10 +4690,10 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6SlotTable() {
     if (!uc6Els.slotTableBody) return;
-
     let runtimeContext = {};
     try { runtimeContext = getUC6RuntimeContext(); } catch (_) { runtimeContext = {}; }
-
+    const databag = uc6State.stageResponses.runtime_databag_prep || {};
+    const source = databag.runtime_context_summary?.source || 'runtime_context';
     const keys = getUC6RequiredSlots();
     uc6Els.slotTableBody.innerHTML = keys.map((key) => {
       const value = runtimeContext[key];
@@ -4405,9 +4701,9 @@ Customer: Thank you. Goodbye.`
       return `
         <tr>
           <td><code>${escapeHtml(key)}</code></td>
-          <td>runtime_context</td>
-          <td>Yes</td>
-          <td><span class="uc6-table-status ${filled ? 'is-ready' : 'is-warning'}">${filled ? 'filled' : 'missing'}</span></td>
+          <td>${escapeHtml(source)}</td>
+          <td>${['account_name', 'proposal_date', 'vendor_contact', 'vendor_name'].includes(key) ? 'Yes' : 'No'}</td>
+          <td><span class="uc6-table-status ${filled || source === 'enriched_databag' ? 'is-ready' : 'is-warning'}">${filled || source === 'enriched_databag' ? 'ready' : 'missing'}</span></td>
         </tr>
       `;
     }).join('') || '<tr><td colspan="4">표시할 Slot이 없습니다.</td></tr>';
@@ -4415,17 +4711,22 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6ReadinessSummary() {
     if (!uc6Els.readinessSummary) return;
-
-    const response = uc6State.responsePayload || {};
+    const latest = getUC6LatestResponse() || {};
+    const databag = uc6State.stageResponses.runtime_databag_prep || {};
+    const bridge = uc6State.stageResponses.runtime_render_bridge || {};
+    const delivery = uc6State.stageResponses.final_pdf_delivery || {};
     const cards = [
-      { label: 'success', value: response.success === true ? 'true' : response.success === false ? 'false' : 'not_run', tone: response.success === true ? 'ready' : response.success === false ? 'danger' : 'muted' },
-      { label: 'readiness_status', value: response.readiness_status || 'not_run', tone: response.readiness_status === 'completed' ? 'ready' : 'muted' },
-      { label: 'candidate_slot_value_count', value: response.candidate_slot_value_count ?? '-', tone: 'muted' },
-      { label: 'blocking_issue_count', value: response.blocking_issue_count ?? '-', tone: response.blocking_issue_count === 0 ? 'ready' : 'warning' },
-      { label: 'warning_count', value: response.warning_count ?? '-', tone: response.warning_count === 0 ? 'ready' : 'warning' },
-      { label: 'next_action', value: response.next_action || 'runtime_render_bridge_pending', tone: 'locked' }
+      { label: 'success', value: latest.success === true ? 'true' : latest.success === false ? 'false' : 'not_run', tone: latest.success === true ? 'ready' : latest.success === false ? 'danger' : 'muted' },
+      { label: 'current_phase', value: latest.phase || 'not_run', tone: latest.success === true ? 'ready' : 'muted' },
+      { label: 'context_collection_id', value: uc6State.contextCollectionId || '-', tone: uc6State.contextCollectionId ? 'ready' : 'muted' },
+      { label: 'render_run_id', value: uc6State.renderRunId || '-', tone: uc6State.renderRunId ? 'ready' : 'muted' },
+      { label: 'candidate_slot_value_count', value: databag.candidate_slot_value_count ?? bridge.runtime_databag_candidate_slot_value_count ?? '-', tone: 'muted' },
+      { label: 'final_render_ready', value: bridge.final_render_ready === true ? 'true' : '-', tone: bridge.final_render_ready === true ? 'ready' : 'muted' },
+      { label: 'final_pptx_ready', value: delivery.final_pptx_ready === true ? 'true' : '-', tone: delivery.final_pptx_ready === true ? 'ready' : 'muted' },
+      { label: 'final_pdf_ready', value: delivery.final_pdf_ready === true ? 'true' : delivery.final_pdf_ready === false ? 'false' : '-', tone: delivery.final_pdf_ready === true ? 'ready' : 'locked' },
+      { label: 'blocking_issue_count', value: latest.blocking_issue_count ?? '-', tone: latest.blocking_issue_count === 0 ? 'ready' : latest.blocking_issue_count > 0 ? 'danger' : 'muted' },
+      { label: 'warning_count', value: latest.warning_count ?? '-', tone: latest.warning_count === 0 ? 'ready' : latest.warning_count > 0 ? 'warning' : 'muted' }
     ];
-
     uc6Els.readinessSummary.innerHTML = cards.map(card => `
       <div class="uc6-readiness-card is-${escapeHtml(card.tone)}">
         <span>${escapeHtml(card.label)}</span>
@@ -4436,62 +4737,60 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6ArtifactTable() {
     if (!uc6Els.artifactTableBody) return;
-
-    const artifacts = uc6State.responsePayload?.artifacts && typeof uc6State.responsePayload.artifacts === 'object'
-      ? uc6State.responsePayload.artifacts
-      : UC6_DEFAULT_ARTIFACTS;
-
-    const ready = uc6State.responsePayload?.success === true;
-
-    uc6Els.artifactTableBody.innerHTML = Object.entries(artifacts).map(([alias, file]) => `
-      <tr>
-        <td><code>${escapeHtml(alias)}</code></td>
-        <td>${escapeHtml(file)}</td>
-        <td><span class="uc6-table-status ${ready ? 'is-ready' : 'is-muted'}">${ready ? 'reported' : 'expected'}</span></td>
-      </tr>
-    `).join('');
+    const combined = { ...UC6_DEFAULT_ARTIFACTS };
+    UC6_STAGE_SEQUENCE.forEach((stageId) => {
+      const artifacts = uc6State.stageResponses[stageId]?.artifacts;
+      if (isPlainObject(artifacts)) {
+        Object.assign(combined, artifacts);
+      }
+    });
+    uc6Els.artifactTableBody.innerHTML = Object.entries(combined).map(([alias, file]) => {
+      const reported = file && !String(file).includes('이후 표시');
+      return `
+        <tr>
+          <td><code>${escapeHtml(alias)}</code></td>
+          <td>${escapeHtml(file)}</td>
+          <td><span class="uc6-table-status ${reported ? 'is-ready' : 'is-muted'}">${reported ? 'reported' : 'expected'}</span></td>
+        </tr>
+      `;
+    }).join('');
   }
 
   function renderUC6DebugPanel() {
     if (!uc6Els.debugJson) return;
-
     const debugPayload = {
       safety_boundary: {
         browser_calls: 'n8n public webhook only',
-        forbidden_in_browser: ['internal auth header', 'FastAPI internal endpoint', 'internal artifact lookup', 'internal file path'],
-        final_render: 'disabled_in_ui_shell_mvp'
+        forbidden_in_browser: ['internal auth header', 'FastAPI internal endpoint', 'internal file path'],
+        download: 'public URL only; internal artifact path is not opened directly'
       },
+      current_stage: uc6State.currentStage,
+      selected_batch_id: uc6State.selectedBatchId,
+      context_collection_id: uc6State.contextCollectionId,
+      render_run_id: uc6State.renderRunId,
       request: uc6State.requestPayload,
+      stage_responses: uc6State.stageResponses,
       response: uc6State.responsePayload,
       error: uc6State.lastError
     };
-
     uc6Els.debugJson.textContent = formatUC6Json(debugPayload);
   }
 
   function getUC6StageState(stageId) {
-    const hasPptx = Boolean(uc6State.pptxFileName);
-    const approved = uc6State.approvalStatus === 'approved';
-    const response = uc6State.responsePayload;
-    const success = response?.success === true;
-    const failed = response?.success === false || Boolean(uc6State.lastError);
-
-    if (stageId === 'pptx_upload') return hasPptx ? 'done' : 'active';
-    if (stageId === 'template_analysis') return hasPptx ? 'done' : 'idle';
-    if (stageId === 'template_approval') return approved ? 'done' : uc6State.approvalStatus === 'needs_review' ? 'error' : 'active';
-    if (stageId === 'slot_contract') return success ? 'done' : approved ? 'active' : 'idle';
-    if (stageId === 'runtime_context') return 'done';
-    if (stageId === 'databag_prep') {
-      if (uc6State.isRunning) return 'active';
-      if (failed) return 'error';
-      return success ? 'done' : 'idle';
-    }
-    return 'locked';
+    if (uc6State.stageErrors[stageId]) return 'error';
+    if (uc6State.currentStage === stageId && uc6State.isRunning) return 'active';
+    if (uc6State.stageResponses[stageId]?.success === true || uc6State.stageResponses[stageId]?.status === 'completed') return 'done';
+    if (stageId === 'intake_review_prep' && !uc6Els.pptxInput?.files?.[0] && uc6State.selectedBatchId) return 'done';
+    const order = UC6_STAGE_SEQUENCE.indexOf(stageId);
+    const activeOrder = uc6State.currentStage ? UC6_STAGE_SEQUENCE.indexOf(uc6State.currentStage) : -1;
+    if (uc6State.isRunning && activeOrder >= 0 && order < activeOrder) return 'done';
+    if (uc6State.isRunning && activeOrder >= 0 && order > activeOrder) return 'idle';
+    if (order === 0) return 'active';
+    return 'idle';
   }
 
   function renderUC6StageTimeline() {
     if (!uc6Els.stageTimeline) return;
-
     uc6Els.stageTimeline.innerHTML = UC6_STAGE_MODEL.map((stage, idx) => {
       const state = getUC6StageState(stage.id);
       return `
@@ -4508,13 +4807,16 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6MiniPipeline() {
     if (!uc6Els.miniPipeline) return;
-    const response = uc6State.responsePayload;
-    const databagState = uc6State.isRunning ? 'is-active' : response?.success === true ? 'is-done' : uc6State.lastError ? 'is-error' : 'is-idle';
+    const hasContext = Boolean(uc6State.contextCollectionId || uc6State.stageResponses.context_intelligence_prep?.success);
+    const hasDatabag = Boolean(uc6State.renderRunId || uc6State.stageResponses.runtime_databag_prep?.success);
+    const hasBridge = Boolean(uc6State.stageResponses.runtime_render_bridge?.final_render_ready === true);
+    const hasDelivery = Boolean(uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready === true);
     uc6Els.miniPipeline.innerHTML = `
-      <span class="uc6-pipeline-pill is-done">템플릿</span>
-      <span class="uc6-pipeline-pill is-done">Context</span>
-      <span class="uc6-pipeline-pill ${databagState}">Databag</span>
-      <span class="uc6-pipeline-pill is-locked">PDF</span>
+      <span class="uc6-pipeline-pill ${uc6State.stageResponses.approval_publish || !uc6Els.pptxInput?.files?.[0] ? 'is-done' : 'is-idle'}">Template</span>
+      <span class="uc6-pipeline-pill ${hasContext ? 'is-done' : uc6State.currentStage === 'context_intelligence_prep' ? 'is-active' : 'is-idle'}">Context</span>
+      <span class="uc6-pipeline-pill ${hasDatabag ? 'is-done' : uc6State.currentStage === 'runtime_databag_prep' ? 'is-active' : 'is-idle'}">Databag</span>
+      <span class="uc6-pipeline-pill ${hasBridge ? 'is-done' : uc6State.currentStage === 'runtime_render_bridge' ? 'is-active' : 'is-idle'}">Bridge</span>
+      <span class="uc6-pipeline-pill ${hasDelivery ? 'is-done' : uc6State.currentStage === 'final_pdf_delivery' ? 'is-active' : 'is-locked'}">PPTX</span>
     `;
   }
 
@@ -4523,7 +4825,7 @@ Customer: Thank you. Goodbye.`
     try {
       const context = getUC6RuntimeContext();
       uc6Els.runtimeContextPreview.textContent = formatUC6Json(context);
-      setUC6Chip(uc6Els.contextStateChip, 'JSON 정상', 'is-ready');
+      setUC6Chip(uc6Els.contextStateChip, 'Context JSON 정상', 'is-ready');
     } catch (error) {
       uc6Els.runtimeContextPreview.textContent = `Runtime Context JSON 오류: ${error.message}`;
       setUC6Chip(uc6Els.contextStateChip, 'JSON 오류', 'is-danger');
@@ -4531,37 +4833,51 @@ Customer: Thank you. Goodbye.`
   }
 
   function renderUC6Hero() {
-    const response = uc6State.responsePayload;
+    const latest = getUC6LatestResponse();
     if (uc6Els.heroStatusText) {
-      if (uc6State.isRunning) uc6Els.heroStatusText.textContent = 'Databag Prep 실행 중';
-      else if (uc6State.lastError) uc6Els.heroStatusText.textContent = 'Databag Prep 실패';
-      else if (response?.success === true) uc6Els.heroStatusText.textContent = 'Databag 준비 완료';
-      else uc6Els.heroStatusText.textContent = 'UI Shell 준비';
+      if (uc6State.isRunning) uc6Els.heroStatusText.textContent = `${getUC6StageLabel(uc6State.currentStage)} 실행 중`;
+      else if (uc6State.lastError) uc6Els.heroStatusText.textContent = 'UC6 실행 실패';
+      else if (uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready) uc6Els.heroStatusText.textContent = 'Final PPTX 준비 완료';
+      else if (uc6State.stageResponses.runtime_render_bridge?.final_render_ready) uc6Els.heroStatusText.textContent = 'Final Render 준비 완료';
+      else if (latest?.success === true) uc6Els.heroStatusText.textContent = 'UC6 단계 진행 중';
+      else uc6Els.heroStatusText.textContent = 'UC6 E2E 준비';
     }
-
     if (uc6Els.heroStatusSubtext) {
-      if (response?.render_run_id) uc6Els.heroStatusSubtext.textContent = response.render_run_id;
-      else if (uc6State.lastError) uc6Els.heroStatusSubtext.textContent = uc6State.lastError.message || '실행 중 오류가 발생했습니다.';
-      else uc6Els.heroStatusSubtext.textContent = 'B1 Databag Prep webhook만 연결됩니다.';
+      if (uc6State.lastError) uc6Els.heroStatusSubtext.textContent = uc6State.lastError.message || '실행 중 오류가 발생했습니다.';
+      else if (uc6State.renderRunId) uc6Els.heroStatusSubtext.textContent = uc6State.renderRunId;
+      else if (uc6State.selectedBatchId) uc6Els.heroStatusSubtext.textContent = uc6State.selectedBatchId;
+      else uc6Els.heroStatusSubtext.textContent = '01A~02C workflow를 순차 실행합니다.';
     }
-
     if (uc6Els.actionHelper) {
-      if (uc6State.isRunning) uc6Els.actionHelper.textContent = 'n8n Runtime Databag Prep webhook 응답을 기다리는 중입니다.';
+      if (uc6State.isRunning) uc6Els.actionHelper.textContent = `${getUC6StageLabel(uc6State.currentStage)} 응답을 기다리는 중입니다.`;
       else if (uc6State.lastError) uc6Els.actionHelper.textContent = `오류: ${uc6State.lastError.message}`;
-      else if (response?.success === true) uc6Els.actionHelper.textContent = 'Databag readiness가 완료되었습니다. Render Bridge와 PDF 생성은 후속 단계입니다.';
-      else uc6Els.actionHelper.textContent = 'B1 Runtime Databag Prep까지 실행합니다. Render Bridge와 PDF 생성은 잠금 상태입니다.';
+      else if (uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready) uc6Els.actionHelper.textContent = 'Final PPTX artifact가 준비되었습니다. PDF 변환은 converter/proxy 확장 대상입니다.';
+      else uc6Els.actionHelper.textContent = '파일을 선택하면 01A부터, 파일이 없으면 선택된 published batch로 02A0부터 실행합니다.';
     }
   }
 
   function renderUC6DownloadPlaceholders() {
+    const delivery = uc6State.stageResponses.final_pdf_delivery || {};
     if (uc6Els.previewStateChip) {
-      const response = uc6State.responsePayload;
-      if (response?.success === true) setUC6Chip(uc6Els.previewStateChip, 'Render Bridge 대기', 'is-locked');
+      if (delivery.final_pptx_ready === true) setUC6Chip(uc6Els.previewStateChip, 'PPTX Ready', 'is-ready');
+      else if (uc6State.stageResponses.runtime_render_bridge?.final_render_ready === true) setUC6Chip(uc6Els.previewStateChip, 'Final Render Ready', 'is-ready');
       else setUC6Chip(uc6Els.previewStateChip, 'Preview 대기', 'is-locked');
     }
-
-    if (uc6Els.pdfDownloadBtn) uc6Els.pdfDownloadBtn.disabled = true;
-    if (uc6Els.pptxDownloadBtn) uc6Els.pptxDownloadBtn.disabled = true;
+    if (uc6Els.pdfDownloadBtn) {
+      uc6Els.pdfDownloadBtn.disabled = true;
+      uc6Els.pdfDownloadBtn.textContent = delivery.final_pdf_ready === true ? '📄 PDF 다운로드' : '📄 PDF 변환 대기';
+      uc6Els.pdfDownloadBtn.title = '현재 02C는 PPTX delivery까지 완료합니다. PDF converter/proxy는 후속 확장 대상입니다.';
+    }
+    if (uc6Els.pptxDownloadBtn) {
+      const publicUrl = delivery.download?.public_download_url || delivery.download?.url || delivery.download_url || delivery.final_pptx_url || '';
+      const ready = delivery.final_pptx_ready === true;
+      uc6Els.pptxDownloadBtn.disabled = !ready;
+      uc6Els.pptxDownloadBtn.textContent = ready ? '📊 PPTX 준비 완료' : '📊 PPTX 다운로드';
+      uc6Els.pptxDownloadBtn.dataset.downloadUrl = publicUrl;
+      uc6Els.pptxDownloadBtn.title = ready
+        ? (publicUrl ? '새 창에서 PPTX를 엽니다.' : 'PPTX artifact는 준비됐지만 public download proxy가 필요합니다.')
+        : '02C 완료 후 활성화됩니다.';
+    }
   }
 
   function renderUC6All() {
@@ -4583,79 +4899,113 @@ Customer: Thank you. Goodbye.`
     uc6Els.tabs.forEach((tab) => {
       tab.classList.toggle('active', tab.dataset.uc6Tab === tabId);
     });
-
     document.querySelectorAll('#view-uc6 .uc6-tab-panel').forEach((panel) => {
       panel.classList.toggle('active', panel.id === `uc6-panel-${tabId}`);
     });
   }
 
   function resetUC6Shell() {
-    uc6State.responsePayload = null;
     uc6State.requestPayload = null;
+    uc6State.responsePayload = null;
+    uc6State.stageResponses = {};
+    uc6State.stageErrors = {};
+    uc6State.currentStage = null;
+    uc6State.contextCollectionId = '';
+    uc6State.renderRunId = '';
+    uc6State.download = null;
     uc6State.lastError = null;
     uc6State.isRunning = false;
     if (uc6Els.runBtn) uc6Els.runBtn.disabled = false;
+    try { localStorage.removeItem(UC6_STORAGE_KEY); } catch (_) {}
     renderUC6All();
     setUC6ActiveTab('template');
   }
 
-  async function runUC6DatabagPrep() {
+  async function runUC6EndToEnd() {
     if (!uc6Els.runBtn) return;
-
     try {
+      const runtimeContext = getUC6RuntimeContext();
+      if (!isPlainObject(runtimeContext)) throw new Error('Runtime Context는 JSON object여야 합니다.');
+      let batchId = getUC6SelectedBatchId();
+      if (!batchId && !uc6Els.pptxInput?.files?.[0]) throw new Error('PPTX 파일을 선택하거나 published_template_batch_id를 입력하세요.');
       uc6State.isRunning = true;
       uc6State.lastError = null;
-      uc6State.responsePayload = null;
-      uc6State.requestPayload = buildUC6RequestPayload();
+      uc6State.stageErrors = {};
+      uc6State.requestPayload = { batch_id: batchId || '(generated by 01A)', runtime_context: runtimeContext };
       uc6Els.runBtn.disabled = true;
+      setUC6ActiveTab('debug');
       renderUC6All();
-      setUC6ActiveTab('databag');
 
-      const res = await fetch(CONFIG.UC6_RUNTIME_DATABAG_PREP_WEBHOOK, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(uc6State.requestPayload)
-      });
+      const intake = await callUC6IntakeReviewPrep();
+      if (intake?.batch_id) batchId = intake.batch_id;
+      if (!batchId) throw new Error('batch_id를 확인할 수 없습니다.');
+      uc6State.selectedBatchId = batchId;
 
-      const rawText = await res.text();
-      let data;
-      try {
-        data = rawText ? JSON.parse(rawText) : {};
-      } catch (_) {
-        throw new Error(`n8n 응답 JSON 파싱 실패 (${res.status})`);
+      if (intake) {
+        await pollUC6ReviewStatus(batchId);
+        if (uc6State.approvalStatus !== 'approved') {
+          throw new Error('템플릿 승인 상태가 승인 완료가 아닙니다. 승인 후 다시 실행하세요.');
+        }
+        await callUC6ApprovalPublish(batchId);
+      } else if (!uc6State.stageResponses.approval_publish?.success) {
+        // Existing published template path. The selected batch must already have a 01C publish-accepted status file.
+        uc6State.stageResponses.intake_review_prep = { success: true, status: 'skipped', phase: 'existing_published_template_selected', batch_id: batchId };
+        uc6State.stageResponses.review_status = { success: true, status: 'skipped', phase: 'existing_published_template_selected', batch_id: batchId };
+        uc6State.stageResponses.approval_publish = { success: true, status: 'skipped', phase: 'existing_published_template_selected', batch_id: batchId, template_status: 'publish_accepted' };
       }
 
-      if (!res.ok) {
-        const message = data.message || data.error || `Databag Prep 실패 (${res.status})`;
-        throw new Error(message);
-      }
+      const contextPrep = await callUC6ContextIntelligencePrep(batchId, runtimeContext);
+      const contextCollectionId = contextPrep.context_collection_id || uc6State.contextCollectionId;
+      if (!contextCollectionId) throw new Error('02A0 context_collection_id가 없습니다.');
 
-      uc6State.responsePayload = data;
-      uc6State.lastError = null;
+      const databag = await callUC6RuntimeDatabagPrep(batchId, contextCollectionId);
+      const renderRunId = databag.render_run_id || uc6State.renderRunId;
+      if (!renderRunId) throw new Error('02A render_run_id가 없습니다.');
+
+      await callUC6RuntimeRenderBridge(batchId, renderRunId, contextCollectionId);
+      await callUC6FinalPdfDelivery(batchId, renderRunId, contextCollectionId);
+
       setUC6ActiveTab('artifacts');
     } catch (error) {
-      uc6State.lastError = {
-        message: error.message || '알 수 없는 오류',
-        name: error.name || 'Error'
-      };
+      if (uc6State.currentStage) {
+        uc6State.stageErrors[uc6State.currentStage] = { message: error.message || 'unknown error' };
+      }
+      uc6State.lastError = { message: error.message || '알 수 없는 오류', name: error.name || 'Error' };
       setUC6ActiveTab('debug');
     } finally {
       uc6State.isRunning = false;
+      uc6State.currentStage = null;
       if (uc6Els.runBtn) uc6Els.runBtn.disabled = false;
+      saveUC6LocalState();
       renderUC6All();
     }
   }
 
   function initUC6() {
     if (!uc6Els.section) return;
-
-    const defaultSample = UC6_SAMPLE_CASES[uc6State.selectedSampleId];
-    if (uc6Els.runtimeEditor && defaultSample) {
+    loadUC6LocalState();
+    const defaultSample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.marriott_ai_hospitality;
+    if (uc6Els.runtimeEditor && !uc6Els.runtimeEditor.value) {
       uc6Els.runtimeEditor.value = formatUC6Json(defaultSample.runtime_context);
     }
+    if (uc6Els.batchSelect) {
+      const hasDefaultOption = Array.from(uc6Els.batchSelect.options).some((option) => option.value === UC6_DEFAULT_BATCH_ID);
+      if (!hasDefaultOption) {
+        const option = document.createElement('option');
+        option.value = UC6_DEFAULT_BATCH_ID;
+        option.textContent = UC6_DEFAULT_BATCH_ID;
+        uc6Els.batchSelect.insertBefore(option, uc6Els.batchSelect.firstChild);
+      }
+      uc6Els.batchSelect.value = Array.from(uc6Els.batchSelect.options).some((option) => option.value === uc6State.selectedBatchId)
+        ? uc6State.selectedBatchId
+        : UC6_DEFAULT_BATCH_ID;
+    }
+    if (uc6Els.sampleCase) uc6Els.sampleCase.value = uc6State.selectedSampleId;
+    uc6Els.gateButtons.forEach((btn) => {
+      const active = btn.dataset.uc6Approval === uc6State.approvalStatus;
+      btn.classList.toggle('active', active);
+    });
+    if (uc6State.approvalStatus === 'approved') setUC6Chip(uc6Els.approvalChip, '승인 완료', 'is-ready');
 
     uc6Els.pptxInput?.addEventListener('change', (event) => {
       const file = event.target.files?.[0];
@@ -4666,11 +5016,11 @@ Customer: Thank you. Goodbye.`
           uc6Els.pptxFileName.textContent = uc6State.pptxFileName;
           uc6Els.pptxFileName.style.display = 'block';
         }
-        setUC6Chip(uc6Els.pptxStateChip, '샘플 선택됨', 'is-ready');
+        setUC6Chip(uc6Els.pptxStateChip, '파일 선택됨', 'is-ready');
       } else {
         setUC6Chip(uc6Els.pptxStateChip, '업로드 대기', 'is-muted');
       }
-      renderUC6All();
+      resetUC6Shell();
     });
 
     uc6Els.batchSelect?.addEventListener('change', () => {
@@ -4698,7 +5048,7 @@ Customer: Thank you. Goodbye.`
 
     uc6Els.sampleCase?.addEventListener('change', () => {
       uc6State.selectedSampleId = uc6Els.sampleCase.value;
-      const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.acme_runtime_proposal;
+      const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.marriott_ai_hospitality;
       if (uc6Els.runtimeEditor) uc6Els.runtimeEditor.value = formatUC6Json(sample.runtime_context);
       resetUC6Shell();
     });
@@ -4713,8 +5063,19 @@ Customer: Thank you. Goodbye.`
       tab.addEventListener('click', () => setUC6ActiveTab(tab.dataset.uc6Tab || 'template'));
     });
 
-    uc6Els.runBtn?.addEventListener('click', runUC6DatabagPrep);
+    uc6Els.runBtn?.addEventListener('click', runUC6EndToEnd);
     uc6Els.resetBtn?.addEventListener('click', resetUC6Shell);
+    uc6Els.pptxDownloadBtn?.addEventListener('click', () => {
+      const url = uc6Els.pptxDownloadBtn?.dataset?.downloadUrl || '';
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const delivery = uc6State.stageResponses.final_pdf_delivery || {};
+      if (delivery.final_pptx_ready === true) {
+        alert('PPTX artifact는 준비되었습니다. public download proxy가 아직 없으므로 서버 artifact alias(final_render_output_pptx)를 통해 내려받아야 합니다.');
+      }
+    });
 
     renderUC6All();
   }
