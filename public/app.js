@@ -30,7 +30,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc5-r3d-source-ingest-sharded-w03-2026-06-18-v1';
+const APP_VERSION = 'app.uc5-r3d-firebase-saved-preview-2026-06-18-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -1147,6 +1147,15 @@ Customer: Thank you. Goodbye.`
   let uc5RenderPlanInteractionState = {};
   let uc5PreviewFitRaf = null;
   let confettiTimer = null;
+  let uc5SavedPreviewActiveId = '';
+  let uc5SavedPreviewRecords = [];
+  let uc5SavedPreviewStatus = 'idle';
+  let uc5FirebaseClientPromise = null;
+
+  const UC5_SAVED_PREVIEW_COLLECTION = 'uc5_saved_previews';
+  const UC5_SAVED_PREVIEW_STORAGE_PREFIX = 'uc5_saved_previews';
+  const UC5_SAVED_PREVIEW_LIMIT = 50;
+  const UC5_FIREBASE_SDK_VERSION = '10.14.1';
   const UC5_R3D_SCREENS_PER_SHARD = 1;
   const UC5_R3D_MAX_SECTIONS_PER_SHARD = 4;
   const UC5_R3D_REASONING_EFFORT = 'medium';
@@ -1217,6 +1226,8 @@ Customer: Thank you. Goodbye.`
   const pageIndicator = document.getElementById('uc5-pageIndicator');
   const activeLayoutText = document.getElementById('uc5-activeLayoutText');
   const uc5PipelineStatusEl = document.getElementById('uc5-pipelineStatus');
+  const uc5SavedPreviewSelect = document.getElementById('uc5-savedPreviewSelect');
+  const uc5DeleteSavedPreviewBtn = document.getElementById('uc5-deleteSavedPreviewBtn');
 
   function setUC5LoadingCopy(stage) {
     if (!uc5LoadingText || !uc5LoadingSubtext) return;
@@ -1333,6 +1344,291 @@ Customer: Thank you. Goodbye.`
 
     fitUC5PreviewChassis();
   }
+
+  function hashUC5PreviewKey(input) {
+    const text = String(input || 'uc5-preview');
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function sanitizeUC5PreviewIdPart(value) {
+    return String(value || 'preview')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 60) || 'preview';
+  }
+
+  function getUC5SavedPreviewFileName(renderPlan = uc5RenderPlanData) {
+    const fromRenderPlan = renderPlan?.source_lineage?.source_file_name;
+    const fromSourceHandle = uc5SourceHandleData?.file_profile?.file_name;
+    const fromUpload = uc5UploadedFile?.name;
+    return String(fromRenderPlan || fromSourceHandle || fromUpload || 'UC5 Preview').trim() || 'UC5 Preview';
+  }
+
+  function formatUC5SavedPreviewDate(value) {
+    if (!value) return '';
+    try {
+      return new Intl.DateTimeFormat('ko-KR', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(new Date(value));
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function setUC5SavedPreviewSelectorPlaceholder(text, disabled = true) {
+    if (!uc5SavedPreviewSelect) return;
+    uc5SavedPreviewSelect.textContent = '';
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = text;
+    uc5SavedPreviewSelect.appendChild(option);
+    uc5SavedPreviewSelect.value = '';
+    uc5SavedPreviewSelect.disabled = Boolean(disabled);
+    if (uc5DeleteSavedPreviewBtn) {
+      uc5DeleteSavedPreviewBtn.disabled = true;
+      uc5DeleteSavedPreviewBtn.title = '삭제할 저장 Preview가 없습니다';
+    }
+  }
+
+  function renderUC5SavedPreviewSelector(selectedId = uc5SavedPreviewActiveId) {
+    if (!uc5SavedPreviewSelect) return;
+
+    if (uc5SavedPreviewStatus === 'loading') {
+      setUC5SavedPreviewSelectorPlaceholder('저장된 Preview 불러오는 중...', true);
+      return;
+    }
+
+    if (uc5SavedPreviewStatus === 'unavailable') {
+      setUC5SavedPreviewSelectorPlaceholder('Firebase 저장소 연결 필요', true);
+      return;
+    }
+
+    uc5SavedPreviewSelect.textContent = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = uc5SavedPreviewRecords.length ? '저장된 최종 Preview 선택' : '저장된 최종 Preview 없음';
+    uc5SavedPreviewSelect.appendChild(placeholder);
+
+    for (const record of uc5SavedPreviewRecords) {
+      if (!record?.id) continue;
+      const option = document.createElement('option');
+      option.value = record.id;
+      const dateText = formatUC5SavedPreviewDate(record.updated_at_iso || record.saved_at || record.created_at_iso);
+      const shellText = record.macro_shell_id || record.template_id || 'UC5';
+      option.textContent = `${record.pdf_file_name || 'UC5 Preview'}${dateText ? ` · ${dateText}` : ''} · ${shellText}`;
+      uc5SavedPreviewSelect.appendChild(option);
+    }
+
+    const selectedExists = uc5SavedPreviewRecords.some(record => record.id === selectedId);
+    uc5SavedPreviewSelect.disabled = false;
+    uc5SavedPreviewSelect.value = selectedExists ? selectedId : '';
+    uc5SavedPreviewActiveId = selectedExists ? selectedId : '';
+
+    if (uc5DeleteSavedPreviewBtn) {
+      uc5DeleteSavedPreviewBtn.disabled = !selectedExists;
+      uc5DeleteSavedPreviewBtn.title = selectedExists ? '선택한 저장 Preview 삭제' : '삭제할 저장 Preview가 없습니다';
+    }
+  }
+
+  async function getUC5FirebaseClient() {
+    if (uc5FirebaseClientPromise) return uc5FirebaseClientPromise;
+
+    uc5FirebaseClientPromise = (async () => {
+      const initResponse = await fetch('/__/firebase/init.json', { cache: 'no-store' });
+      if (!initResponse.ok) {
+        throw new Error('Firebase Hosting init.json을 찾지 못했습니다. Firebase 배포 URL에서만 저장 목록을 사용할 수 있습니다.');
+      }
+
+      const firebaseConfig = await initResponse.json();
+      const [appMod, firestoreMod, storageMod] = await Promise.all([
+        import(`https://www.gstatic.com/firebasejs/${UC5_FIREBASE_SDK_VERSION}/firebase-app.js`),
+        import(`https://www.gstatic.com/firebasejs/${UC5_FIREBASE_SDK_VERSION}/firebase-firestore.js`),
+        import(`https://www.gstatic.com/firebasejs/${UC5_FIREBASE_SDK_VERSION}/firebase-storage.js`)
+      ]);
+
+      const app = appMod.getApps().length ? appMod.getApps()[0] : appMod.initializeApp(firebaseConfig);
+      const db = firestoreMod.getFirestore(app);
+      const storage = storageMod.getStorage(app);
+      return { app, db, storage, firestore: firestoreMod, storageApi: storageMod };
+    })();
+
+    return uc5FirebaseClientPromise;
+  }
+
+  function buildUC5SavedPreviewRecordId(pdfFileName) {
+    const safeName = sanitizeUC5PreviewIdPart(pdfFileName.replace(/\.[a-zA-Z0-9]+$/, ''));
+    return `${safeName}_${hashUC5PreviewKey(pdfFileName)}`;
+  }
+
+  async function refreshUC5SavedPreviewSelectorFromFirebase(selectedId = uc5SavedPreviewActiveId) {
+    if (!uc5SavedPreviewSelect) return;
+    uc5SavedPreviewStatus = 'loading';
+    renderUC5SavedPreviewSelector(selectedId);
+
+    try {
+      const client = await getUC5FirebaseClient();
+      const { collection, getDocs, query, orderBy, limit } = client.firestore;
+      const previewsQuery = query(
+        collection(client.db, UC5_SAVED_PREVIEW_COLLECTION),
+        orderBy('updated_at_ms', 'desc'),
+        limit(UC5_SAVED_PREVIEW_LIMIT)
+      );
+      const snapshot = await getDocs(previewsQuery);
+      uc5SavedPreviewRecords = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      uc5SavedPreviewStatus = 'ready';
+      renderUC5SavedPreviewSelector(selectedId);
+    } catch (err) {
+      console.warn('[UC5] Firebase 저장 Preview 목록을 읽지 못했습니다.', err);
+      uc5SavedPreviewRecords = [];
+      uc5SavedPreviewStatus = 'unavailable';
+      renderUC5SavedPreviewSelector('');
+    }
+  }
+
+  async function saveUC5CompletedPreview(renderPlan) {
+    const normalizedPlan = normalizeUC5RenderPlan(renderPlan);
+    const pdfFileName = getUC5SavedPreviewFileName(normalizedPlan);
+    const id = buildUC5SavedPreviewRecordId(pdfFileName);
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    const storagePath = `${UC5_SAVED_PREVIEW_STORAGE_PREFIX}/${id}/render_plan.json`;
+    const renderPlanJson = JSON.stringify(normalizedPlan);
+    let storageSaved = false;
+    let storageError = '';
+
+    const metadata = {
+      saved_preview_version: 'uc5_saved_final_preview.firebase.v1',
+      id,
+      pdf_file_name: pdfFileName,
+      lesson_title: normalizedPlan.lesson_meta?.lesson_title || '',
+      lesson_subtitle: normalizedPlan.lesson_meta?.lesson_subtitle || '',
+      template_id: normalizedPlan.lesson_meta?.template_id || normalizedPlan.layout_contract?.template_id || '',
+      macro_shell_id: normalizedPlan.lesson_meta?.macro_shell_id || normalizedPlan.layout_contract?.macro_shell_id || '',
+      screen_count: Number(normalizedPlan.layout_contract?.screen_count || normalizedPlan.screens?.length || 0),
+      section_count: Number(normalizedPlan.layout_contract?.section_count || 0),
+      source_file_name: normalizedPlan.source_lineage?.source_file_name || pdfFileName,
+      render_plan_version: normalizedPlan.render_plan_version || normalizedPlan.version || '',
+      updated_at_iso: nowIso,
+      updated_at_ms: nowMs,
+      storage_path: '',
+      storage_backend: 'firestore_document'
+    };
+
+    const client = await getUC5FirebaseClient();
+
+    try {
+      const storageRef = client.storageApi.ref(client.storage, storagePath);
+      await client.storageApi.uploadString(storageRef, renderPlanJson, 'raw', {
+        contentType: 'application/json; charset=utf-8',
+        customMetadata: {
+          service: 'uc5',
+          pdf_file_name: pdfFileName,
+          render_plan_version: metadata.render_plan_version,
+          updated_at_iso: nowIso
+        }
+      });
+      storageSaved = true;
+      metadata.storage_path = storagePath;
+      metadata.storage_backend = 'firebase_storage';
+    } catch (err) {
+      storageError = String(err?.message || err);
+      console.warn('[UC5] Firebase Storage 저장 실패. Firestore 문서 저장으로 대체합니다.', err);
+    }
+
+    const docPayload = storageSaved
+      ? metadata
+      : { ...metadata, storage_error: storageError.slice(0, 500), render_plan: normalizedPlan };
+
+    const previewDoc = client.firestore.doc(client.db, UC5_SAVED_PREVIEW_COLLECTION, id);
+    await client.firestore.setDoc(previewDoc, docPayload, { merge: false });
+
+    const record = { ...docPayload, id };
+    uc5SavedPreviewActiveId = id;
+    await refreshUC5SavedPreviewSelectorFromFirebase(id);
+    return record;
+  }
+
+  async function fetchUC5SavedPreviewRenderPlan(record) {
+    if (record?.render_plan) return record.render_plan;
+    if (!record?.storage_path) throw new Error('저장된 Preview에 render_plan 또는 storage_path가 없습니다.');
+
+    const client = await getUC5FirebaseClient();
+    const storageRef = client.storageApi.ref(client.storage, record.storage_path);
+    const downloadUrl = await client.storageApi.getDownloadURL(storageRef);
+    const response = await fetch(downloadUrl, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`저장 Preview JSON 다운로드 실패 (${response.status})`);
+    return response.json();
+  }
+
+  async function loadUC5SavedPreview(recordId) {
+    if (!recordId) return;
+
+    try {
+      const cached = uc5SavedPreviewRecords.find(item => item.id === recordId);
+      const client = await getUC5FirebaseClient();
+      const previewDoc = client.firestore.doc(client.db, UC5_SAVED_PREVIEW_COLLECTION, recordId);
+      const snapshot = await client.firestore.getDoc(previewDoc);
+      const record = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : cached;
+      if (!record) throw new Error('선택한 저장 Preview를 찾지 못했습니다.');
+
+      const renderPlan = await fetchUC5SavedPreviewRenderPlan(record);
+      uc5SavedPreviewActiveId = record.id;
+      uc5PlanningDraftData = null;
+      uc5TemplateBoundBlueprintData = null;
+      uc5SlotPayloadSeedData = null;
+      uc5SourceCoverageSummaryData = null;
+      uc5SlidesData = null;
+      setUC5PipelineStatus('render', 'done');
+      renderUC5RenderPlan(renderPlan, { persist: false, savedRecord: record });
+      renderUC5SavedPreviewSelector(record.id);
+    } catch (err) {
+      console.error('[UC5] 저장 Preview 로드 실패', err);
+      alert(err.message || '저장 Preview를 불러오지 못했습니다.');
+      renderUC5SavedPreviewSelector(uc5SavedPreviewActiveId);
+    }
+  }
+
+  async function deleteUC5SavedPreview(recordId) {
+    const record = uc5SavedPreviewRecords.find(item => item.id === recordId);
+    if (!record) return;
+
+    const ok = window.confirm(`저장된 Preview를 삭제할까요?\n${record.pdf_file_name || 'UC5 Preview'}`);
+    if (!ok) return;
+
+    try {
+      if (uc5DeleteSavedPreviewBtn) uc5DeleteSavedPreviewBtn.disabled = true;
+      const client = await getUC5FirebaseClient();
+
+      if (record.storage_path) {
+        try {
+          const storageRef = client.storageApi.ref(client.storage, record.storage_path);
+          await client.storageApi.deleteObject(storageRef);
+        } catch (storageErr) {
+          console.warn('[UC5] Storage render_plan 삭제 실패 또는 이미 삭제됨', storageErr);
+        }
+      }
+
+      const previewDoc = client.firestore.doc(client.db, UC5_SAVED_PREVIEW_COLLECTION, recordId);
+      await client.firestore.deleteDoc(previewDoc);
+      if (uc5SavedPreviewActiveId === recordId) uc5SavedPreviewActiveId = '';
+      await refreshUC5SavedPreviewSelectorFromFirebase('');
+    } catch (err) {
+      console.error('[UC5] 저장 Preview 삭제 실패', err);
+      alert(err.message || '저장 Preview 삭제에 실패했습니다.');
+      renderUC5SavedPreviewSelector(uc5SavedPreviewActiveId);
+    }
+  }
+
 
   function getUC5SelectedMacroShell() {
     const checked = Array.from(macroShellInputs).find(input => input.checked);
@@ -1974,7 +2270,9 @@ Customer: Thank you. Goodbye.`
       alert('현재 교육 원문 분석은 PDF 파일만 지원합니다. PDF 파일을 업로드해 주세요.');
       return;
     }
-uc5UploadedFile = file;
+
+
+    uc5UploadedFile = file;
     uc5UploadedFileKey = buildUC5UploadedFileKey(file);
     resetUC5SourceHandleState();
     uc5PlanningDraftData = null;
@@ -1985,6 +2283,8 @@ uc5UploadedFile = file;
     uc5RenderPlanData = null;
     uc5RenderPlanScreenIndex = 0;
     uc5RenderPlanInteractionState = {};
+    uc5SavedPreviewActiveId = '';
+    renderUC5SavedPreviewSelector('');
 
     if (uc5FileNameDisplay) {
       uc5FileNameDisplay.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
@@ -2102,6 +2402,30 @@ uc5UploadedFile = file;
   }
 
   scheduleUC5PreviewFit(0);
+
+  if (uc5SavedPreviewSelect) {
+    uc5SavedPreviewSelect.addEventListener('change', (e) => {
+      const recordId = e.target.value;
+      if (!recordId) {
+        uc5SavedPreviewActiveId = '';
+        renderUC5SavedPreviewSelector('');
+        return;
+      }
+      loadUC5SavedPreview(recordId);
+    });
+  }
+
+  if (uc5DeleteSavedPreviewBtn) {
+    uc5DeleteSavedPreviewBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!uc5SavedPreviewActiveId) return;
+      deleteUC5SavedPreview(uc5SavedPreviewActiveId);
+    });
+  }
+
+  renderUC5SavedPreviewSelector('');
+  refreshUC5SavedPreviewSelectorFromFirebase('');
+
 
   // 7. Dynamic Layout Engine & String Compilers
   function compileConceptMatrix(slide, pageNum) {
@@ -3414,7 +3738,8 @@ uc5UploadedFile = file;
     scheduleUC5PreviewFit();
   }
 
-  function renderUC5RenderPlan(data) {
+  function renderUC5RenderPlan(data, options = {}) {
+    const { persist = false, savedRecord = null } = options || {};
     uc5PlanningDraftData = null;
     uc5SlidesData = null;
     uc5RenderPlanData = normalizeUC5RenderPlan(data);
@@ -3427,6 +3752,23 @@ uc5UploadedFile = file;
     }
 
     renderUC5V2CurrentScreen();
+
+    if (persist) {
+      saveUC5CompletedPreview(uc5RenderPlanData)
+        .then((saved) => {
+          if (activeLayoutText && saved) {
+            activeLayoutText.textContent = `최종 교육 미리보기 · ${saved.macro_shell_id || uc5RenderPlanData.lesson_meta?.macro_shell_id || 'UC5'} · 저장됨`;
+          }
+        })
+        .catch((err) => {
+          console.warn('[UC5] Firebase 최종 Preview 저장 실패', err);
+          if (activeLayoutText) {
+            activeLayoutText.textContent = `최종 교육 미리보기 · ${uc5RenderPlanData.lesson_meta?.macro_shell_id || 'UC5'} · 저장 실패`;
+          }
+        });
+    } else if (savedRecord && activeLayoutText) {
+      activeLayoutText.textContent = `저장 Preview 불러옴 · ${savedRecord.macro_shell_id || savedRecord.template_id || savedRecord.render_plan?.lesson_meta?.macro_shell_id || 'UC5'}`;
+    }
   }
 
 
@@ -3939,7 +4281,7 @@ uc5UploadedFile = file;
       );
 
       setUC5PipelineStatus('render', 'done');
-      renderUC5RenderPlan(renderPlan);
+      renderUC5RenderPlan(renderPlan, { persist: true });
     } catch (err) {
       console.error(err);
       setUC5PipelineStatus(uc5PipelineStatus || 'payload', 'error');

@@ -369,13 +369,21 @@
 
           <div class="uc5-bottom-preview-panel">
             <div class="uc5-preview-header">
-              <div class="uc5-preview-info">
-                <span class="uc5-info-label">현재 상태:</span>
-                <span class="uc5-info-value" id="uc5-activeLayoutText">교육 구성 대기</span>
+              <div class="uc5-saved-preview-control" aria-label="저장된 최종 Preview 관리">
+                <select id="uc5-savedPreviewSelect" class="uc5-saved-preview-select" aria-label="저장된 최종 Preview 선택">
+                  <option value="">저장된 최종 Preview 없음</option>
+                </select>
+                <button type="button" class="uc5-saved-preview-delete" id="uc5-deleteSavedPreviewBtn" title="선택한 저장 Preview 삭제" disabled>×</button>
               </div>
-              <div class="uc5-view-switcher">
-                <button class="uc5-switch-btn active" id="uc5-btnDesktop" data-view="desktop">💻 데스크톱</button>
-                <button class="uc5-switch-btn" id="uc5-btnMobile" data-view="mobile">📱 모바일</button>
+              <div class="uc5-preview-header-right">
+                <div class="uc5-preview-info">
+                  <span class="uc5-info-label">현재 상태:</span>
+                  <span class="uc5-info-value" id="uc5-activeLayoutText">교육 구성 대기</span>
+                </div>
+                <div class="uc5-view-switcher">
+                  <button class="uc5-switch-btn active" id="uc5-btnDesktop" data-view="desktop">💻 데스크톱</button>
+                  <button class="uc5-switch-btn" id="uc5-btnMobile" data-view="mobile">📱 모바일</button>
+                </div>
               </div>
             </div>
 
