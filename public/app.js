@@ -24,7 +24,8 @@ const CONFIG = {
   UC6_RUNTIME_CONTEXT_INTELLIGENCE_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/context-intelligence-prep',
   UC6_RUNTIME_DATABAG_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/databag-prep',
   UC6_RUNTIME_RENDER_BRIDGE_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/render-bridge',
-  UC6_FINAL_PDF_DELIVERY_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/final/pdf-delivery'
+  UC6_FINAL_PDF_DELIVERY_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/final/pdf-delivery',
+  UC6_FINAL_PPTX_DOWNLOAD_PROXY_BASE: 'https://api.peter-n8n.duckdns.org'
 };
 
 // ==========================================
@@ -5274,6 +5275,89 @@ Customer: Thank you. Goodbye.`
     }
   }
 
+  function isUC6SafeIdentifier(value) {
+    return typeof value === 'string' && /^[a-zA-Z0-9_.-]+$/.test(value.trim());
+  }
+
+  function isUC6BrowserUnsafeString(value) {
+    if (typeof value !== 'string') return false;
+    const unsafeFragments = [
+      ['http:', '', 'fastapi-app'].join('/'),
+      ['', 'data', 'fetchdoc'].join('/'),
+      ['x', 'internal', 'token'].join('-'),
+      'authorization',
+      ['n8n', 'internal', 'secret'].join('-')
+    ];
+    return unsafeFragments.some((fragment) => value.toLowerCase().includes(fragment.toLowerCase()));
+  }
+
+  function isUC6BrowserUnsafeKey(key) {
+    return /internal_token|authorization|x_internal_token|fastapi|internal_download_path|internal_artifact_status_path|requires_internal_token/i.test(String(key || ''));
+  }
+
+  function sanitizeUC6ForBrowserDebug(value, parentKey = '') {
+    if (isUC6BrowserUnsafeKey(parentKey)) return '[redacted: browser download proxy boundary]';
+    if (typeof value === 'string') return isUC6BrowserUnsafeString(value) ? '[redacted: internal runtime value]' : value;
+    if (Array.isArray(value)) return value.map((item) => sanitizeUC6ForBrowserDebug(item, parentKey));
+    if (isPlainObject(value)) {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeUC6ForBrowserDebug(item, key)]));
+    }
+    return value;
+  }
+
+  function normalizeUC6ProxyBaseUrl(value) {
+    const raw = String(value || '').trim().replace(/\/+$/, '');
+    return /^https:\/\//i.test(raw) ? raw : '';
+  }
+
+  function normalizeUC6DownloadPath(path) {
+    const raw = String(path || '').trim();
+    if (!raw.startsWith('/fetchdoc/jobs/')) return '';
+    if (isUC6BrowserUnsafeString(raw)) return '';
+    if (raw.includes('..') || raw.includes('\\')) return '';
+    return raw;
+  }
+
+  function getUC6NestedDownloadValue(delivery, key) {
+    if (!isPlainObject(delivery)) return '';
+    if (isPlainObject(delivery.download) && typeof delivery.download[key] === 'string') return delivery.download[key];
+    return typeof delivery[key] === 'string' ? delivery[key] : '';
+  }
+
+  function buildUC6PptxDownloadUrl(delivery) {
+    if (!isPlainObject(delivery) || delivery.final_pptx_ready !== true) return '';
+
+    const directCandidates = [
+      getUC6NestedDownloadValue(delivery, 'public_download_url'),
+      getUC6NestedDownloadValue(delivery, 'url'),
+      getUC6NestedDownloadValue(delivery, 'download_url'),
+      getUC6NestedDownloadValue(delivery, 'final_pptx_url')
+    ].filter(Boolean);
+
+    for (const candidate of directCandidates) {
+      if (/^https:\/\//i.test(candidate) && !isUC6BrowserUnsafeString(candidate)) return candidate;
+    }
+
+    const proxyBaseUrl = normalizeUC6ProxyBaseUrl(CONFIG.UC6_FINAL_PPTX_DOWNLOAD_PROXY_BASE);
+    if (!proxyBaseUrl) return '';
+
+    const responsePath = normalizeUC6DownloadPath(getUC6NestedDownloadValue(delivery, 'internal_download_path'));
+    if (responsePath) return `${proxyBaseUrl}${responsePath}`;
+
+    const batchId = delivery.published_template_batch_id || delivery.batch_id || uc6State.selectedBatchId || getUC6SelectedBatchId();
+    const artifact = delivery.final_render_output_pptx_artifact || getUC6NestedDownloadValue(delivery, 'artifact') || 'final_render_output_pptx';
+
+    if (!isUC6SafeIdentifier(batchId) || !isUC6SafeIdentifier(artifact)) return '';
+    return `${proxyBaseUrl}/fetchdoc/jobs/${encodeURIComponent(batchId.trim())}/artifacts/${encodeURIComponent(artifact.trim())}/download`;
+  }
+
+  function getUC6PptxSuggestedFilename(delivery) {
+    const nested = getUC6NestedDownloadValue(delivery, 'suggested_filename');
+    if (nested && !nested.includes('/') && !nested.includes('\\')) return nested;
+    const batchId = delivery?.published_template_batch_id || delivery?.batch_id || uc6State.selectedBatchId || getUC6SelectedBatchId();
+    return isUC6SafeIdentifier(batchId) ? `fetchdoc_final_render_${batchId}.pptx` : 'fetchdoc_final_render_output.pptx';
+  }
+
   function getUC6StageLabel(stageId) {
     return UC6_STAGE_MODEL.find((stage) => stage.id === stageId)?.label || stageId;
   }
@@ -5482,13 +5566,18 @@ Customer: Thank you. Goodbye.`
     return data;
   }
 
-  async function callUC6RuntimeDatabagPrep(batchId, contextCollectionId) {
+  async function callUC6RuntimeDatabagPrep(batchId, contextCollectionId, runtimeContext) {
     setUC6StageRunning('runtime_databag_prep');
     const payload = {
       published_template_batch_id: batchId,
+      batch_id: batchId,
       context_collection_id: contextCollectionId,
+      runtime_context: runtimeContext,
       collection_options: {
-        use_enriched_databag: true
+        use_enriched_databag: true,
+        use_user_input: true,
+        allow_runtime_context_override: true,
+        readiness_poll_mode: 'single_wait_then_read'
       },
       request_context: buildUC6RequestContext('UC6-02A')
     };
@@ -5501,9 +5590,13 @@ Customer: Thank you. Goodbye.`
     setUC6StageRunning('runtime_render_bridge');
     const payload = {
       published_template_batch_id: batchId,
+      batch_id: batchId,
       render_run_id: renderRunId,
       context_collection_id: contextCollectionId,
-      request_context: buildUC6RequestContext('UC6-02B')
+      request_context: {
+        ...buildUC6RequestContext('UC6-02B'),
+        previous_stage: 'UC6-02A'
+      }
     };
     const data = await uc6PostJson(CONFIG.UC6_RUNTIME_RENDER_BRIDGE_WEBHOOK, payload, '02B Runtime Render Bridge');
     recordUC6Stage('runtime_render_bridge', assertUC6StageSuccess(data, '02B Runtime Render Bridge'));
@@ -5514,9 +5607,18 @@ Customer: Thank you. Goodbye.`
     setUC6StageRunning('final_pdf_delivery');
     const payload = {
       published_template_batch_id: batchId,
+      batch_id: batchId,
       render_run_id: renderRunId,
       context_collection_id: contextCollectionId,
-      request_context: buildUC6RequestContext('UC6-02C')
+      delivery_options: {
+        preferred_format: 'pptx',
+        pdf_delivery_requested: false,
+        allow_pptx_fallback: true
+      },
+      request_context: {
+        ...buildUC6RequestContext('UC6-02C'),
+        previous_stage: 'UC6-02B'
+      }
     };
     const data = await uc6PostJson(CONFIG.UC6_FINAL_PDF_DELIVERY_WEBHOOK, payload, '02C Final PDF Delivery');
     recordUC6Stage('final_pdf_delivery', assertUC6StageSuccess(data, '02C Final PDF Delivery'));
@@ -5632,19 +5734,22 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6DebugPanel() {
     if (!uc6Els.debugJson) return;
+    const delivery = uc6State.stageResponses.final_pdf_delivery || {};
     const debugPayload = {
       safety_boundary: {
-        browser_calls: 'n8n public webhook only',
+        browser_calls: 'n8n public webhook and public download proxy only',
         forbidden_in_browser: ['internal auth header', 'FastAPI internal endpoint', 'internal file path'],
-        download: 'public URL only; internal artifact path is not opened directly'
+        download: 'public proxy URL is derived without exposing internal token or /data path'
       },
       current_stage: uc6State.currentStage,
       selected_batch_id: uc6State.selectedBatchId,
       context_collection_id: uc6State.contextCollectionId,
       render_run_id: uc6State.renderRunId,
-      request: uc6State.requestPayload,
-      stage_responses: uc6State.stageResponses,
-      response: uc6State.responsePayload,
+      final_pptx_download_url_available: Boolean(buildUC6PptxDownloadUrl(delivery)),
+      final_pptx_suggested_filename: delivery.final_pptx_ready === true ? getUC6PptxSuggestedFilename(delivery) : null,
+      request: sanitizeUC6ForBrowserDebug(uc6State.requestPayload),
+      stage_responses: sanitizeUC6ForBrowserDebug(uc6State.stageResponses),
+      response: sanitizeUC6ForBrowserDebug(uc6State.responsePayload),
       error: uc6State.lastError
     };
     uc6Els.debugJson.textContent = formatUC6Json(debugPayload);
@@ -5732,8 +5837,12 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6DownloadPlaceholders() {
     const delivery = uc6State.stageResponses.final_pdf_delivery || {};
+    const downloadUrl = buildUC6PptxDownloadUrl(delivery);
+    const suggestedFilename = delivery.final_pptx_ready === true ? getUC6PptxSuggestedFilename(delivery) : '';
+
     if (uc6Els.previewStateChip) {
-      if (delivery.final_pptx_ready === true) setUC6Chip(uc6Els.previewStateChip, 'PPTX Ready', 'is-ready');
+      if (delivery.final_pptx_ready === true && downloadUrl) setUC6Chip(uc6Els.previewStateChip, 'PPTX Download Ready', 'is-ready');
+      else if (delivery.final_pptx_ready === true) setUC6Chip(uc6Els.previewStateChip, 'PPTX Ready', 'is-warning');
       else if (uc6State.stageResponses.runtime_render_bridge?.final_render_ready === true) setUC6Chip(uc6Els.previewStateChip, 'Final Render Ready', 'is-ready');
       else setUC6Chip(uc6Els.previewStateChip, 'Preview 대기', 'is-locked');
     }
@@ -5743,13 +5852,13 @@ Customer: Thank you. Goodbye.`
       uc6Els.pdfDownloadBtn.title = '현재 02C는 PPTX delivery까지 완료합니다. PDF converter/proxy는 후속 확장 대상입니다.';
     }
     if (uc6Els.pptxDownloadBtn) {
-      const publicUrl = delivery.download?.public_download_url || delivery.download?.url || delivery.download_url || delivery.final_pptx_url || '';
       const ready = delivery.final_pptx_ready === true;
-      uc6Els.pptxDownloadBtn.disabled = !ready;
-      uc6Els.pptxDownloadBtn.textContent = ready ? '📊 PPTX 준비 완료' : '📊 PPTX 다운로드';
-      uc6Els.pptxDownloadBtn.dataset.downloadUrl = publicUrl;
+      uc6Els.pptxDownloadBtn.disabled = !ready || !downloadUrl;
+      uc6Els.pptxDownloadBtn.textContent = ready && downloadUrl ? '📊 PPTX 다운로드' : ready ? '📊 PPTX 준비 완료' : '📊 PPTX 다운로드';
+      uc6Els.pptxDownloadBtn.dataset.downloadUrl = downloadUrl;
+      uc6Els.pptxDownloadBtn.dataset.suggestedFilename = suggestedFilename;
       uc6Els.pptxDownloadBtn.title = ready
-        ? (publicUrl ? '새 창에서 PPTX를 엽니다.' : 'PPTX artifact는 준비됐지만 public download proxy가 필요합니다.')
+        ? (downloadUrl ? `새 창에서 ${suggestedFilename} 파일을 엽니다.` : 'PPTX artifact는 준비됐지만 public download proxy URL을 만들 수 없습니다.')
         : '02C 완료 후 활성화됩니다.';
     }
   }
@@ -5832,7 +5941,7 @@ Customer: Thank you. Goodbye.`
       const contextCollectionId = contextPrep.context_collection_id || uc6State.contextCollectionId;
       if (!contextCollectionId) throw new Error('02A0 context_collection_id가 없습니다.');
 
-      const databag = await callUC6RuntimeDatabagPrep(batchId, contextCollectionId);
+      const databag = await callUC6RuntimeDatabagPrep(batchId, contextCollectionId, runtimeContext);
       const renderRunId = databag.render_run_id || uc6State.renderRunId;
       if (!renderRunId) throw new Error('02A render_run_id가 없습니다.');
 
@@ -5940,14 +6049,14 @@ Customer: Thank you. Goodbye.`
     uc6Els.runBtn?.addEventListener('click', runUC6EndToEnd);
     uc6Els.resetBtn?.addEventListener('click', resetUC6Shell);
     uc6Els.pptxDownloadBtn?.addEventListener('click', () => {
-      const url = uc6Els.pptxDownloadBtn?.dataset?.downloadUrl || '';
+      const delivery = uc6State.stageResponses.final_pdf_delivery || {};
+      const url = uc6Els.pptxDownloadBtn?.dataset?.downloadUrl || buildUC6PptxDownloadUrl(delivery);
       if (url) {
         window.open(url, '_blank', 'noopener,noreferrer');
         return;
       }
-      const delivery = uc6State.stageResponses.final_pdf_delivery || {};
       if (delivery.final_pptx_ready === true) {
-        alert('PPTX artifact는 준비되었습니다. public download proxy가 아직 없으므로 서버 artifact alias(final_render_output_pptx)를 통해 내려받아야 합니다.');
+        alert('PPTX artifact는 준비되었습니다. public download proxy URL을 만들 수 없습니다. 서버의 final_render_output_pptx artifact-status/download 설정을 확인하세요.');
       }
     });
 
