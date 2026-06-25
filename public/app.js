@@ -5188,8 +5188,18 @@ Customer: Thank you. Goodbye.`
     runtime_enriched_databag_candidate: '02A0 실행 후 표시',
     runtime_databag_candidate: '02A 실행 후 표시',
     published_template_final_render_input: '02B 실행 후 표시',
+    admin_evidence_review_contract: '07B 연동 후 표시',
     final_render_output_pptx: '02C 실행 후 표시'
   };
+
+  const UC6_ADMIN_EVIDENCE_ARTIFACT_KEYS = [
+    'runtime_databag_prep',
+    'optional_text_injection_plan',
+    'optional_text_injection_dry_run_result',
+    'structured_slot_rendering_contract',
+    'structured_slot_rendering_capability_assessment',
+    'structured_chart_data_replacement_contract'
+  ];
 
   const uc6State = {
     selectedSampleId: 'marriott_ai_hospitality',
@@ -5233,6 +5243,10 @@ Customer: Thank you. Goodbye.`
     templateSummary: document.getElementById('uc6-templateSummary'),
     slotTableBody: document.getElementById('uc6-slotTableBody'),
     readinessSummary: document.getElementById('uc6-readinessSummary'),
+    evidenceStatus: document.getElementById('uc6-evidenceStatus'),
+    evidenceSummary: document.getElementById('uc6-evidenceSummary'),
+    evidenceArtifactTableBody: document.getElementById('uc6-evidenceArtifactTableBody'),
+    evidenceRawJson: document.getElementById('uc6-evidenceRawJson'),
     artifactTableBody: document.getElementById('uc6-artifactTableBody'),
     debugJson: document.getElementById('uc6-debugJson'),
     runtimeContextPreview: document.getElementById('uc6-runtimeContextPreview'),
@@ -5711,6 +5725,147 @@ Customer: Thank you. Goodbye.`
     `).join('');
   }
 
+
+  function coerceUC6ObjectCandidate(value) {
+    if (isPlainObject(value)) return value;
+    if (typeof value === 'string' && value.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(value);
+        return isPlainObject(parsed) ? parsed : null;
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function getUC6AdminEvidenceContractSource() {
+    const stages = uc6State.stageResponses || {};
+    const response = uc6State.responsePayload || {};
+    const candidates = [
+      { source: 'stageResponses.final_pdf_delivery.admin_evidence_review_contract', value: stages.final_pdf_delivery?.admin_evidence_review_contract },
+      { source: 'stageResponses.runtime_render_bridge.admin_evidence_review_contract', value: stages.runtime_render_bridge?.admin_evidence_review_contract },
+      { source: 'stageResponses.runtime_databag_prep.admin_evidence_review_contract', value: stages.runtime_databag_prep?.admin_evidence_review_contract },
+      { source: 'responsePayload.admin_evidence_review_contract', value: response.admin_evidence_review_contract },
+      { source: 'responsePayload.artifacts.admin_evidence_review_contract.content', value: response.artifacts?.admin_evidence_review_contract?.content }
+    ];
+
+    for (const candidate of candidates) {
+      const contract = coerceUC6ObjectCandidate(candidate.value);
+      if (contract) return { contract, source: candidate.source };
+    }
+    return { contract: null, source: null };
+  }
+
+  function getUC6ContractValue(contract, keys, fallback = '-') {
+    for (const key of keys) {
+      if (contract && contract[key] !== undefined && contract[key] !== null && contract[key] !== '') return contract[key];
+    }
+    return fallback;
+  }
+
+  function normalizeUC6EvidenceArtifactRows(contract) {
+    const summary = isPlainObject(contract?.artifact_summary)
+      ? contract.artifact_summary
+      : isPlainObject(contract?.evidence_artifacts)
+        ? contract.evidence_artifacts
+        : {};
+    const summaryList = Array.isArray(summary) ? summary : null;
+
+    return UC6_ADMIN_EVIDENCE_ARTIFACT_KEYS.map((key) => {
+      const raw = summaryList
+        ? summaryList.find((item) => item?.artifact === key || item?.key === key || item?.name === key)
+        : summary[key];
+      const item = isPlainObject(raw) ? raw : {};
+      const provided = item.provided === true || item.exists === true || item.ready === true || item.status === 'provided' || item.status === 'ready';
+      return {
+        key,
+        provided,
+        status: item.status || (provided ? 'provided' : 'missing'),
+        warningCount: item.warning_count ?? item.warnings ?? 0,
+        blockingCount: item.blocking_issue_count ?? item.blocking_issues ?? 0
+      };
+    });
+  }
+
+  function getUC6EvidenceArtifactTone(row) {
+    if (Number(row.blockingCount) > 0) return 'is-danger';
+    if (row.provided && Number(row.warningCount) === 0) return 'is-ready';
+    if (row.provided || Number(row.warningCount) > 0) return 'is-warning';
+    return 'is-muted';
+  }
+
+  function renderUC6AdminEvidencePanel() {
+    const sourceInfo = getUC6AdminEvidenceContractSource();
+    const contract = sourceInfo.contract;
+
+    if (!contract) {
+      if (uc6Els.evidenceStatus) uc6Els.evidenceStatus.textContent = 'Admin Evidence contract not loaded. 07B artifact alias는 준비됐지만 현재 webapp 응답에는 아직 포함되지 않았습니다.';
+      if (uc6Els.evidenceSummary) uc6Els.evidenceSummary.innerHTML = `
+        <div class="uc6-readiness-card is-locked"><span>contract_status</span><strong>not_loaded</strong></div>
+        <div class="uc6-readiness-card is-locked"><span>expected_alias</span><strong>admin_evidence_review_contract</strong></div>
+      `;
+      if (uc6Els.evidenceArtifactTableBody) {
+        uc6Els.evidenceArtifactTableBody.innerHTML = UC6_ADMIN_EVIDENCE_ARTIFACT_KEYS.map((key) => `
+          <tr>
+            <td><code>${escapeHtml(key)}</code></td>
+            <td>false</td>
+            <td><span class="uc6-table-status is-muted">contract not loaded</span></td>
+            <td>-</td>
+            <td>-</td>
+          </tr>
+        `).join('');
+      }
+      if (uc6Els.evidenceRawJson) uc6Els.evidenceRawJson.textContent = 'Admin Evidence contract not loaded.';
+      return;
+    }
+
+    const status = getUC6ContractValue(contract, ['status', 'contract_status'], 'loaded');
+    const schemaVersion = getUC6ContractValue(contract, ['schema_version'], '-');
+    const reviewOnly = getUC6ContractValue(contract, ['review_only'], '-');
+    const warningCount = getUC6ContractValue(contract, ['warning_count'], 0);
+    const blockingCount = getUC6ContractValue(contract, ['blocking_issue_count'], 0);
+    const chartPolicy = isPlainObject(contract.chart_lane)
+      ? contract.chart_lane.status || contract.chart_lane.policy || '-'
+      : getUC6ContractValue(contract, ['chart_lane_status', 'chart_policy'], '-');
+
+    if (uc6Els.evidenceStatus) {
+      uc6Els.evidenceStatus.textContent = `Loaded from ${sourceInfo.source}`;
+    }
+    if (uc6Els.evidenceSummary) {
+      const cards = [
+        { label: 'contract_status', value: status, tone: Number(blockingCount) > 0 ? 'danger' : Number(warningCount) > 0 ? 'warning' : 'ready' },
+        { label: 'schema_version', value: schemaVersion, tone: schemaVersion === 'uc6_07a_admin_evidence_review_contract_v1' ? 'ready' : 'warning' },
+        { label: 'review_only', value: String(reviewOnly), tone: reviewOnly === true ? 'ready' : 'warning' },
+        { label: 'warning_count', value: warningCount, tone: Number(warningCount) > 0 ? 'warning' : 'ready' },
+        { label: 'blocking_issue_count', value: blockingCount, tone: Number(blockingCount) > 0 ? 'danger' : 'ready' },
+        { label: 'chart_lane', value: chartPolicy, tone: String(chartPolicy).includes('frozen') || String(chartPolicy).includes('defer') ? 'warning' : 'muted' }
+      ];
+      uc6Els.evidenceSummary.innerHTML = cards.map((card) => `
+        <div class="uc6-readiness-card is-${escapeHtml(card.tone)}">
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+        </div>
+      `).join('');
+    }
+
+    if (uc6Els.evidenceArtifactTableBody) {
+      uc6Els.evidenceArtifactTableBody.innerHTML = normalizeUC6EvidenceArtifactRows(contract).map((row) => `
+        <tr>
+          <td><code>${escapeHtml(row.key)}</code></td>
+          <td>${row.provided ? 'true' : 'false'}</td>
+          <td><span class="uc6-table-status ${getUC6EvidenceArtifactTone(row)}">${escapeHtml(row.status)}</span></td>
+          <td>${escapeHtml(row.warningCount)}</td>
+          <td>${escapeHtml(row.blockingCount)}</td>
+        </tr>
+      `).join('');
+    }
+
+    if (uc6Els.evidenceRawJson) {
+      uc6Els.evidenceRawJson.textContent = formatUC6Json(sanitizeUC6ForBrowserDebug(contract));
+    }
+  }
+
   function renderUC6ArtifactTable() {
     if (!uc6Els.artifactTableBody) return;
     const combined = { ...UC6_DEFAULT_ARTIFACTS };
@@ -5868,6 +6023,7 @@ Customer: Thank you. Goodbye.`
     renderUC6TemplateSummary();
     renderUC6SlotTable();
     renderUC6ReadinessSummary();
+    renderUC6AdminEvidencePanel();
     renderUC6ArtifactTable();
     renderUC6DebugPanel();
     renderUC6StageTimeline();

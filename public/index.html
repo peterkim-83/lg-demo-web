@@ -510,6 +510,7 @@
                 <button class="uc6-tab active" type="button" data-uc6-tab="template">템플릿</button>
                 <button class="uc6-tab" type="button" data-uc6-tab="slot">Slot</button>
                 <button class="uc6-tab" type="button" data-uc6-tab="databag">Databag</button>
+                <button class="uc6-tab" type="button" data-uc6-tab="evidence">Evidence</button>
                 <button class="uc6-tab" type="button" data-uc6-tab="artifacts">Artifacts</button>
                 <button class="uc6-tab" type="button" data-uc6-tab="debug">Debug</button>
               </div>
@@ -548,6 +549,42 @@
                   <p>02A0~02C workflow의 public-safe summary만 표시합니다.</p>
                 </div>
                 <div class="uc6-readiness-grid" id="uc6-readinessSummary"></div>
+              </div>
+
+              <div class="uc6-tab-panel" id="uc6-panel-evidence">
+                <div class="uc6-panel-header">
+                  <h3>Admin Evidence Review</h3>
+                  <p>07B admin_evidence_review_contract를 public-safe 응답 안에서 탐색해 검토 전용 진단 패널로 표시합니다.</p>
+                </div>
+                <div class="uc6-evidence-status" id="uc6-evidenceStatus">Admin Evidence contract not loaded.</div>
+                <div class="uc6-readiness-grid" id="uc6-evidenceSummary"></div>
+                <div class="uc6-evidence-section">
+                  <div class="uc6-panel-header compact">
+                    <h3>Evidence Artifacts</h3>
+                    <p>07B helper가 소비한 input evidence artifact의 provided/missing 상태를 우선 표시합니다.</p>
+                  </div>
+                  <div class="uc6-artifact-table-wrap">
+                    <table class="uc6-table">
+                      <thead>
+                        <tr>
+                          <th>Evidence Artifact</th>
+                          <th>Provided</th>
+                          <th>Status</th>
+                          <th>Warnings</th>
+                          <th>Blocking</th>
+                        </tr>
+                      </thead>
+                      <tbody id="uc6-evidenceArtifactTableBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="uc6-evidence-section">
+                  <div class="uc6-panel-header compact">
+                    <h3>Raw Contract</h3>
+                    <p>내부 경로와 인증 정보는 redaction 후 표시합니다.</p>
+                  </div>
+                  <pre class="uc6-debug-json uc6-evidence-raw-json" id="uc6-evidenceRawJson">Admin Evidence contract not loaded.</pre>
+                </div>
               </div>
 
               <div class="uc6-tab-panel" id="uc6-panel-artifacts">

@@ -6513,6 +6513,32 @@ body:has(#view-uc5.active) #main-content {
     background: #f8fafc;
 }
 
+
+#view-uc6 .uc6-evidence-status {
+    border: 1px solid #dbeafe;
+    border-radius: 14px;
+    background: #eff6ff;
+    color: #1e3a8a;
+    padding: 11px 12px;
+    margin-bottom: 12px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    line-height: 1.45;
+}
+
+#view-uc6 .uc6-evidence-section {
+    margin-top: 16px;
+}
+
+#view-uc6 .uc6-evidence-raw-json {
+    max-height: 260px;
+}
+
+.uc6-table-status.is-danger {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
 .uc6-table {
     width: 100%;
     border-collapse: collapse;
