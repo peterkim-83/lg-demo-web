@@ -5246,6 +5246,8 @@ Customer: Thank you. Goodbye.`
     evidenceStatus: document.getElementById('uc6-evidenceStatus'),
     evidenceSummary: document.getElementById('uc6-evidenceSummary'),
     evidenceArtifactTableBody: document.getElementById('uc6-evidenceArtifactTableBody'),
+    evidenceAdminActionTableBody: document.getElementById('uc6-evidenceAdminActionTableBody'),
+    evidenceBlockedItemTableBody: document.getElementById('uc6-evidenceBlockedItemTableBody'),
     evidenceRawJson: document.getElementById('uc6-evidenceRawJson'),
     artifactTableBody: document.getElementById('uc6-artifactTableBody'),
     debugJson: document.getElementById('uc6-debugJson'),
@@ -5757,11 +5759,75 @@ Customer: Thank you. Goodbye.`
     return { contract: null, source: null };
   }
 
+  function getUC6PathValue(contract, path) {
+    if (!contract || !path) return undefined;
+    if (!String(path).includes('.')) return contract[path];
+    return String(path).split('.').reduce((value, key) => {
+      if (!isPlainObject(value) && !Array.isArray(value)) return undefined;
+      return value[key];
+    }, contract);
+  }
+
   function getUC6ContractValue(contract, keys, fallback = '-') {
     for (const key of keys) {
-      if (contract && contract[key] !== undefined && contract[key] !== null && contract[key] !== '') return contract[key];
+      const value = getUC6PathValue(contract, key);
+      if (value !== undefined && value !== null && value !== '') return value;
     }
     return fallback;
+  }
+
+  function normalizeUC6Number(...values) {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+      if (Array.isArray(value)) return value.length;
+    }
+    return 0;
+  }
+
+  function getUC6AdminEvidenceBlockingCount(contract) {
+    return Math.max(
+      normalizeUC6Number(getUC6ContractValue(contract, ['blocking_issue_count'], null)),
+      normalizeUC6Number(getUC6ContractValue(contract, ['readiness_summary.blocking_issue_count'], null)),
+      normalizeUC6Number(getUC6ContractValue(contract, ['summary.blocked_item_count'], null)),
+      normalizeUC6Number(contract?.blocked_items)
+    );
+  }
+
+  function getUC6AdminEvidenceWarningCount(contract) {
+    return Math.max(
+      normalizeUC6Number(getUC6ContractValue(contract, ['warning_count'], null)),
+      normalizeUC6Number(getUC6ContractValue(contract, ['readiness_summary.warning_count'], null)),
+      normalizeUC6Number(getUC6ContractValue(contract, ['summary.warning_count'], null)),
+      normalizeUC6Number(contract?.warnings)
+    );
+  }
+
+  function normalizeUC6AdminActionRows(contract) {
+    const actions = Array.isArray(contract?.admin_actions) ? contract.admin_actions : [];
+    return actions.map((item, index) => ({
+      actionCode: item?.action_code || item?.code || item?.action || `action_${index + 1}`,
+      severity: item?.severity || 'info',
+      reviewOnly: item?.review_only === true,
+      message: item?.message || item?.next_action || item?.description || '-'
+    }));
+  }
+
+  function normalizeUC6BlockedItemRows(contract) {
+    const items = Array.isArray(contract?.blocked_items) ? contract.blocked_items : [];
+    return items.map((item, index) => ({
+      issueCode: item?.issue_code || item?.code || `blocked_${index + 1}`,
+      severity: item?.severity || 'blocking',
+      message: item?.message || item?.detail || '-'
+    }));
+  }
+
+  function getUC6SeverityTone(severity) {
+    const normalized = String(severity || '').toLowerCase();
+    if (normalized.includes('block') || normalized.includes('critical') || normalized.includes('error')) return 'is-danger';
+    if (normalized.includes('warn')) return 'is-warning';
+    if (normalized.includes('ready') || normalized.includes('ok')) return 'is-ready';
+    return 'is-muted';
   }
 
   function normalizeUC6EvidenceArtifactRows(contract) {
@@ -5816,18 +5882,28 @@ Customer: Thank you. Goodbye.`
           </tr>
         `).join('');
       }
+      if (uc6Els.evidenceAdminActionTableBody) {
+        uc6Els.evidenceAdminActionTableBody.innerHTML = '<tr><td colspan="4">Admin Evidence contract not loaded.</td></tr>';
+      }
+      if (uc6Els.evidenceBlockedItemTableBody) {
+        uc6Els.evidenceBlockedItemTableBody.innerHTML = '<tr><td colspan="3">Admin Evidence contract not loaded.</td></tr>';
+      }
       if (uc6Els.evidenceRawJson) uc6Els.evidenceRawJson.textContent = 'Admin Evidence contract not loaded.';
       return;
     }
 
     const status = getUC6ContractValue(contract, ['status', 'contract_status'], 'loaded');
     const schemaVersion = getUC6ContractValue(contract, ['schema_version'], '-');
-    const reviewOnly = getUC6ContractValue(contract, ['review_only'], '-');
-    const warningCount = getUC6ContractValue(contract, ['warning_count'], 0);
-    const blockingCount = getUC6ContractValue(contract, ['blocking_issue_count'], 0);
-    const chartPolicy = isPlainObject(contract.chart_lane)
-      ? contract.chart_lane.status || contract.chart_lane.policy || '-'
-      : getUC6ContractValue(contract, ['chart_lane_status', 'chart_policy'], '-');
+    const reviewOnly = getUC6ContractValue(contract, ['review_policy.review_only', 'summary.review_only', 'chart_lane_summary.review_only', 'review_only'], '-');
+    const warningCount = getUC6AdminEvidenceWarningCount(contract);
+    const blockingCount = getUC6AdminEvidenceBlockingCount(contract);
+    const chartPolicy = getUC6ContractValue(contract, [
+      'chart_lane_summary.chart_lane_status',
+      'chart_lane.status',
+      'chart_lane.policy',
+      'chart_lane_status',
+      'chart_policy'
+    ], '-');
 
     if (uc6Els.evidenceStatus) {
       uc6Els.evidenceStatus.textContent = `Loaded from ${sourceInfo.source}`;
@@ -5859,6 +5935,29 @@ Customer: Thank you. Goodbye.`
           <td>${escapeHtml(row.blockingCount)}</td>
         </tr>
       `).join('');
+    }
+
+    if (uc6Els.evidenceAdminActionTableBody) {
+      const actionRows = normalizeUC6AdminActionRows(contract);
+      uc6Els.evidenceAdminActionTableBody.innerHTML = actionRows.length ? actionRows.map((row) => `
+        <tr>
+          <td><code>${escapeHtml(row.actionCode)}</code></td>
+          <td><span class="uc6-table-status ${getUC6SeverityTone(row.severity)}">${escapeHtml(row.severity)}</span></td>
+          <td>${row.reviewOnly ? 'true' : 'false'}</td>
+          <td>${escapeHtml(row.message)}</td>
+        </tr>
+      `).join('') : '<tr><td colspan="4">No admin actions.</td></tr>';
+    }
+
+    if (uc6Els.evidenceBlockedItemTableBody) {
+      const blockedRows = normalizeUC6BlockedItemRows(contract);
+      uc6Els.evidenceBlockedItemTableBody.innerHTML = blockedRows.length ? blockedRows.map((row) => `
+        <tr>
+          <td><code>${escapeHtml(row.issueCode)}</code></td>
+          <td><span class="uc6-table-status ${getUC6SeverityTone(row.severity)}">${escapeHtml(row.severity)}</span></td>
+          <td>${escapeHtml(row.message)}</td>
+        </tr>
+      `).join('') : '<tr><td colspan="3">No blocked items.</td></tr>';
     }
 
     if (uc6Els.evidenceRawJson) {
