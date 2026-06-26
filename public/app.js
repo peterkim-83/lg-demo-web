@@ -5761,6 +5761,62 @@ Customer: Thank you. Goodbye.`
     return { contract: null, source: null };
   }
 
+  function getUC6AdminEvidenceStatusSource(contract) {
+    const stages = uc6State.stageResponses || {};
+    const response = uc6State.responsePayload || {};
+    const candidates = [
+      { source: 'stageResponses.final_pdf_delivery.admin_evidence_review_contract_status', value: stages.final_pdf_delivery?.admin_evidence_review_contract_status },
+      { source: 'responsePayload.admin_evidence_review_contract_status', value: response.admin_evidence_review_contract_status },
+      { source: 'stageResponses.final_pdf_delivery.artifact_status.admin_evidence_review_contract', value: stages.final_pdf_delivery?.artifact_status?.admin_evidence_review_contract },
+      { source: 'responsePayload.artifact_status.admin_evidence_review_contract', value: response.artifact_status?.admin_evidence_review_contract },
+      { source: 'stageResponses.final_pdf_delivery.task_chain_summary.admin_evidence_review_contract', value: stages.final_pdf_delivery?.task_chain_summary?.admin_evidence_review_contract },
+      { source: 'responsePayload.task_chain_summary.admin_evidence_review_contract', value: response.task_chain_summary?.admin_evidence_review_contract }
+    ];
+
+    for (const candidate of candidates) {
+      const status = coerceUC6ObjectCandidate(candidate.value);
+      if (status) return { status, source: candidate.source };
+    }
+
+    if (isPlainObject(contract?.summary)) {
+      return { status: contract.summary, source: 'admin_evidence_review_contract.summary' };
+    }
+    if (isPlainObject(contract?.readiness_summary)) {
+      return { status: contract.readiness_summary, source: 'admin_evidence_review_contract.readiness_summary' };
+    }
+    return { status: null, source: null };
+  }
+
+  function getUC6NestedEvidenceValue(contract, status, key) {
+    const summary = isPlainObject(contract?.summary) ? contract.summary : {};
+    const readinessSummary = isPlainObject(contract?.readiness_summary) ? contract.readiness_summary : {};
+    const reviewPolicy = isPlainObject(contract?.review_policy) ? contract.review_policy : {};
+    const jobSummary = isPlainObject(contract?.job_summary) ? contract.job_summary : {};
+    const chartLane = isPlainObject(contract?.chart_lane) ? contract.chart_lane : {};
+    const chartLaneSummary = isPlainObject(contract?.chart_lane_summary) ? contract.chart_lane_summary : {};
+    const warningArrayCount = Array.isArray(contract?.warnings) ? contract.warnings.length : null;
+
+    const valueMap = {
+      status: [contract?.status, status?.contract_status, status?.status, jobSummary.status],
+      schema_version: [contract?.schema_version, status?.schema_version],
+      review_only: [contract?.review_only, reviewPolicy.review_only, readinessSummary.review_only, summary.review_only, status?.review_only],
+      warning_count: [contract?.warning_count, readinessSummary.warning_count, summary.warning_count, warningArrayCount, status?.warning_count],
+      blocking_issue_count: [contract?.blocking_issue_count, readinessSummary.blocking_issue_count, summary.blocking_issue_count, status?.blocking_issue_count],
+      chart_lane: [
+        contract?.chart_lane_status,
+        chartLaneSummary.chart_lane_status,
+        chartLaneSummary.status,
+        chartLaneSummary.policy,
+        chartLane.status,
+        chartLane.policy,
+        summary.chart_lane_status,
+        status?.chart_lane_status,
+        status?.chart_lane
+      ]
+    };
+    return firstUC6Defined(...(valueMap[key] || []));
+  }
+
   function getUC6AdminReviewDecisionContractSource() {
     const stages = uc6State.stageResponses || {};
     const response = uc6State.responsePayload || {};
@@ -5913,21 +5969,23 @@ Customer: Thank you. Goodbye.`
       return;
     }
 
-    const status = getUC6ContractValue(contract, ['status', 'contract_status'], 'loaded');
-    const schemaVersion = getUC6ContractValue(contract, ['schema_version'], '-');
-    const reviewOnly = getUC6ContractValue(contract, ['review_only'], '-');
-    const warningCount = getUC6ContractValue(contract, ['warning_count'], 0);
-    const blockingCount = getUC6ContractValue(contract, ['blocking_issue_count'], 0);
-    const chartPolicy = isPlainObject(contract.chart_lane)
-      ? contract.chart_lane.status || contract.chart_lane.policy || '-'
-      : getUC6ContractValue(contract, ['chart_lane_status', 'chart_policy'], '-');
+    const statusInfo = getUC6AdminEvidenceStatusSource(contract);
+    const status = statusInfo.status || {};
+    const contractStatus = getUC6NestedEvidenceValue(contract, status, 'status') || 'loaded';
+    const schemaVersion = getUC6NestedEvidenceValue(contract, status, 'schema_version') || '-';
+    const reviewOnly = getUC6NestedEvidenceValue(contract, status, 'review_only');
+    const warningCount = getUC6NestedEvidenceValue(contract, status, 'warning_count') ?? 0;
+    const blockingCount = getUC6NestedEvidenceValue(contract, status, 'blocking_issue_count') ?? 0;
+    const chartPolicy = getUC6NestedEvidenceValue(contract, status, 'chart_lane') || '-';
 
     if (uc6Els.evidenceStatus) {
-      uc6Els.evidenceStatus.textContent = `Loaded from ${sourceInfo.source}`;
+      uc6Els.evidenceStatus.textContent = statusInfo.source
+        ? `Loaded from ${sourceInfo.source} + ${statusInfo.source}`
+        : `Loaded from ${sourceInfo.source}`;
     }
     if (uc6Els.evidenceSummary) {
       const cards = [
-        { label: 'contract_status', value: status, tone: Number(blockingCount) > 0 ? 'danger' : Number(warningCount) > 0 ? 'warning' : 'ready' },
+        { label: 'contract_status', value: contractStatus, tone: Number(blockingCount) > 0 ? 'danger' : Number(warningCount) > 0 ? 'warning' : 'ready' },
         { label: 'schema_version', value: schemaVersion, tone: schemaVersion === 'uc6_07a_admin_evidence_review_contract_v1' ? 'ready' : 'warning' },
         { label: 'review_only', value: String(reviewOnly), tone: reviewOnly === true ? 'ready' : 'warning' },
         { label: 'warning_count', value: warningCount, tone: Number(warningCount) > 0 ? 'warning' : 'ready' },
