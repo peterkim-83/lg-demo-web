@@ -560,6 +560,15 @@
                 <div class="uc6-readiness-grid" id="uc6-evidenceSummary"></div>
                 <div class="uc6-evidence-section">
                   <div class="uc6-panel-header compact">
+                    <h3>Admin Review Decision</h3>
+                    <p>09C admin_review_decision_contract와 C90 summary를 기준으로 review-only gate, mutation lock, chart lane freeze 상태를 표시합니다.</p>
+                  </div>
+                  <div class="uc6-evidence-status" id="uc6-decisionStatus">Admin Review Decision contract not loaded.</div>
+                  <div class="uc6-readiness-grid" id="uc6-decisionSummary"></div>
+                  <pre class="uc6-debug-json uc6-evidence-raw-json" id="uc6-decisionRawJson">Admin Review Decision contract not loaded.</pre>
+                </div>
+                <div class="uc6-evidence-section">
+                  <div class="uc6-panel-header compact">
                     <h3>Evidence Artifacts</h3>
                     <p>07B helper가 소비한 input evidence artifact의 provided/missing 상태를 우선 표시합니다.</p>
                   </div>
@@ -575,43 +584,6 @@
                         </tr>
                       </thead>
                       <tbody id="uc6-evidenceArtifactTableBody"></tbody>
-                    </table>
-                  </div>
-                </div>
-                <div class="uc6-evidence-section">
-                  <div class="uc6-panel-header compact">
-                    <h3>Admin Actions</h3>
-                    <p>07B helper가 제안하는 관리자 검토 action을 표시합니다. 모든 action은 review-only입니다.</p>
-                  </div>
-                  <div class="uc6-artifact-table-wrap">
-                    <table class="uc6-table">
-                      <thead>
-                        <tr>
-                          <th>Action Code</th>
-                          <th>Severity</th>
-                          <th>Review Only</th>
-                          <th>Message</th>
-                        </tr>
-                      </thead>
-                      <tbody id="uc6-evidenceAdminActionTableBody"></tbody>
-                    </table>
-                  </div>
-                </div>
-                <div class="uc6-evidence-section">
-                  <div class="uc6-panel-header compact">
-                    <h3>Blocked Items</h3>
-                    <p>승인 또는 mutation을 차단하는 검토 항목을 표시합니다.</p>
-                  </div>
-                  <div class="uc6-artifact-table-wrap">
-                    <table class="uc6-table">
-                      <thead>
-                        <tr>
-                          <th>Issue Code</th>
-                          <th>Severity</th>
-                          <th>Message</th>
-                        </tr>
-                      </thead>
-                      <tbody id="uc6-evidenceBlockedItemTableBody"></tbody>
                     </table>
                   </div>
                 </div>

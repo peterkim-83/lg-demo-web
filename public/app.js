@@ -5189,6 +5189,7 @@ Customer: Thank you. Goodbye.`
     runtime_databag_candidate: '02A 실행 후 표시',
     published_template_final_render_input: '02B 실행 후 표시',
     admin_evidence_review_contract: '07B 연동 후 표시',
+    admin_review_decision_contract: '09C 연동 후 표시',
     final_render_output_pptx: '02C 실행 후 표시'
   };
 
@@ -5246,9 +5247,10 @@ Customer: Thank you. Goodbye.`
     evidenceStatus: document.getElementById('uc6-evidenceStatus'),
     evidenceSummary: document.getElementById('uc6-evidenceSummary'),
     evidenceArtifactTableBody: document.getElementById('uc6-evidenceArtifactTableBody'),
-    evidenceAdminActionTableBody: document.getElementById('uc6-evidenceAdminActionTableBody'),
-    evidenceBlockedItemTableBody: document.getElementById('uc6-evidenceBlockedItemTableBody'),
     evidenceRawJson: document.getElementById('uc6-evidenceRawJson'),
+    decisionStatus: document.getElementById('uc6-decisionStatus'),
+    decisionSummary: document.getElementById('uc6-decisionSummary'),
+    decisionRawJson: document.getElementById('uc6-decisionRawJson'),
     artifactTableBody: document.getElementById('uc6-artifactTableBody'),
     debugJson: document.getElementById('uc6-debugJson'),
     runtimeContextPreview: document.getElementById('uc6-runtimeContextPreview'),
@@ -5759,75 +5761,100 @@ Customer: Thank you. Goodbye.`
     return { contract: null, source: null };
   }
 
-  function getUC6PathValue(contract, path) {
-    if (!contract || !path) return undefined;
-    if (!String(path).includes('.')) return contract[path];
-    return String(path).split('.').reduce((value, key) => {
-      if (!isPlainObject(value) && !Array.isArray(value)) return undefined;
-      return value[key];
-    }, contract);
+  function getUC6AdminReviewDecisionContractSource() {
+    const stages = uc6State.stageResponses || {};
+    const response = uc6State.responsePayload || {};
+    const candidates = [
+      { source: 'stageResponses.final_pdf_delivery.admin_review_decision_contract', value: stages.final_pdf_delivery?.admin_review_decision_contract },
+      { source: 'responsePayload.admin_review_decision_contract', value: response.admin_review_decision_contract },
+      { source: 'stageResponses.final_pdf_delivery.artifacts.admin_review_decision_contract.content', value: stages.final_pdf_delivery?.artifacts?.admin_review_decision_contract?.content },
+      { source: 'responsePayload.artifacts.admin_review_decision_contract.content', value: response.artifacts?.admin_review_decision_contract?.content }
+    ];
+
+    for (const candidate of candidates) {
+      const contract = coerceUC6ObjectCandidate(candidate.value);
+      if (contract) return { contract, source: candidate.source };
+    }
+    return { contract: null, source: null };
+  }
+
+  function getUC6AdminReviewDecisionStatusSource(contract) {
+    const stages = uc6State.stageResponses || {};
+    const response = uc6State.responsePayload || {};
+    const candidates = [
+      { source: 'stageResponses.final_pdf_delivery.admin_review_decision_contract_status', value: stages.final_pdf_delivery?.admin_review_decision_contract_status },
+      { source: 'responsePayload.admin_review_decision_contract_status', value: response.admin_review_decision_contract_status },
+      { source: 'stageResponses.final_pdf_delivery.artifact_status.admin_review_decision_contract', value: stages.final_pdf_delivery?.artifact_status?.admin_review_decision_contract },
+      { source: 'responsePayload.artifact_status.admin_review_decision_contract', value: response.artifact_status?.admin_review_decision_contract },
+      { source: 'stageResponses.final_pdf_delivery.task_chain_summary.admin_review_decision_contract', value: stages.final_pdf_delivery?.task_chain_summary?.admin_review_decision_contract },
+      { source: 'responsePayload.task_chain_summary.admin_review_decision_contract', value: response.task_chain_summary?.admin_review_decision_contract }
+    ];
+
+    for (const candidate of candidates) {
+      const status = coerceUC6ObjectCandidate(candidate.value);
+      if (status) return { status, source: candidate.source };
+    }
+
+    if (isPlainObject(contract?.decision_summary)) {
+      return { status: contract.decision_summary, source: 'admin_review_decision_contract.decision_summary' };
+    }
+    return { status: null, source: null };
+  }
+
+  function firstUC6Defined(...values) {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return null;
+  }
+
+  function getUC6NestedDecisionValue(contract, status, key) {
+    const decisionSummary = isPlainObject(contract?.decision_summary) ? contract.decision_summary : {};
+    const reviewPolicy = isPlainObject(contract?.review_policy) ? contract.review_policy : {};
+    const sourceContract = isPlainObject(contract?.source_contract) ? contract.source_contract : {};
+    const chartLaneSummary = isPlainObject(contract?.chart_lane_summary) ? contract.chart_lane_summary : {};
+    const warningSummary = isPlainObject(contract?.warning_summary) ? contract.warning_summary : {};
+    const blockedSummary = isPlainObject(contract?.blocked_summary) ? contract.blocked_summary : {};
+
+    const valueMap = {
+      status: [status?.status, status?.contract_status, contract?.status],
+      schema_version: [status?.schema_version, contract?.schema_version],
+      source_contract_status: [status?.source_contract_status, sourceContract.status, sourceContract.contract_status],
+      admin_review_ready: [status?.admin_review_ready, decisionSummary.admin_review_ready],
+      review_only: [status?.review_only, decisionSummary.review_only, reviewPolicy.review_only],
+      decision_required: [status?.decision_required, decisionSummary.decision_required, reviewPolicy.decision_required],
+      can_approve_final_pptx: [status?.can_approve_final_pptx, decisionSummary.can_approve_final_pptx, reviewPolicy.can_approve_final_pptx],
+      can_mutate_artifacts: [status?.can_mutate_artifacts, decisionSummary.can_mutate_artifacts, reviewPolicy.can_mutate_artifacts],
+      can_execute_chart_replacement: [status?.can_execute_chart_replacement, decisionSummary.can_execute_chart_replacement, reviewPolicy.can_execute_chart_replacement],
+      blocking_issue_count: [status?.blocking_issue_count, decisionSummary.blocking_issue_count, blockedSummary.blocking_issue_count, contract?.blocking_issue_count],
+      warning_count: [status?.warning_count, decisionSummary.warning_count, warningSummary.warning_count, contract?.warning_count],
+      admin_action_count: [status?.admin_action_count, decisionSummary.admin_action_count, contract?.admin_action_count],
+      blocked_item_count: [status?.blocked_item_count, decisionSummary.blocked_item_count, blockedSummary.blocked_item_count, contract?.blocked_item_count],
+      chart_lane: [status?.chart_lane, status?.chart_lane_status, chartLaneSummary.status, chartLaneSummary.chart_lane_status, chartLaneSummary.policy, chartLaneSummary.freeze_status]
+    };
+    return firstUC6Defined(...(valueMap[key] || []));
+  }
+
+  function getUC6DecisionTone(label, value) {
+    if (label === 'blocking_issue_count') return Number(value) > 0 ? 'danger' : 'ready';
+    if (label === 'warning_count') return Number(value) > 0 ? 'warning' : 'ready';
+    if (label === 'admin_review_ready') return value === true ? 'ready' : 'warning';
+    if (label === 'review_only') return value === true ? 'ready' : 'danger';
+    if (label === 'can_approve_final_pptx') return value === false ? 'ready' : 'warning';
+    if (label === 'can_mutate_artifacts') return value === false ? 'ready' : 'danger';
+    if (label === 'can_execute_chart_replacement') return value === false ? 'ready' : 'danger';
+    if (label === 'schema_version') return value === 'uc6_09a_admin_review_decision_contract_v1' ? 'ready' : 'warning';
+    if (label === 'contract_status') return String(value).includes('insufficient') || String(value).includes('blocked') ? 'danger' : String(value).includes('warning') ? 'warning' : 'ready';
+    if (label === 'source_contract_status') return String(value).includes('ready') ? 'ready' : value ? 'warning' : 'muted';
+    if (label === 'chart_lane') return String(value).includes('frozen') || String(value).includes('defer') ? 'warning' : value ? 'muted' : 'locked';
+    return value === null || value === undefined || value === '-' ? 'muted' : 'ready';
   }
 
   function getUC6ContractValue(contract, keys, fallback = '-') {
     for (const key of keys) {
-      const value = getUC6PathValue(contract, key);
-      if (value !== undefined && value !== null && value !== '') return value;
+      if (contract && contract[key] !== undefined && contract[key] !== null && contract[key] !== '') return contract[key];
     }
     return fallback;
-  }
-
-  function normalizeUC6Number(...values) {
-    for (const value of values) {
-      if (typeof value === 'number' && Number.isFinite(value)) return value;
-      if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
-      if (Array.isArray(value)) return value.length;
-    }
-    return 0;
-  }
-
-  function getUC6AdminEvidenceBlockingCount(contract) {
-    return Math.max(
-      normalizeUC6Number(getUC6ContractValue(contract, ['blocking_issue_count'], null)),
-      normalizeUC6Number(getUC6ContractValue(contract, ['readiness_summary.blocking_issue_count'], null)),
-      normalizeUC6Number(getUC6ContractValue(contract, ['summary.blocked_item_count'], null)),
-      normalizeUC6Number(contract?.blocked_items)
-    );
-  }
-
-  function getUC6AdminEvidenceWarningCount(contract) {
-    return Math.max(
-      normalizeUC6Number(getUC6ContractValue(contract, ['warning_count'], null)),
-      normalizeUC6Number(getUC6ContractValue(contract, ['readiness_summary.warning_count'], null)),
-      normalizeUC6Number(getUC6ContractValue(contract, ['summary.warning_count'], null)),
-      normalizeUC6Number(contract?.warnings)
-    );
-  }
-
-  function normalizeUC6AdminActionRows(contract) {
-    const actions = Array.isArray(contract?.admin_actions) ? contract.admin_actions : [];
-    return actions.map((item, index) => ({
-      actionCode: item?.action_code || item?.code || item?.action || `action_${index + 1}`,
-      severity: item?.severity || 'info',
-      reviewOnly: item?.review_only === true,
-      message: item?.message || item?.next_action || item?.description || '-'
-    }));
-  }
-
-  function normalizeUC6BlockedItemRows(contract) {
-    const items = Array.isArray(contract?.blocked_items) ? contract.blocked_items : [];
-    return items.map((item, index) => ({
-      issueCode: item?.issue_code || item?.code || `blocked_${index + 1}`,
-      severity: item?.severity || 'blocking',
-      message: item?.message || item?.detail || '-'
-    }));
-  }
-
-  function getUC6SeverityTone(severity) {
-    const normalized = String(severity || '').toLowerCase();
-    if (normalized.includes('block') || normalized.includes('critical') || normalized.includes('error')) return 'is-danger';
-    if (normalized.includes('warn')) return 'is-warning';
-    if (normalized.includes('ready') || normalized.includes('ok')) return 'is-ready';
-    return 'is-muted';
   }
 
   function normalizeUC6EvidenceArtifactRows(contract) {
@@ -5882,28 +5909,18 @@ Customer: Thank you. Goodbye.`
           </tr>
         `).join('');
       }
-      if (uc6Els.evidenceAdminActionTableBody) {
-        uc6Els.evidenceAdminActionTableBody.innerHTML = '<tr><td colspan="4">Admin Evidence contract not loaded.</td></tr>';
-      }
-      if (uc6Els.evidenceBlockedItemTableBody) {
-        uc6Els.evidenceBlockedItemTableBody.innerHTML = '<tr><td colspan="3">Admin Evidence contract not loaded.</td></tr>';
-      }
       if (uc6Els.evidenceRawJson) uc6Els.evidenceRawJson.textContent = 'Admin Evidence contract not loaded.';
       return;
     }
 
     const status = getUC6ContractValue(contract, ['status', 'contract_status'], 'loaded');
     const schemaVersion = getUC6ContractValue(contract, ['schema_version'], '-');
-    const reviewOnly = getUC6ContractValue(contract, ['review_policy.review_only', 'summary.review_only', 'chart_lane_summary.review_only', 'review_only'], '-');
-    const warningCount = getUC6AdminEvidenceWarningCount(contract);
-    const blockingCount = getUC6AdminEvidenceBlockingCount(contract);
-    const chartPolicy = getUC6ContractValue(contract, [
-      'chart_lane_summary.chart_lane_status',
-      'chart_lane.status',
-      'chart_lane.policy',
-      'chart_lane_status',
-      'chart_policy'
-    ], '-');
+    const reviewOnly = getUC6ContractValue(contract, ['review_only'], '-');
+    const warningCount = getUC6ContractValue(contract, ['warning_count'], 0);
+    const blockingCount = getUC6ContractValue(contract, ['blocking_issue_count'], 0);
+    const chartPolicy = isPlainObject(contract.chart_lane)
+      ? contract.chart_lane.status || contract.chart_lane.policy || '-'
+      : getUC6ContractValue(contract, ['chart_lane_status', 'chart_policy'], '-');
 
     if (uc6Els.evidenceStatus) {
       uc6Els.evidenceStatus.textContent = `Loaded from ${sourceInfo.source}`;
@@ -5937,31 +5954,79 @@ Customer: Thank you. Goodbye.`
       `).join('');
     }
 
-    if (uc6Els.evidenceAdminActionTableBody) {
-      const actionRows = normalizeUC6AdminActionRows(contract);
-      uc6Els.evidenceAdminActionTableBody.innerHTML = actionRows.length ? actionRows.map((row) => `
-        <tr>
-          <td><code>${escapeHtml(row.actionCode)}</code></td>
-          <td><span class="uc6-table-status ${getUC6SeverityTone(row.severity)}">${escapeHtml(row.severity)}</span></td>
-          <td>${row.reviewOnly ? 'true' : 'false'}</td>
-          <td>${escapeHtml(row.message)}</td>
-        </tr>
-      `).join('') : '<tr><td colspan="4">No admin actions.</td></tr>';
-    }
-
-    if (uc6Els.evidenceBlockedItemTableBody) {
-      const blockedRows = normalizeUC6BlockedItemRows(contract);
-      uc6Els.evidenceBlockedItemTableBody.innerHTML = blockedRows.length ? blockedRows.map((row) => `
-        <tr>
-          <td><code>${escapeHtml(row.issueCode)}</code></td>
-          <td><span class="uc6-table-status ${getUC6SeverityTone(row.severity)}">${escapeHtml(row.severity)}</span></td>
-          <td>${escapeHtml(row.message)}</td>
-        </tr>
-      `).join('') : '<tr><td colspan="3">No blocked items.</td></tr>';
-    }
-
     if (uc6Els.evidenceRawJson) {
       uc6Els.evidenceRawJson.textContent = formatUC6Json(sanitizeUC6ForBrowserDebug(contract));
+    }
+  }
+
+  function renderUC6AdminReviewDecisionPanel() {
+    const contractInfo = getUC6AdminReviewDecisionContractSource();
+    const contract = contractInfo.contract;
+    const statusInfo = getUC6AdminReviewDecisionStatusSource(contract);
+    const status = statusInfo.status;
+
+    if (!contract && !status) {
+      if (uc6Els.decisionStatus) uc6Els.decisionStatus.textContent = 'Admin Review Decision contract not loaded. 09C final delivery response embedding 또는 n8n import 상태를 확인하세요.';
+      if (uc6Els.decisionSummary) uc6Els.decisionSummary.innerHTML = `
+        <div class="uc6-readiness-card is-locked"><span>contract_status</span><strong>not_loaded</strong></div>
+        <div class="uc6-readiness-card is-locked"><span>expected_alias</span><strong>admin_review_decision_contract</strong></div>
+      `;
+      if (uc6Els.decisionRawJson) uc6Els.decisionRawJson.textContent = 'Admin Review Decision contract not loaded.';
+      return;
+    }
+
+    const summary = {
+      contract_status: getUC6NestedDecisionValue(contract, status, 'status') || 'loaded',
+      schema_version: getUC6NestedDecisionValue(contract, status, 'schema_version') || '-',
+      source_contract_status: getUC6NestedDecisionValue(contract, status, 'source_contract_status') || '-',
+      admin_review_ready: getUC6NestedDecisionValue(contract, status, 'admin_review_ready'),
+      review_only: getUC6NestedDecisionValue(contract, status, 'review_only'),
+      decision_required: getUC6NestedDecisionValue(contract, status, 'decision_required'),
+      can_approve_final_pptx: getUC6NestedDecisionValue(contract, status, 'can_approve_final_pptx'),
+      can_mutate_artifacts: getUC6NestedDecisionValue(contract, status, 'can_mutate_artifacts'),
+      can_execute_chart_replacement: getUC6NestedDecisionValue(contract, status, 'can_execute_chart_replacement'),
+      warning_count: getUC6NestedDecisionValue(contract, status, 'warning_count') ?? 0,
+      blocking_issue_count: getUC6NestedDecisionValue(contract, status, 'blocking_issue_count') ?? 0,
+      admin_action_count: getUC6NestedDecisionValue(contract, status, 'admin_action_count') ?? 0,
+      blocked_item_count: getUC6NestedDecisionValue(contract, status, 'blocked_item_count') ?? 0,
+      chart_lane: getUC6NestedDecisionValue(contract, status, 'chart_lane') || 'frozen_after_uc6_06e'
+    };
+
+    const loadedFrom = [contractInfo.source, statusInfo.source].filter(Boolean).join(' + ');
+    if (uc6Els.decisionStatus) {
+      uc6Els.decisionStatus.textContent = `Loaded from ${loadedFrom || 'admin_review_decision_contract_status fallback'}`;
+    }
+
+    if (uc6Els.decisionSummary) {
+      const cards = [
+        { label: 'contract_status', value: summary.contract_status },
+        { label: 'schema_version', value: summary.schema_version },
+        { label: 'source_contract_status', value: summary.source_contract_status },
+        { label: 'admin_review_ready', value: summary.admin_review_ready },
+        { label: 'review_only', value: summary.review_only },
+        { label: 'decision_required', value: summary.decision_required },
+        { label: 'can_approve_final_pptx', value: summary.can_approve_final_pptx },
+        { label: 'can_mutate_artifacts', value: summary.can_mutate_artifacts },
+        { label: 'can_execute_chart_replacement', value: summary.can_execute_chart_replacement },
+        { label: 'warning_count', value: summary.warning_count },
+        { label: 'blocking_issue_count', value: summary.blocking_issue_count },
+        { label: 'admin_action_count', value: summary.admin_action_count },
+        { label: 'blocked_item_count', value: summary.blocked_item_count },
+        { label: 'chart_lane', value: summary.chart_lane }
+      ];
+      uc6Els.decisionSummary.innerHTML = cards.map((card) => `
+        <div class="uc6-readiness-card is-${escapeHtml(getUC6DecisionTone(card.label, card.value))}">
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value === undefined || card.value === null ? '-' : String(card.value))}</strong>
+        </div>
+      `).join('');
+    }
+
+    if (uc6Els.decisionRawJson) {
+      const rawPayload = contract
+        ? { admin_review_decision_contract_status: summary, admin_review_decision_contract: contract }
+        : { admin_review_decision_contract_status: summary };
+      uc6Els.decisionRawJson.textContent = formatUC6Json(sanitizeUC6ForBrowserDebug(rawPayload));
     }
   }
 
@@ -6123,6 +6188,7 @@ Customer: Thank you. Goodbye.`
     renderUC6SlotTable();
     renderUC6ReadinessSummary();
     renderUC6AdminEvidencePanel();
+    renderUC6AdminReviewDecisionPanel();
     renderUC6ArtifactTable();
     renderUC6DebugPanel();
     renderUC6StageTimeline();
