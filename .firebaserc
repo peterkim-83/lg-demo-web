@@ -1,10 +1,13 @@
-{
+﻿{
   "projects": {
     "default": "peter-demo-3a387"
   },
   "targets": {
     "peter-demo-3a387": {
       "hosting": {
+        "peter-demo-web": [
+          "peter-demo-3a387"
+        ],
         "voice-poc": [
           "meeting-ai-voice-poc"
         ]

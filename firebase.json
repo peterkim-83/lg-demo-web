@@ -1,7 +1,7 @@
-{
+﻿{
   "hosting": [
     {
-      "site": "peter-demo-3a387",
+      "target": "peter-demo-web",
       "public": "public",
       "ignore": [
         "firebase.json",

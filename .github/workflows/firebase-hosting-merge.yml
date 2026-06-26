@@ -19,3 +19,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PETER_DEMO_3A387 }}
           channelId: live
           projectId: peter-demo-3a387
+          target: peter-demo-web
