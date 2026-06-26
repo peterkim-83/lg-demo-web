@@ -5250,6 +5250,12 @@ Customer: Thank you. Goodbye.`
     evidenceRawJson: document.getElementById('uc6-evidenceRawJson'),
     decisionStatus: document.getElementById('uc6-decisionStatus'),
     decisionSummary: document.getElementById('uc6-decisionSummary'),
+    decisionGateTableBody: document.getElementById('uc6-decisionGateTableBody'),
+    reviewChecklistTableBody: document.getElementById('uc6-reviewChecklistTableBody'),
+    warningSummary: document.getElementById('uc6-warningSummary'),
+    warningSourceTableBody: document.getElementById('uc6-warningSourceTableBody'),
+    decisionArtifactReviewTableBody: document.getElementById('uc6-decisionArtifactReviewTableBody'),
+    recommendedNextStepTableBody: document.getElementById('uc6-recommendedNextStepTableBody'),
     decisionRawJson: document.getElementById('uc6-decisionRawJson'),
     artifactTableBody: document.getElementById('uc6-artifactTableBody'),
     debugJson: document.getElementById('uc6-debugJson'),
@@ -5817,21 +5823,46 @@ Customer: Thank you. Goodbye.`
     return firstUC6Defined(...(valueMap[key] || []));
   }
 
+  function getUC6DecisionContractDetailScore(contract) {
+    if (!isPlainObject(contract)) return 0;
+    let score = 1;
+    if (Array.isArray(contract.decision_gates)) score += contract.decision_gates.length ? 20 + contract.decision_gates.length : 3;
+    if (Array.isArray(contract.review_checklist)) score += contract.review_checklist.length ? 20 + contract.review_checklist.length : 3;
+    if (Array.isArray(contract.artifact_review_summary)) score += contract.artifact_review_summary.length ? 16 + contract.artifact_review_summary.length : 3;
+    if (Array.isArray(contract.recommended_next_steps)) score += contract.recommended_next_steps.length ? 10 + contract.recommended_next_steps.length : 2;
+    if (isPlainObject(contract.warning_summary)) score += 10;
+    if (isPlainObject(contract.chart_lane_summary)) score += 6;
+    if (isPlainObject(contract.review_policy)) score += 4;
+    if (isPlainObject(contract.decision_summary)) score += 4;
+    return score;
+  }
+
   function getUC6AdminReviewDecisionContractSource() {
     const stages = uc6State.stageResponses || {};
+    const finalDelivery = stages.final_pdf_delivery || {};
     const response = uc6State.responsePayload || {};
+    const topResponse = uc6State.response || {};
     const candidates = [
-      { source: 'stageResponses.final_pdf_delivery.admin_review_decision_contract', value: stages.final_pdf_delivery?.admin_review_decision_contract },
+      { source: 'stageResponses.final_pdf_delivery.admin_review_decision_contract', value: finalDelivery.admin_review_decision_contract },
+      { source: 'stageResponses.final_pdf_delivery.response.admin_review_decision_contract', value: finalDelivery.response?.admin_review_decision_contract },
       { source: 'responsePayload.admin_review_decision_contract', value: response.admin_review_decision_contract },
-      { source: 'stageResponses.final_pdf_delivery.artifacts.admin_review_decision_contract.content', value: stages.final_pdf_delivery?.artifacts?.admin_review_decision_contract?.content },
-      { source: 'responsePayload.artifacts.admin_review_decision_contract.content', value: response.artifacts?.admin_review_decision_contract?.content }
+      { source: 'responsePayload.response.admin_review_decision_contract', value: response.response?.admin_review_decision_contract },
+      { source: 'response.admin_review_decision_contract', value: topResponse.admin_review_decision_contract },
+      { source: 'stageResponses.final_pdf_delivery.artifacts.admin_review_decision_contract.content', value: finalDelivery.artifacts?.admin_review_decision_contract?.content },
+      { source: 'responsePayload.artifacts.admin_review_decision_contract.content', value: response.artifacts?.admin_review_decision_contract?.content },
+      { source: 'response.artifacts.admin_review_decision_contract.content', value: topResponse.artifacts?.admin_review_decision_contract?.content }
     ];
 
+    let best = { contract: null, source: null, score: 0 };
     for (const candidate of candidates) {
       const contract = coerceUC6ObjectCandidate(candidate.value);
-      if (contract) return { contract, source: candidate.source };
+      if (!contract) continue;
+      const score = getUC6DecisionContractDetailScore(contract);
+      if (score > best.score) {
+        best = { contract, source: candidate.source, score };
+      }
     }
-    return { contract: null, source: null };
+    return { contract: best.contract, source: best.source };
   }
 
   function getUC6AdminReviewDecisionStatusSource(contract) {
@@ -5904,6 +5935,173 @@ Customer: Thank you. Goodbye.`
     if (label === 'source_contract_status') return String(value).includes('ready') ? 'ready' : value ? 'warning' : 'muted';
     if (label === 'chart_lane') return String(value).includes('frozen') || String(value).includes('defer') ? 'warning' : value ? 'muted' : 'locked';
     return value === null || value === undefined || value === '-' ? 'muted' : 'ready';
+  }
+
+  function getUC6ReviewRowTone(status, severity) {
+    const normalizedStatus = String(status || '').toLowerCase();
+    const normalizedSeverity = String(severity || '').toLowerCase();
+    if (normalizedStatus.includes('fail') || normalizedStatus.includes('block') || normalizedSeverity.includes('error') || normalizedSeverity.includes('danger')) return 'is-danger';
+    if (normalizedStatus.includes('warning') || normalizedSeverity.includes('warning')) return 'is-warning';
+    if (normalizedStatus.includes('pass') || normalizedStatus.includes('ready') || normalizedStatus.includes('complete') || normalizedSeverity.includes('info')) return 'is-ready';
+    return 'is-muted';
+  }
+
+  function renderUC6EmptyTableRow(el, columnCount, message) {
+    if (!el) return;
+    el.innerHTML = `
+      <tr>
+        <td colspan="${columnCount}"><span class="uc6-table-status is-muted">${escapeHtml(message)}</span></td>
+      </tr>
+    `;
+  }
+
+  function renderUC6DecisionDetailPlaceholders(message = 'Admin Review Decision contract not loaded.') {
+    renderUC6EmptyTableRow(uc6Els.decisionGateTableBody, 5, message);
+    renderUC6EmptyTableRow(uc6Els.reviewChecklistTableBody, 5, message);
+    renderUC6EmptyTableRow(uc6Els.warningSourceTableBody, 2, message);
+    renderUC6EmptyTableRow(uc6Els.decisionArtifactReviewTableBody, 6, message);
+    renderUC6EmptyTableRow(uc6Els.recommendedNextStepTableBody, 4, message);
+    if (uc6Els.warningSummary) {
+      uc6Els.warningSummary.innerHTML = `
+        <div class="uc6-readiness-card is-locked"><span>warning_count</span><strong>-</strong></div>
+        <div class="uc6-readiness-card is-locked"><span>warning_codes</span><strong>-</strong></div>
+      `;
+    }
+  }
+
+  function normalizeUC6ReviewDetailItem(item, fallbackIdPrefix, index) {
+    if (isPlainObject(item)) return item;
+    if (typeof item === 'string') {
+      return {
+        step_id: `${fallbackIdPrefix}_${index + 1}`,
+        label: item,
+        message: item,
+        severity: 'info',
+        review_only: true
+      };
+    }
+    return {};
+  }
+
+  function getUC6DecisionDetailArray(contract, key) {
+    const value = contract?.[key];
+    if (Array.isArray(value)) return value;
+    if (isPlainObject(value)) {
+      return Object.entries(value).map(([entryKey, entryValue]) => {
+        if (isPlainObject(entryValue)) return { key: entryKey, artifact_key: entryKey, source_artifact: entryKey, ...entryValue };
+        return { key: entryKey, artifact_key: entryKey, label: String(entryValue), value: entryValue };
+      });
+    }
+    return [];
+  }
+
+  function renderUC6AdminReviewDecisionDetails(contract) {
+    const decisionGates = getUC6DecisionDetailArray(contract, 'decision_gates');
+    if (uc6Els.decisionGateTableBody) {
+      uc6Els.decisionGateTableBody.innerHTML = decisionGates.length ? decisionGates.map((rawGate, index) => {
+        const gate = normalizeUC6ReviewDetailItem(rawGate, 'decision_gate', index);
+        const status = gate?.status || '-';
+        const severity = gate?.severity || '-';
+        return `
+          <tr>
+            <td><code>${escapeHtml(gate?.gate_id || gate?.id || '-')}</code></td>
+            <td><span class="uc6-table-status ${getUC6ReviewRowTone(status, severity)}">${escapeHtml(status)}</span></td>
+            <td>${escapeHtml(severity)}</td>
+            <td>${gate?.review_only === true ? 'true' : gate?.review_only === false ? 'false' : '-'}</td>
+            <td>${escapeHtml(gate?.message || '-')}</td>
+          </tr>
+        `;
+      }).join('') : `
+        <tr><td colspan="5"><span class="uc6-table-status is-muted">decision_gates not provided</span></td></tr>
+      `;
+    }
+
+    const checklist = getUC6DecisionDetailArray(contract, 'review_checklist');
+    if (uc6Els.reviewChecklistTableBody) {
+      uc6Els.reviewChecklistTableBody.innerHTML = checklist.length ? checklist.map((rawItem, index) => {
+        const item = normalizeUC6ReviewDetailItem(rawItem, 'review_checklist', index);
+        const status = item?.status || '-';
+        const severity = item?.severity || '-';
+        return `
+          <tr>
+            <td><code>${escapeHtml(item?.item_id || item?.id || '-')}</code></td>
+            <td><span class="uc6-table-status ${getUC6ReviewRowTone(status, severity)}">${escapeHtml(status)}</span></td>
+            <td>${escapeHtml(severity)}</td>
+            <td>${item?.review_only === true ? 'true' : item?.review_only === false ? 'false' : '-'}</td>
+            <td><strong>${escapeHtml(item?.source || '-')}</strong><br>${escapeHtml(item?.label || '-')}</td>
+          </tr>
+        `;
+      }).join('') : `
+        <tr><td colspan="5"><span class="uc6-table-status is-muted">review_checklist not provided</span></td></tr>
+      `;
+    }
+
+    const warningSummary = isPlainObject(contract?.warning_summary) ? contract.warning_summary : {};
+    const warningBySource = isPlainObject(warningSummary.warnings_by_source_artifact) ? warningSummary.warnings_by_source_artifact : {};
+    const warningCodes = Array.isArray(warningSummary.warning_codes) ? warningSummary.warning_codes : [];
+    if (uc6Els.warningSummary) {
+      const warningCount = warningSummary.warning_count ?? warningCodes.length ?? 0;
+      uc6Els.warningSummary.innerHTML = [
+        { label: 'warning_count', value: warningCount, tone: Number(warningCount) > 0 ? 'warning' : 'ready' },
+        { label: 'warning_codes', value: warningCodes.length ? warningCodes.join(', ') : '-', tone: warningCodes.length ? 'warning' : 'ready' }
+      ].map((card) => `
+        <div class="uc6-readiness-card is-${escapeHtml(card.tone)}">
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+        </div>
+      `).join('');
+    }
+    if (uc6Els.warningSourceTableBody) {
+      const warningRows = Object.entries(warningBySource);
+      uc6Els.warningSourceTableBody.innerHTML = warningRows.length ? warningRows.map(([source, count]) => `
+        <tr>
+          <td><code>${escapeHtml(source)}</code></td>
+          <td>${escapeHtml(count)}</td>
+        </tr>
+      `).join('') : `
+        <tr><td colspan="2"><span class="uc6-table-status is-muted">warnings_by_source_artifact not provided</span></td></tr>
+      `;
+    }
+
+    const artifactRows = getUC6DecisionDetailArray(contract, 'artifact_review_summary');
+    if (uc6Els.decisionArtifactReviewTableBody) {
+      uc6Els.decisionArtifactReviewTableBody.innerHTML = artifactRows.length ? artifactRows.map((item) => {
+        const status = item?.status || (item?.provided === true ? 'provided' : 'missing');
+        const warnings = item?.warning_count ?? 0;
+        const blocking = item?.blocking_issue_count ?? 0;
+        const tone = Number(blocking) > 0 ? 'is-danger' : Number(warnings) > 0 ? 'is-warning' : item?.provided === true ? 'is-ready' : 'is-muted';
+        return `
+          <tr>
+            <td><code>${escapeHtml(item?.artifact_key || item?.artifact || '-')}</code></td>
+            <td>${item?.provided === true ? 'true' : item?.provided === false ? 'false' : '-'}</td>
+            <td>${item?.required_for_minimum_review === true ? 'true' : item?.required_for_minimum_review === false ? 'false' : '-'}</td>
+            <td><span class="uc6-table-status ${tone}">${escapeHtml(status)}</span></td>
+            <td>${escapeHtml(warnings)}</td>
+            <td>${escapeHtml(blocking)}</td>
+          </tr>
+        `;
+      }).join('') : `
+        <tr><td colspan="6"><span class="uc6-table-status is-muted">artifact_review_summary not provided</span></td></tr>
+      `;
+    }
+
+    const nextSteps = getUC6DecisionDetailArray(contract, 'recommended_next_steps');
+    if (uc6Els.recommendedNextStepTableBody) {
+      uc6Els.recommendedNextStepTableBody.innerHTML = nextSteps.length ? nextSteps.map((rawStep, index) => {
+        const step = normalizeUC6ReviewDetailItem(rawStep, 'recommended_next_step', index);
+        const severity = step?.severity || '-';
+        return `
+          <tr>
+            <td><code>${escapeHtml(step?.step_id || step?.id || '-')}</code></td>
+            <td><span class="uc6-table-status ${getUC6ReviewRowTone(step?.status, severity)}">${escapeHtml(severity)}</span></td>
+            <td>${step?.review_only === true ? 'true' : step?.review_only === false ? 'false' : '-'}</td>
+            <td>${escapeHtml(step?.label || step?.message || '-')}</td>
+          </tr>
+        `;
+      }).join('') : `
+        <tr><td colspan="4"><span class="uc6-table-status is-muted">recommended_next_steps not provided</span></td></tr>
+      `;
+    }
   }
 
   function getUC6ContractValue(contract, keys, fallback = '-') {
@@ -6029,6 +6227,7 @@ Customer: Thank you. Goodbye.`
         <div class="uc6-readiness-card is-locked"><span>contract_status</span><strong>not_loaded</strong></div>
         <div class="uc6-readiness-card is-locked"><span>expected_alias</span><strong>admin_review_decision_contract</strong></div>
       `;
+      renderUC6DecisionDetailPlaceholders();
       if (uc6Els.decisionRawJson) uc6Els.decisionRawJson.textContent = 'Admin Review Decision contract not loaded.';
       return;
     }
@@ -6079,6 +6278,8 @@ Customer: Thank you. Goodbye.`
         </div>
       `).join('');
     }
+
+    renderUC6AdminReviewDecisionDetails(contract || {});
 
     if (uc6Els.decisionRawJson) {
       const rawPayload = contract
