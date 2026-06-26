@@ -6498,11 +6498,14 @@ Customer: Thank you. Goodbye.`
     const mode = delivery.delivery_mode || delivery.phase || (pdfReady ? 'final_pdf_ready' : 'waiting');
     const downloadProxyReady = Boolean(pdfUrl || pptxUrl);
     const viewerUrl = buildUC6PdfViewerUrl(pdfUrl);
+    const adminDecisionSource = getUC6AdminReviewDecisionContractSource();
+    const adminEvidenceSource = getUC6AdminEvidenceContractSource();
+    const adminReviewLoaded = Boolean(adminDecisionSource.contract || adminEvidenceSource.contract);
     const cards = [
       { label: 'PDF Artifact', value: pdfReady ? 'ready' : 'waiting', tone: pdfReady ? 'ready' : 'locked' },
       { label: 'PPTX Fallback', value: pptxReady ? 'ready' : 'waiting', tone: pptxReady ? 'ready' : 'locked' },
       { label: 'Delivery Mode', value: mode, tone: pdfReady ? 'ready' : 'warning' },
-      { label: 'Admin Review', value: findUC6AdminReviewDecisionContract() || findUC6AdminEvidenceContract() ? 'loaded' : 'not_loaded', tone: findUC6AdminEvidenceContract() ? 'ready' : 'muted' }
+      { label: 'Admin Review', value: adminReviewLoaded ? 'loaded' : 'not_loaded', tone: adminReviewLoaded ? 'ready' : 'muted' }
     ];
     const deliverySummaryHtml = `
       <div class="uc6-pdf-ready-panel ${pdfReady ? 'is-ready' : 'is-waiting'}">
