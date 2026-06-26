@@ -725,8 +725,8 @@
             <div class="uc6-preview-panel">
               <div class="uc6-preview-header">
                 <div>
-                  <span class="uc6-preview-kicker">Final PPTX Delivery</span>
-                  <h3>PPTX 산출물 상태</h3>
+                  <span class="uc6-preview-kicker">Final PDF Delivery</span>
+                  <h3>PDF 산출물 상태</h3>
                 </div>
                 <span class="uc6-chip is-locked" id="uc6-previewStateChip">Render Bridge 대기</span>
               </div>
@@ -742,13 +742,13 @@
                   <div class="uc6-pdf-mock-line w-48"></div>
                 </div>
                 <div class="uc6-placeholder-copy">
-                  <strong>Final Delivery 대기</strong>
-                  <p>02C 완료 후 final_render_output_pptx artifact 준비 상태를 표시합니다. PDF 변환은 후속 converter/proxy 확장 대상입니다.</p>
+                  <strong>Final PDF Delivery 대기</strong>
+                  <p>02C 완료 후 final_render_output_pdf artifact readiness와 public download proxy 상태를 표시합니다. PPTX는 fallback artifact로 유지합니다.</p>
                 </div>
               </div>
               <div class="uc6-download-actions">
-                <button class="btn btn-success" id="uc6-pdfDownloadBtn" disabled>📄 PDF 변환 대기</button>
-                <button class="btn btn-warning" id="uc6-pptxDownloadBtn" disabled>📊 PPTX 다운로드</button>
+                <button class="btn btn-success" id="uc6-pdfDownloadBtn" disabled>📄 PDF 미리보기 대기</button>
+                <button class="btn btn-warning" id="uc6-pptxDownloadBtn" disabled>📊 PPTX fallback 다운로드</button>
               </div>
               <div class="uc6-runtime-context-preview">
                 <div class="uc6-panel-header compact">

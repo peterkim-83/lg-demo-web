@@ -6726,6 +6726,120 @@ body:has(#view-uc5.active) #main-content {
     line-height: 1.55;
 }
 
+
+.uc6-pdf-placeholder.is-ready {
+    border-color: #86efac;
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%);
+}
+
+.uc6-pdf-ready-panel {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.uc6-pdf-ready-panel.is-ready {
+    border-color: rgba(34, 197, 94, 0.40);
+}
+
+.uc6-pdf-ready-icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    background: #dcfce7;
+    font-size: 1.35rem;
+}
+
+.uc6-pdf-ready-copy {
+    min-width: 0;
+}
+
+.uc6-pdf-ready-copy strong {
+    display: block;
+    margin-top: 2px;
+    color: #0f172a;
+    font-size: 1rem;
+}
+
+.uc6-pdf-ready-copy p {
+    margin: 6px 0 0;
+    color: #475569;
+    font-size: 0.8rem;
+    line-height: 1.55;
+}
+
+.uc6-pdf-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.uc6-pdf-status-card {
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, 0.76);
+}
+
+.uc6-pdf-status-card span,
+.uc6-pdf-download-summary span {
+    display: block;
+    color: #64748b;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.uc6-pdf-status-card strong,
+.uc6-pdf-download-summary strong {
+    display: block;
+    margin-top: 4px;
+    color: #0f172a;
+    font-size: 0.82rem;
+    word-break: break-word;
+}
+
+.uc6-pdf-status-card.is-ready {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+}
+
+.uc6-pdf-status-card.is-warning {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.uc6-pdf-status-card.is-locked,
+.uc6-pdf-status-card.is-muted {
+    background: #f8fafc;
+}
+
+.uc6-pdf-download-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.uc6-pdf-download-summary > div {
+    padding: 10px 12px;
+    border-radius: 13px;
+    background: rgba(15, 23, 42, 0.05);
+}
+
+.uc6-pdf-download-summary code {
+    color: #166534;
+}
+
 .uc6-download-actions {
     display: flex;
     gap: 10px;
