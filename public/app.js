@@ -5216,6 +5216,7 @@ Customer: Thank you. Goodbye.`
     isRunning: false,
     lastError: null,
     activeTab: 'template',
+    presentationFocus: false,
     contextCollectionId: '',
     renderRunId: '',
     download: null
@@ -5238,6 +5239,7 @@ Customer: Thank you. Goodbye.`
     contextStateChip: document.getElementById('uc6-contextStateChip'),
     runBtn: document.getElementById('uc6-runBtn'),
     resetBtn: document.getElementById('uc6-resetBtn'),
+    focusToggle: document.getElementById('uc6-focusToggle'),
     actionHelper: document.getElementById('uc6-actionHelper'),
     miniPipeline: document.getElementById('uc6-miniPipeline'),
     stageTimeline: document.getElementById('uc6-stageTimeline'),
@@ -5261,8 +5263,10 @@ Customer: Thank you. Goodbye.`
     artifactTableBody: document.getElementById('uc6-artifactTableBody'),
     debugJson: document.getElementById('uc6-debugJson'),
     runtimeContextPreview: document.getElementById('uc6-runtimeContextPreview'),
+    deliverySummaryPanel: document.getElementById('uc6-deliverySummaryPanel'),
     previewStateChip: document.getElementById('uc6-previewStateChip'),
     pdfPlaceholder: document.getElementById('uc6-pdfPlaceholder'),
+    pdfOpenBtn: document.getElementById('uc6-pdfOpenBtn'),
     pdfDownloadBtn: document.getElementById('uc6-pdfDownloadBtn'),
     pptxDownloadBtn: document.getElementById('uc6-pptxDownloadBtn')
   };
@@ -5427,6 +5431,27 @@ Customer: Thank you. Goodbye.`
     if (getUC6NestedDownloadValue(delivery, 'artifact') === 'final_render_output_pdf' && nested && !nested.includes('/') && !nested.includes('\\')) return nested;
     const batchId = delivery?.published_template_batch_id || delivery?.batch_id || uc6State.selectedBatchId || getUC6SelectedBatchId();
     return isUC6SafeIdentifier(batchId) ? `fetchdoc_final_render_${batchId}.pdf` : 'fetchdoc_final_render_output.pdf';
+  }
+
+  function buildUC6PdfViewerUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    const trimmed = url.trim();
+    if (!/^https:\/\//i.test(trimmed) || isUC6BrowserUnsafeString(trimmed)) return '';
+    if (trimmed.includes('#')) return trimmed;
+    return `${trimmed}#toolbar=1&navpanes=0&view=FitH`;
+  }
+
+  function triggerUC6BrowserDownload(url, filename) {
+    if (!url) return false;
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    if (filename) anchor.download = filename;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return true;
   }
 
   function getUC6StageLabel(stageId) {
@@ -6466,31 +6491,26 @@ Customer: Thank you. Goodbye.`
   }
 
   function renderUC6FinalDeliveryPreview(delivery, pdfUrl, pptxUrl) {
-    if (!uc6Els.pdfPlaceholder) return;
     const pdfStatus = getUC6DeliveryArtifactStatus(delivery, 'final_render_output_pdf');
     const pptxStatus = getUC6DeliveryArtifactStatus(delivery, 'final_render_output_pptx');
     const pdfReady = delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf');
     const pptxReady = delivery.final_pptx_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pptx');
-    const mode = delivery.pdf_delivery_mode || (pdfReady ? 'fastapi_final_pdf_artifact_ready' : 'waiting_for_final_pdf_artifact');
-    const adminDecisionLoaded = delivery.admin_review_decision_contract_loaded === true;
-    const downloadProxyReady = Boolean(pdfUrl);
-
+    const mode = delivery.delivery_mode || delivery.phase || (pdfReady ? 'final_pdf_ready' : 'waiting');
+    const downloadProxyReady = Boolean(pdfUrl || pptxUrl);
+    const viewerUrl = buildUC6PdfViewerUrl(pdfUrl);
     const cards = [
-      { label: 'PDF Artifact', value: pdfReady ? 'ready' : 'not_ready', tone: pdfReady ? 'ready' : 'locked' },
-      { label: 'PPTX Fallback', value: pptxReady ? 'ready' : 'not_ready', tone: pptxReady ? 'ready' : 'muted' },
+      { label: 'PDF Artifact', value: pdfReady ? 'ready' : 'waiting', tone: pdfReady ? 'ready' : 'locked' },
+      { label: 'PPTX Fallback', value: pptxReady ? 'ready' : 'waiting', tone: pptxReady ? 'ready' : 'locked' },
       { label: 'Delivery Mode', value: mode, tone: pdfReady ? 'ready' : 'warning' },
-      { label: 'Admin Review', value: adminDecisionLoaded ? 'loaded' : 'not_loaded', tone: adminDecisionLoaded ? 'ready' : 'warning' }
+      { label: 'Admin Review', value: findUC6AdminReviewDecisionContract() || findUC6AdminEvidenceContract() ? 'loaded' : 'not_loaded', tone: findUC6AdminEvidenceContract() ? 'ready' : 'muted' }
     ];
-
-    uc6Els.pdfPlaceholder.classList.toggle('is-ready', pdfReady);
-    uc6Els.pdfPlaceholder.classList.toggle('is-waiting', !pdfReady);
-    uc6Els.pdfPlaceholder.innerHTML = `
+    const deliverySummaryHtml = `
       <div class="uc6-pdf-ready-panel ${pdfReady ? 'is-ready' : 'is-waiting'}">
         <div class="uc6-pdf-ready-icon">${pdfReady ? '📄' : '⏳'}</div>
         <div class="uc6-pdf-ready-copy">
-          <span class="uc6-preview-kicker">UC6-11A-C Final PDF Preview</span>
+          <span class="uc6-preview-kicker">Delivery Summary</span>
           <strong>${pdfReady ? 'Final PDF artifact ready' : 'Final PDF artifact waiting'}</strong>
-          <p>${pdfReady ? 'UC6-11A-B에서 생성한 final_render_output_pdf artifact를 기준으로 다운로드/미리보기를 준비했습니다.' : '02C Final Delivery 완료 후 final_render_output_pdf artifact readiness를 표시합니다.'}</p>
+          <p>${pdfReady ? 'public_pdf_url 또는 public download proxy를 기준으로 현재 페이지의 PDF viewer와 다운로드 액션을 준비했습니다.' : '02C Final Delivery 완료 후 final_render_output_pdf readiness와 public URL 상태를 표시합니다.'}</p>
         </div>
       </div>
       <div class="uc6-pdf-status-grid">
@@ -6520,6 +6540,37 @@ Customer: Thank you. Goodbye.`
         </div>
       </div>
     `;
+
+    if (uc6Els.deliverySummaryPanel) {
+      uc6Els.deliverySummaryPanel.innerHTML = deliverySummaryHtml;
+    }
+    if (!uc6Els.pdfPlaceholder) return;
+    uc6Els.pdfPlaceholder.classList.toggle('is-ready', pdfReady && Boolean(viewerUrl));
+    uc6Els.pdfPlaceholder.classList.toggle('is-waiting', !viewerUrl);
+    if (pdfReady && viewerUrl) {
+      uc6Els.pdfPlaceholder.innerHTML = `
+        <div class="uc6-pdf-viewer-shell">
+          <iframe class="uc6-pdf-viewer-frame" title="Final PDF Preview" src="${escapeHtml(viewerUrl)}" loading="lazy"></iframe>
+        </div>
+      `;
+      return;
+    }
+    uc6Els.pdfPlaceholder.innerHTML = `
+      <div class="uc6-pdf-mock-toolbar">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="uc6-pdf-mock-page">
+        <div class="uc6-pdf-mock-line w-72"></div>
+        <div class="uc6-pdf-mock-line w-56"></div>
+        <div class="uc6-pdf-mock-block"></div>
+        <div class="uc6-pdf-mock-line w-84"></div>
+        <div class="uc6-pdf-mock-line w-48"></div>
+      </div>
+      <div class="uc6-placeholder-copy">
+        <strong>${pdfReady ? 'PDF URL 대기' : 'Final PDF Preview 대기'}</strong>
+        <p>${pdfReady ? 'PDF artifact는 준비됐지만 browser-safe public URL을 만들 수 없습니다.' : '02C 완료 후 public_pdf_url을 현재 페이지 안의 PDF viewer에 표시합니다.'}</p>
+      </div>
+    `;
   }
 
   function renderUC6DownloadPlaceholders() {
@@ -6540,13 +6591,22 @@ Customer: Thank you. Goodbye.`
       else if (uc6State.stageResponses.runtime_render_bridge?.final_render_ready === true) setUC6Chip(uc6Els.previewStateChip, 'Final Render Ready', 'is-ready');
       else setUC6Chip(uc6Els.previewStateChip, 'Preview 대기', 'is-locked');
     }
+    if (uc6Els.pdfOpenBtn) {
+      uc6Els.pdfOpenBtn.disabled = !pdfReady || !pdfUrl;
+      uc6Els.pdfOpenBtn.textContent = pdfReady && pdfUrl ? '↗ PDF 새 탭 열기' : pdfReady ? '↗ PDF URL 대기' : '↗ PDF 대기';
+      uc6Els.pdfOpenBtn.dataset.downloadUrl = pdfUrl;
+      uc6Els.pdfOpenBtn.dataset.suggestedFilename = pdfSuggestedFilename;
+      uc6Els.pdfOpenBtn.title = pdfReady
+        ? (pdfUrl ? `새 창에서 ${pdfSuggestedFilename} 파일을 엽니다.` : 'PDF artifact는 준비됐지만 public download proxy URL을 만들 수 없습니다.')
+        : '02C Final Delivery 완료 후 활성화됩니다.';
+    }
     if (uc6Els.pdfDownloadBtn) {
       uc6Els.pdfDownloadBtn.disabled = !pdfReady || !pdfUrl;
-      uc6Els.pdfDownloadBtn.textContent = pdfReady && pdfUrl ? '📄 PDF 미리보기/다운로드' : pdfReady ? '📄 PDF 준비 완료' : '📄 PDF 변환 대기';
+      uc6Els.pdfDownloadBtn.textContent = pdfReady && pdfUrl ? '📄 PDF 다운로드' : pdfReady ? '📄 PDF URL 대기' : '📄 PDF 변환 대기';
       uc6Els.pdfDownloadBtn.dataset.downloadUrl = pdfUrl;
       uc6Els.pdfDownloadBtn.dataset.suggestedFilename = pdfSuggestedFilename;
       uc6Els.pdfDownloadBtn.title = pdfReady
-        ? (pdfUrl ? `새 창에서 ${pdfSuggestedFilename} 파일을 엽니다.` : 'PDF artifact는 준비됐지만 public download proxy URL을 만들 수 없습니다.')
+        ? (pdfUrl ? `${pdfSuggestedFilename} 파일 다운로드를 시도합니다.` : 'PDF artifact는 준비됐지만 public download proxy URL을 만들 수 없습니다.')
         : '02C Final Delivery 완료 후 활성화됩니다.';
     }
     if (uc6Els.pptxDownloadBtn) {
@@ -6560,8 +6620,18 @@ Customer: Thank you. Goodbye.`
     }
   }
 
+  function renderUC6PresentationFocusState() {
+    if (!uc6Els.section) return;
+    uc6Els.section.classList.toggle('is-presentation-focus', uc6State.presentationFocus === true);
+    if (uc6Els.focusToggle) {
+      uc6Els.focusToggle.setAttribute('aria-pressed', uc6State.presentationFocus === true ? 'true' : 'false');
+      uc6Els.focusToggle.textContent = uc6State.presentationFocus === true ? '운영 화면 보기' : 'PDF 집중 보기';
+    }
+  }
+
   function renderUC6All() {
     if (!uc6Els.section) return;
+    renderUC6PresentationFocusState();
     renderUC6TemplateSummary();
     renderUC6SlotTable();
     renderUC6ReadinessSummary();
@@ -6747,13 +6817,26 @@ Customer: Thank you. Goodbye.`
 
     uc6Els.runBtn?.addEventListener('click', runUC6EndToEnd);
     uc6Els.resetBtn?.addEventListener('click', resetUC6Shell);
-    uc6Els.pdfDownloadBtn?.addEventListener('click', () => {
+    uc6Els.focusToggle?.addEventListener('click', () => {
+      uc6State.presentationFocus = !uc6State.presentationFocus;
+      renderUC6PresentationFocusState();
+    });
+    uc6Els.pdfOpenBtn?.addEventListener('click', () => {
       const delivery = uc6State.stageResponses.final_pdf_delivery || {};
-      const url = uc6Els.pdfDownloadBtn?.dataset?.downloadUrl || buildUC6PdfDownloadUrl(delivery);
+      const url = uc6Els.pdfOpenBtn?.dataset?.downloadUrl || buildUC6PdfDownloadUrl(delivery);
       if (url) {
         window.open(url, '_blank', 'noopener,noreferrer');
         return;
       }
+      if (delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf')) {
+        alert('PDF artifact는 준비되었습니다. public download proxy URL을 만들 수 없습니다. final_render_output_pdf artifact-status/download 설정을 확인하세요.');
+      }
+    });
+    uc6Els.pdfDownloadBtn?.addEventListener('click', () => {
+      const delivery = uc6State.stageResponses.final_pdf_delivery || {};
+      const url = uc6Els.pdfDownloadBtn?.dataset?.downloadUrl || buildUC6PdfDownloadUrl(delivery);
+      const filename = uc6Els.pdfDownloadBtn?.dataset?.suggestedFilename || getUC6PdfSuggestedFilename(delivery);
+      if (triggerUC6BrowserDownload(url, filename)) return;
       if (delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf')) {
         alert('PDF artifact는 준비되었습니다. public download proxy URL을 만들 수 없습니다. final_render_output_pdf artifact-status/download 설정을 확인하세요.');
       }

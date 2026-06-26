@@ -7009,3 +7009,899 @@ body:has(#view-uc5.active) #main-content {
     justify-content: space-between;
   }
 }
+
+
+/* UC6 Phase A — presentation-first workspace refactor */
+#view-uc6 .uc6-dashboard-container {
+    gap: 12px;
+}
+
+#view-uc6 .uc6-page-hero {
+    padding: 14px 18px;
+    border-radius: 18px;
+    align-items: center;
+}
+
+#view-uc6 .uc6-eyebrow {
+    margin-bottom: 4px;
+}
+
+#view-uc6 .uc6-page-hero h1 {
+    margin-bottom: 4px;
+    font-size: 1.5rem;
+}
+
+#view-uc6 .uc6-page-hero p {
+    line-height: 1.42;
+    font-size: 0.88rem;
+}
+
+#view-uc6 .uc6-hero-status {
+    padding: 10px 12px;
+    min-width: 220px;
+}
+
+#view-uc6 .uc6-top-control-bar {
+    grid-template-columns: minmax(190px, 0.9fr) minmax(230px, 1.05fr) minmax(260px, 1.1fr) minmax(190px, 0.85fr);
+    gap: 10px;
+}
+
+#view-uc6 .uc6-admin-card {
+    padding: 12px;
+    border-radius: 16px;
+}
+
+#view-uc6 .uc6-control-box {
+    min-height: 160px;
+    gap: 9px;
+}
+
+#view-uc6 .uc6-context-editor {
+    min-height: 92px;
+}
+
+#view-uc6 .uc6-stage-strip {
+    grid-template-columns: repeat(7, minmax(118px, 1fr));
+    gap: 7px;
+    padding-bottom: 2px;
+}
+
+#view-uc6 .uc6-stage-node {
+    min-height: 58px;
+    padding: 8px;
+    border-radius: 12px;
+}
+
+#view-uc6 .uc6-stage-index {
+    width: 24px;
+    height: 24px;
+}
+
+#view-uc6 .uc6-workspace-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: var(--shadow-sm);
+}
+
+#view-uc6 .uc6-workspace-toolbar .uc6-preview-kicker {
+    margin-bottom: 2px;
+    font-size: 0.66rem;
+}
+
+#view-uc6 .uc6-workspace-toolbar strong {
+    display: block;
+    color: #0f172a;
+    font-size: 0.92rem;
+}
+
+#view-uc6 .uc6-workbench {
+    grid-template-columns: minmax(360px, 0.72fr) minmax(680px, 1.48fr);
+    align-items: start;
+    min-height: 0;
+}
+
+#view-uc6 .uc6-inspector-panel {
+    display: flex;
+    flex-direction: column;
+    max-height: min(760px, calc(100vh - 286px));
+}
+
+#view-uc6 .uc6-tabs {
+    flex: 0 0 auto;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+#view-uc6 .uc6-tab {
+    min-width: 76px;
+    padding: 8px 7px;
+}
+
+#view-uc6 .uc6-tab-panel {
+    overflow: auto;
+    max-height: min(700px, calc(100vh - 340px));
+    scrollbar-width: thin;
+}
+
+#view-uc6 .uc6-artifact-table-wrap,
+#view-uc6 .uc6-slot-table-wrap {
+    overflow: auto;
+    max-height: min(520px, calc(100vh - 430px));
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+}
+
+#view-uc6 .uc6-artifact-table-wrap .uc6-table th,
+#view-uc6 .uc6-slot-table-wrap .uc6-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+#view-uc6 .uc6-table td {
+    max-width: 260px;
+    overflow-wrap: anywhere;
+}
+
+#view-uc6 .uc6-debug-json,
+#view-uc6 .uc6-runtime-context-preview pre,
+#view-uc6 #uc6-runtimeContextPreview {
+    max-height: min(360px, calc(100vh - 460px));
+}
+
+#view-uc6 .uc6-delivery-summary-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+#view-uc6 .uc6-preview-panel {
+    align-self: start;
+    min-height: min(820px, calc(100vh - 286px));
+    max-height: none;
+    padding: 14px;
+    border-color: #c7d2fe;
+}
+
+#view-uc6 .uc6-preview-header {
+    align-items: center;
+}
+
+#view-uc6 .uc6-pdf-placeholder {
+    display: flex;
+    flex-direction: column;
+    min-height: clamp(520px, 62vh, 820px);
+    padding: 10px;
+    border-color: #a5b4fc;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+#view-uc6 .uc6-pdf-placeholder.is-ready {
+    background: #f8fafc;
+}
+
+#view-uc6 .uc6-pdf-viewer-shell {
+    width: 100%;
+    flex: 1;
+    min-height: clamp(500px, 62vh, 800px);
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+    background: #0f172a;
+}
+
+#view-uc6 .uc6-pdf-viewer-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: clamp(500px, 62vh, 800px);
+    border: 0;
+    background: #ffffff;
+}
+
+#view-uc6 .uc6-download-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#view-uc6.is-presentation-focus .uc6-page-hero,
+#view-uc6.is-presentation-focus .uc6-top-control-bar,
+#view-uc6.is-presentation-focus .uc6-stage-strip {
+    display: none;
+}
+
+#view-uc6.is-presentation-focus .uc6-workbench {
+    grid-template-columns: 1fr;
+}
+
+#view-uc6.is-presentation-focus .uc6-inspector-panel {
+    display: none;
+}
+
+#view-uc6.is-presentation-focus .uc6-preview-panel {
+    min-height: calc(100vh - 150px);
+}
+
+#view-uc6.is-presentation-focus .uc6-pdf-placeholder,
+#view-uc6.is-presentation-focus .uc6-pdf-viewer-shell,
+#view-uc6.is-presentation-focus .uc6-pdf-viewer-frame {
+    min-height: calc(100vh - 270px);
+}
+
+@media (max-width: 1280px) {
+    #view-uc6 .uc6-workbench {
+        grid-template-columns: 1fr;
+    }
+
+    #view-uc6 .uc6-inspector-panel,
+    #view-uc6 .uc6-preview-panel {
+        max-height: none;
+    }
+}
+
+@media (max-width: 860px) {
+    #view-uc6 .uc6-download-actions {
+        grid-template-columns: 1fr;
+    }
+
+    #view-uc6 .uc6-stage-strip {
+        grid-template-columns: repeat(7, minmax(132px, 1fr));
+    }
+}
+
+
+/* UC6 Phase A.1 — balanced inspector/presentation layout correction */
+#view-uc6 .uc6-workspace-toolbar {
+    display: none;
+}
+
+#view-uc6 .uc6-workbench {
+    grid-template-columns: minmax(520px, 1fr) minmax(560px, 1fr);
+    gap: 14px;
+}
+
+#view-uc6 .uc6-inspector-panel {
+    max-height: min(780px, calc(100vh - 276px));
+}
+
+#view-uc6 .uc6-tab {
+    min-width: 92px;
+    padding: 8px 10px;
+}
+
+#view-uc6 .uc6-tab-panel {
+    max-height: min(718px, calc(100vh - 330px));
+}
+
+#view-uc6 .uc6-preview-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: min(780px, calc(100vh - 276px));
+    max-height: min(780px, calc(100vh - 276px));
+    overflow: auto;
+}
+
+#view-uc6 .uc6-preview-header {
+    flex: 0 0 auto;
+    gap: 12px;
+}
+
+#view-uc6 .uc6-preview-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#view-uc6 .uc6-preview-header-actions .btn-sm {
+    padding: 7px 10px;
+    min-height: 0;
+    white-space: nowrap;
+}
+
+#view-uc6 .uc6-pdf-placeholder {
+    flex: 1 1 auto;
+    min-height: clamp(430px, 54vh, 680px);
+}
+
+#view-uc6 .uc6-pdf-viewer-shell {
+    min-height: clamp(420px, 54vh, 660px);
+}
+
+#view-uc6 .uc6-pdf-viewer-frame {
+    min-height: clamp(420px, 54vh, 660px);
+}
+
+#view-uc6 .uc6-download-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 8;
+    margin: 0 -14px -14px;
+    padding: 10px 14px 12px;
+    border-top: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.08);
+}
+
+#view-uc6.is-presentation-focus .uc6-workbench {
+    grid-template-columns: 1fr;
+}
+
+#view-uc6.is-presentation-focus .uc6-preview-panel {
+    min-height: calc(100vh - 132px);
+    max-height: calc(100vh - 132px);
+}
+
+#view-uc6.is-presentation-focus .uc6-pdf-placeholder,
+#view-uc6.is-presentation-focus .uc6-pdf-viewer-shell,
+#view-uc6.is-presentation-focus .uc6-pdf-viewer-frame {
+    min-height: calc(100vh - 260px);
+}
+
+@media (max-width: 1320px) {
+    #view-uc6 .uc6-workbench {
+        grid-template-columns: minmax(480px, 1fr) minmax(520px, 1fr);
+    }
+}
+
+@media (max-width: 1120px) {
+    #view-uc6 .uc6-workbench {
+        grid-template-columns: 1fr;
+    }
+
+    #view-uc6 .uc6-preview-panel {
+        max-height: none;
+    }
+}
+
+@media (max-width: 720px) {
+    #view-uc6 .uc6-preview-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    #view-uc6 .uc6-preview-header-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+
+/* UC6 Phase A.2 — viewport-fit presentation workspace correction */
+body:has(#view-uc6.active) {
+    overflow: hidden;
+}
+
+body:has(#view-uc6.active) #main-content {
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+    padding: 18px 28px 12px;
+    box-sizing: border-box;
+}
+
+#view-uc6.active {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#view-uc6 .uc6-dashboard-container {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    gap: 9px;
+}
+
+#view-uc6 .uc6-page-hero {
+    padding: 10px 16px;
+    border-radius: 16px;
+}
+
+#view-uc6 .uc6-page-hero h1 {
+    font-size: 1.34rem;
+    line-height: 1.18;
+}
+
+#view-uc6 .uc6-page-hero p {
+    font-size: 0.8rem;
+    line-height: 1.28;
+}
+
+#view-uc6 .uc6-hero-status {
+    padding: 8px 11px;
+    min-width: 205px;
+}
+
+#view-uc6 .uc6-hero-status strong {
+    font-size: 0.86rem;
+}
+
+#view-uc6 .uc6-hero-status small {
+    font-size: 0.68rem;
+}
+
+#view-uc6 .uc6-top-control-bar {
+    grid-template-columns: minmax(210px, 0.9fr) minmax(250px, 1.05fr) minmax(280px, 1.18fr) minmax(230px, 0.86fr);
+    gap: 8px;
+    min-height: 0;
+}
+
+#view-uc6 .uc6-admin-card {
+    padding: 9px 10px;
+    border-radius: 14px;
+}
+
+#view-uc6 .uc6-control-box {
+    min-height: 124px;
+    gap: 7px;
+}
+
+#view-uc6 .uc6-card-heading-row {
+    gap: 7px;
+}
+
+#view-uc6 .uc6-control-label {
+    font-size: 0.82rem;
+}
+
+#view-uc6 .uc6-chip {
+    padding: 3px 8px;
+    font-size: 0.62rem;
+}
+
+#view-uc6 .uc6-upload-wrapper {
+    min-height: 78px;
+    gap: 5px;
+    padding: 8px;
+    border-radius: 14px;
+}
+
+#view-uc6 .uc6-upload-icon {
+    font-size: 1.28rem;
+}
+
+#view-uc6 .uc6-upload-text {
+    font-size: 0.82rem;
+}
+
+#view-uc6 .uc6-upload-hint {
+    display: none;
+}
+
+#view-uc6 .uc6-mini-field {
+    gap: 4px;
+}
+
+#view-uc6 .uc6-mini-field span {
+    font-size: 0.66rem;
+}
+
+#view-uc6 .uc6-mini-field select,
+#view-uc6 .uc6-inline-input {
+    height: 32px;
+    border-radius: 10px;
+    font-size: 0.76rem;
+}
+
+#view-uc6 .uc6-context-editor {
+    min-height: 72px;
+    max-height: 82px;
+    padding: 8px 10px;
+    font-size: 0.74rem;
+    line-height: 1.35;
+    overflow: auto;
+}
+
+#view-uc6 .uc6-template-gate-row {
+    gap: 5px;
+}
+
+#view-uc6 .uc6-gate-btn {
+    padding: 6px 5px;
+    border-radius: 10px;
+    font-size: 0.67rem;
+}
+
+#view-uc6 .uc6-action-box .btn {
+    min-height: 34px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+}
+
+#view-uc6 .uc6-action-helper {
+    display: none;
+}
+
+#view-uc6 .uc6-mini-pipeline {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+}
+
+#view-uc6 .uc6-pipeline-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 4px 5px;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+#view-uc6 .uc6-stage-strip {
+    grid-template-columns: repeat(7, minmax(112px, 1fr));
+    gap: 6px;
+    padding: 0;
+    min-height: 0;
+    overflow-x: hidden;
+}
+
+#view-uc6 .uc6-stage-node {
+    min-height: 40px;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 12px;
+}
+
+#view-uc6 .uc6-stage-index {
+    width: 22px;
+    height: 22px;
+    border-radius: 9px;
+    font-size: 0.66rem;
+}
+
+#view-uc6 .uc6-stage-node strong {
+    font-size: 0.72rem;
+}
+
+#view-uc6 .uc6-stage-node small {
+    display: none;
+}
+
+#view-uc6 .uc6-workbench {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    align-items: stretch;
+    grid-template-columns: minmax(520px, 1fr) minmax(560px, 1fr);
+    gap: 10px;
+}
+
+#view-uc6 .uc6-inspector-panel,
+#view-uc6 .uc6-preview-panel {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+}
+
+#view-uc6 .uc6-inspector-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#view-uc6 .uc6-tabs {
+    flex: 0 0 auto;
+    padding: 8px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+#view-uc6 .uc6-tab {
+    min-width: 86px;
+    padding: 7px 8px;
+    border-radius: 12px;
+    font-size: 0.68rem;
+}
+
+#view-uc6 .uc6-tab-panel.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#view-uc6 .uc6-tab-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    padding: 12px 14px;
+    overflow: auto;
+    scrollbar-width: thin;
+}
+
+#view-uc6 .uc6-panel-header {
+    margin-bottom: 10px;
+}
+
+#view-uc6 .uc6-panel-header h3 {
+    font-size: 0.96rem;
+}
+
+#view-uc6 .uc6-panel-header p {
+    font-size: 0.76rem;
+    line-height: 1.38;
+}
+
+#view-uc6 .uc6-readiness-grid,
+#view-uc6 .uc6-pdf-status-grid,
+#view-uc6 .uc6-pdf-download-summary {
+    gap: 8px;
+}
+
+#view-uc6 .uc6-readiness-card,
+#view-uc6 .uc6-pdf-status-card,
+#view-uc6 .uc6-pdf-download-summary > div {
+    padding: 9px 10px;
+    border-radius: 12px;
+}
+
+#view-uc6 .uc6-artifact-table-wrap,
+#view-uc6 .uc6-slot-table-wrap {
+    max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+#view-uc6 .uc6-debug-json,
+#view-uc6 .uc6-runtime-context-preview pre,
+#view-uc6 #uc6-runtimeContextPreview,
+#view-uc6 .uc6-evidence-raw-json {
+    max-height: 260px;
+    overflow: auto;
+}
+
+#view-uc6 .uc6-preview-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 12px;
+    border-radius: 18px;
+}
+
+#view-uc6 .uc6-preview-header {
+    flex: 0 0 auto;
+    padding-bottom: 8px;
+}
+
+#view-uc6 .uc6-preview-header h3 {
+    font-size: 1rem;
+}
+
+#view-uc6 .uc6-preview-header-actions .btn-sm {
+    padding: 6px 9px;
+    font-size: 0.72rem;
+}
+
+#view-uc6 .uc6-pdf-placeholder {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px;
+    border-radius: 14px;
+}
+
+#view-uc6 .uc6-pdf-viewer-shell {
+    min-height: 0;
+    height: 100%;
+    flex: 1 1 auto;
+}
+
+#view-uc6 .uc6-pdf-viewer-frame {
+    min-height: 0;
+    height: 100%;
+}
+
+#view-uc6 .uc6-pdf-mock-page {
+    transform: scale(0.84);
+    transform-origin: top center;
+    margin-bottom: -28px;
+}
+
+#view-uc6 .uc6-placeholder-copy {
+    margin-top: 4px;
+}
+
+#view-uc6 .uc6-placeholder-copy strong {
+    font-size: 0.88rem;
+}
+
+#view-uc6 .uc6-placeholder-copy p {
+    font-size: 0.74rem;
+    line-height: 1.35;
+}
+
+#view-uc6 .uc6-download-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 8;
+    flex: 0 0 auto;
+    margin: 8px -12px -12px;
+    padding: 9px 12px 10px;
+    border-top: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.08);
+}
+
+#view-uc6.is-presentation-focus .uc6-dashboard-container {
+    grid-template-rows: minmax(0, 1fr);
+}
+
+#view-uc6.is-presentation-focus .uc6-page-hero,
+#view-uc6.is-presentation-focus .uc6-top-control-bar,
+#view-uc6.is-presentation-focus .uc6-stage-strip {
+    display: none;
+}
+
+#view-uc6.is-presentation-focus .uc6-workbench {
+    grid-template-columns: 1fr;
+    height: 100%;
+}
+
+#view-uc6.is-presentation-focus .uc6-preview-panel {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+}
+
+#view-uc6.is-presentation-focus .uc6-pdf-placeholder,
+#view-uc6.is-presentation-focus .uc6-pdf-viewer-shell,
+#view-uc6.is-presentation-focus .uc6-pdf-viewer-frame {
+    min-height: 0;
+}
+
+@media (max-width: 1280px) {
+    body:has(#view-uc6.active) {
+        overflow: auto;
+    }
+
+    body:has(#view-uc6.active) #main-content {
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+        padding: 18px;
+    }
+
+    #view-uc6.active,
+    #view-uc6 .uc6-dashboard-container,
+    #view-uc6 .uc6-workbench {
+        height: auto;
+        overflow: visible;
+    }
+
+    #view-uc6 .uc6-workbench {
+        grid-template-columns: 1fr;
+    }
+
+    #view-uc6 .uc6-inspector-panel,
+    #view-uc6 .uc6-preview-panel {
+        height: auto;
+        max-height: none;
+    }
+
+    #view-uc6 .uc6-pdf-placeholder {
+        min-height: 520px;
+    }
+
+    #view-uc6 .uc6-pdf-viewer-shell,
+    #view-uc6 .uc6-pdf-viewer-frame {
+        min-height: 500px;
+    }
+}
+
+/* UC6 Phase A.3 — placeholder centering and stage rail readability correction */
+#view-uc6 .uc6-stage-strip {
+    align-items: stretch;
+}
+
+#view-uc6 .uc6-stage-node {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 10px;
+    min-height: 42px;
+}
+
+#view-uc6 .uc6-stage-index {
+    width: 26px;
+    height: 26px;
+    border-radius: 10px;
+    font-size: 0.74rem;
+}
+
+#view-uc6 .uc6-stage-node > div {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+#view-uc6 .uc6-stage-node strong {
+    font-size: 0.82rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+}
+
+#view-uc6 .uc6-stage-node small {
+    display: none;
+}
+
+#view-uc6 .uc6-pdf-placeholder {
+    display: flex;
+    flex-direction: column;
+}
+
+#view-uc6 .uc6-pdf-placeholder:not(.is-ready) {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    overflow: hidden;
+}
+
+#view-uc6 .uc6-pdf-placeholder:not(.is-ready) .uc6-pdf-mock-toolbar {
+    align-self: flex-start;
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    margin: 0;
+}
+
+#view-uc6 .uc6-pdf-placeholder:not(.is-ready) .uc6-pdf-mock-page {
+    transform: none;
+    transform-origin: center;
+    margin: 0 auto;
+    width: min(52%, 330px);
+    min-height: 190px;
+    padding: 20px;
+}
+
+#view-uc6 .uc6-pdf-placeholder:not(.is-ready) .uc6-placeholder-copy {
+    margin-top: 4px;
+}
+
+#view-uc6.is-presentation-focus .uc6-pdf-placeholder:not(.is-ready) .uc6-pdf-mock-page {
+    width: min(34%, 360px);
+    min-height: 210px;
+}
+
+#view-uc6.is-presentation-focus .uc6-placeholder-copy {
+    max-width: 520px;
+}
+
+#view-uc6 .uc6-tab-panel.active:empty,
+#view-uc6 .uc6-empty-state,
+#view-uc6 .uc6-panel-empty,
+#view-uc6 .uc6-loading-state {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+@media (max-width: 1280px) {
+    #view-uc6 .uc6-stage-node {
+        justify-content: flex-start;
+    }
+
+    #view-uc6 .uc6-pdf-placeholder:not(.is-ready) .uc6-pdf-mock-page,
+    #view-uc6.is-presentation-focus .uc6-pdf-placeholder:not(.is-ready) .uc6-pdf-mock-page {
+        width: min(70%, 340px);
+    }
+}

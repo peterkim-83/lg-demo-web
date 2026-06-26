@@ -491,14 +491,14 @@
             <div class="uc6-control-box uc6-admin-card uc6-action-box">
               <span class="uc6-control-label">4. 생성 단계 제어</span>
               <div class="uc6-mini-pipeline" id="uc6-miniPipeline">
-                <span class="uc6-pipeline-pill is-done">템플릿</span>
+                <span class="uc6-pipeline-pill is-done">Template</span>
                 <span class="uc6-pipeline-pill is-active">Context</span>
                 <span class="uc6-pipeline-pill is-idle">Databag</span>
+                <span class="uc6-pipeline-pill is-idle">Bridge</span>
                 <span class="uc6-pipeline-pill is-locked">PDF</span>
               </div>
               <button class="btn btn-primary w-full" id="uc6-runBtn">UC6 01A~02C 실행</button>
               <button class="btn btn-outline w-full" id="uc6-resetBtn" type="button">단계 초기화</button>
-              <p class="uc6-action-helper" id="uc6-actionHelper">파일을 선택하면 01A부터, 파일이 없으면 선택된 published batch로 02A0부터 실행합니다.</p>
             </div>
           </div>
 
@@ -512,6 +512,7 @@
                 <button class="uc6-tab" type="button" data-uc6-tab="databag">Databag</button>
                 <button class="uc6-tab" type="button" data-uc6-tab="evidence">Evidence</button>
                 <button class="uc6-tab" type="button" data-uc6-tab="artifacts">Artifacts</button>
+                <button class="uc6-tab" type="button" data-uc6-tab="delivery">Delivery</button>
                 <button class="uc6-tab" type="button" data-uc6-tab="debug">Debug</button>
               </div>
 
@@ -713,6 +714,30 @@
                 </div>
               </div>
 
+              <div class="uc6-tab-panel" id="uc6-panel-delivery">
+                <div class="uc6-panel-header">
+                  <h3>Delivery</h3>
+                  <p>Final PDF/PPTX readiness와 public URL 상태를 요약합니다. 우측 영역은 PDF presentation 전용으로 유지합니다.</p>
+                </div>
+                <div class="uc6-delivery-summary-panel" id="uc6-deliverySummaryPanel">
+                  <div class="uc6-pdf-ready-panel is-waiting">
+                    <div class="uc6-pdf-ready-icon">⏳</div>
+                    <div class="uc6-pdf-ready-copy">
+                      <span class="uc6-preview-kicker">Delivery Summary</span>
+                      <strong>Final Delivery 대기</strong>
+                      <p>02C Final PDF Delivery 완료 후 readiness, artifact alias, public URL 상태를 표시합니다.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="uc6-runtime-context-preview">
+                  <div class="uc6-panel-header compact">
+                    <h3>Runtime Context Preview</h3>
+                    <p>02A0 Runtime Context Intelligence Prep에 전달되는 입력값입니다.</p>
+                  </div>
+                  <pre id="uc6-runtimeContextPreview"></pre>
+                </div>
+              </div>
+
               <div class="uc6-tab-panel" id="uc6-panel-debug">
                 <div class="uc6-panel-header">
                   <h3>Raw JSON / Debug</h3>
@@ -725,10 +750,13 @@
             <div class="uc6-preview-panel">
               <div class="uc6-preview-header">
                 <div>
-                  <span class="uc6-preview-kicker">Final PDF Delivery</span>
-                  <h3>PDF 산출물 상태</h3>
+                  <span class="uc6-preview-kicker">Presentation Layer</span>
+                  <h3>Final PDF Preview</h3>
                 </div>
-                <span class="uc6-chip is-locked" id="uc6-previewStateChip">Render Bridge 대기</span>
+                <div class="uc6-preview-header-actions">
+                  <span class="uc6-chip is-locked" id="uc6-previewStateChip">Render Bridge 대기</span>
+                  <button class="btn btn-outline btn-sm" id="uc6-focusToggle" type="button" aria-pressed="false">PDF 집중 보기</button>
+                </div>
               </div>
               <div class="uc6-pdf-placeholder" id="uc6-pdfPlaceholder">
                 <div class="uc6-pdf-mock-toolbar">
@@ -742,20 +770,14 @@
                   <div class="uc6-pdf-mock-line w-48"></div>
                 </div>
                 <div class="uc6-placeholder-copy">
-                  <strong>Final PDF Delivery 대기</strong>
-                  <p>02C 완료 후 final_render_output_pdf artifact readiness와 public download proxy 상태를 표시합니다. PPTX는 fallback artifact로 유지합니다.</p>
+                  <strong>Final PDF Preview 대기</strong>
+                  <p>02C 완료 후 public_pdf_url을 현재 페이지 안의 PDF viewer에 표시합니다. PPTX는 fallback 다운로드로 유지합니다.</p>
                 </div>
               </div>
               <div class="uc6-download-actions">
-                <button class="btn btn-success" id="uc6-pdfDownloadBtn" disabled>📄 PDF 미리보기 대기</button>
-                <button class="btn btn-warning" id="uc6-pptxDownloadBtn" disabled>📊 PPTX fallback 다운로드</button>
-              </div>
-              <div class="uc6-runtime-context-preview">
-                <div class="uc6-panel-header compact">
-                  <h3>Runtime Context Preview</h3>
-                  <p>02A0 Runtime Context Intelligence Prep에 전달되는 입력값입니다.</p>
-                </div>
-                <pre id="uc6-runtimeContextPreview"></pre>
+                <button class="btn btn-outline" id="uc6-pdfOpenBtn" disabled>↗ PDF 새 탭 열기</button>
+                <button class="btn btn-success" id="uc6-pdfDownloadBtn" disabled>📄 PDF 다운로드</button>
+                <button class="btn btn-warning" id="uc6-pptxDownloadBtn" disabled>📊 PPTX 다운로드</button>
               </div>
             </div>
           </div>
