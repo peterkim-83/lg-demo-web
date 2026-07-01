@@ -31,7 +31,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc5-r3d-firestore-saved-preview-2026-06-18-v1';
+const APP_VERSION = 'app.uc6-14e-admin-review-semantic-lineage-panel-2026-07-01-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5904,6 +5904,7 @@ Customer: Thank you. Goodbye.`
     if (Array.isArray(contract.artifact_review_summary)) score += contract.artifact_review_summary.length ? 16 + contract.artifact_review_summary.length : 3;
     if (Array.isArray(contract.recommended_next_steps)) score += contract.recommended_next_steps.length ? 10 + contract.recommended_next_steps.length : 2;
     if (isPlainObject(contract.warning_summary)) score += 10;
+    if (isPlainObject(contract.semantic_lineage_decision_summary)) score += 10;
     if (isPlainObject(contract.chart_lane_summary)) score += 6;
     if (isPlainObject(contract.review_policy)) score += 4;
     if (isPlainObject(contract.decision_summary)) score += 4;
@@ -5975,6 +5976,10 @@ Customer: Thank you. Goodbye.`
     const chartLaneSummary = isPlainObject(contract?.chart_lane_summary) ? contract.chart_lane_summary : {};
     const warningSummary = isPlainObject(contract?.warning_summary) ? contract.warning_summary : {};
     const blockedSummary = isPlainObject(contract?.blocked_summary) ? contract.blocked_summary : {};
+    const semanticLineageSummary = getUC6SemanticLineageDecisionSummary(contract, status);
+    const semanticLineageReasonCodes = Array.isArray(semanticLineageSummary.reason_codes)
+      ? semanticLineageSummary.reason_codes
+      : Array.isArray(status?.semantic_lineage_reason_codes) ? status.semantic_lineage_reason_codes : [];
 
     const valueMap = {
       status: [status?.status, status?.contract_status, contract?.status],
@@ -5990,9 +5995,53 @@ Customer: Thank you. Goodbye.`
       warning_count: [status?.warning_count, decisionSummary.warning_count, warningSummary.warning_count, contract?.warning_count],
       admin_action_count: [status?.admin_action_count, decisionSummary.admin_action_count, contract?.admin_action_count],
       blocked_item_count: [status?.blocked_item_count, decisionSummary.blocked_item_count, blockedSummary.blocked_item_count, contract?.blocked_item_count],
-      chart_lane: [status?.chart_lane, status?.chart_lane_status, chartLaneSummary.status, chartLaneSummary.chart_lane_status, chartLaneSummary.policy, chartLaneSummary.freeze_status]
+      chart_lane: [status?.chart_lane, status?.chart_lane_status, chartLaneSummary.status, chartLaneSummary.chart_lane_status, chartLaneSummary.policy, chartLaneSummary.freeze_status],
+      semantic_lineage_summary_present: [status?.semantic_lineage_summary_present, isPlainObject(semanticLineageSummary) && Object.keys(semanticLineageSummary).length > 0],
+      semantic_lineage_source_present: [status?.semantic_lineage_source_present, semanticLineageSummary.source_present],
+      semantic_lineage_decision_gate_status: [status?.semantic_lineage_decision_gate_status, semanticLineageSummary.decision_gate_status, decisionSummary.semantic_lineage_decision_gate_status],
+      semantic_lineage_direct_consumption_confirmed: [status?.semantic_lineage_direct_consumption_confirmed, semanticLineageSummary.direct_consumption_confirmed, decisionSummary.semantic_lineage_direct_consumption_confirmed],
+      semantic_lineage_retrofit_status: [status?.semantic_lineage_retrofit_status, semanticLineageSummary.retrofit_status, decisionSummary.semantic_lineage_retrofit_status],
+      semantic_lineage_reason_code_count: [semanticLineageReasonCodes.length],
+      semantic_lineage_reason_codes: [semanticLineageReasonCodes.length ? semanticLineageReasonCodes.join(', ') : null]
     };
     return firstUC6Defined(...(valueMap[key] || []));
+  }
+
+  function getUC6SemanticLineageDecisionSummary(contract, status) {
+    if (isPlainObject(contract?.semantic_lineage_decision_summary)) return contract.semantic_lineage_decision_summary;
+    const stages = uc6State.stageResponses || {};
+    const finalDelivery = stages.final_pdf_delivery || {};
+    const response = uc6State.responsePayload || {};
+    const topResponse = uc6State.response || {};
+    const candidates = [
+      finalDelivery.admin_review_decision_semantic_lineage_summary,
+      response.admin_review_decision_semantic_lineage_summary,
+      topResponse.admin_review_decision_semantic_lineage_summary,
+      finalDelivery.task_chain_summary?.admin_review_decision_contract,
+      response.task_chain_summary?.admin_review_decision_contract,
+      finalDelivery.artifact_status?.admin_review_decision_contract,
+      response.artifact_status?.admin_review_decision_contract,
+      status
+    ];
+    for (const candidate of candidates) {
+      const summary = coerceUC6ObjectCandidate(candidate);
+      if (isPlainObject(summary?.semantic_lineage_decision_summary)) return summary.semantic_lineage_decision_summary;
+      if (summary && (
+        summary.semantic_lineage_decision_gate_status !== undefined
+        || summary.semantic_lineage_retrofit_status !== undefined
+        || summary.semantic_lineage_direct_consumption_confirmed !== undefined
+        || summary.semantic_lineage_source_present !== undefined
+      )) {
+        return {
+          source_present: summary.semantic_lineage_source_present ?? null,
+          decision_gate_status: summary.semantic_lineage_decision_gate_status ?? null,
+          direct_consumption_confirmed: summary.semantic_lineage_direct_consumption_confirmed ?? null,
+          retrofit_status: summary.semantic_lineage_retrofit_status ?? null,
+          reason_codes: Array.isArray(summary.semantic_lineage_reason_codes) ? summary.semantic_lineage_reason_codes : []
+        };
+      }
+    }
+    return {};
   }
 
   function getUC6DecisionTone(label, value) {
@@ -6007,6 +6056,25 @@ Customer: Thank you. Goodbye.`
     if (label === 'contract_status') return String(value).includes('insufficient') || String(value).includes('blocked') ? 'danger' : String(value).includes('warning') ? 'warning' : 'ready';
     if (label === 'source_contract_status') return String(value).includes('ready') ? 'ready' : value ? 'warning' : 'muted';
     if (label === 'chart_lane') return String(value).includes('frozen') || String(value).includes('defer') ? 'warning' : value ? 'muted' : 'locked';
+    if (label === 'semantic_lineage_summary_present') return value === true ? 'ready' : 'muted';
+    if (label === 'semantic_lineage_source_present') return value === true ? 'ready' : value === false ? 'warning' : 'muted';
+    if (label === 'semantic_lineage_direct_consumption_confirmed') return value === true ? 'ready' : value === false ? 'warning' : 'muted';
+    if (label === 'semantic_lineage_decision_gate_status') {
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'satisfied') return 'ready';
+      if (normalized === 'invalid_source') return 'danger';
+      if (normalized === 'missing_source' || normalized === 'partially_satisfied') return 'warning';
+      return normalized ? 'muted' : 'locked';
+    }
+    if (label === 'semantic_lineage_retrofit_status') {
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'consumed') return 'ready';
+      if (normalized === 'invalid_source') return 'danger';
+      if (normalized === 'missing_source' || normalized === 'partially_consumed') return 'warning';
+      return normalized ? 'muted' : 'locked';
+    }
+    if (label === 'semantic_lineage_reason_code_count') return Number(value) > 0 ? 'warning' : 'ready';
+    if (label === 'semantic_lineage_reason_codes') return value ? 'warning' : 'muted';
     return value === null || value === undefined || value === '-' ? 'muted' : 'ready';
   }
 
@@ -6319,7 +6387,14 @@ Customer: Thank you. Goodbye.`
       blocking_issue_count: getUC6NestedDecisionValue(contract, status, 'blocking_issue_count') ?? 0,
       admin_action_count: getUC6NestedDecisionValue(contract, status, 'admin_action_count') ?? 0,
       blocked_item_count: getUC6NestedDecisionValue(contract, status, 'blocked_item_count') ?? 0,
-      chart_lane: getUC6NestedDecisionValue(contract, status, 'chart_lane') || 'frozen_after_uc6_06e'
+      chart_lane: getUC6NestedDecisionValue(contract, status, 'chart_lane') || 'frozen_after_uc6_06e',
+      semantic_lineage_summary_present: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_summary_present'),
+      semantic_lineage_source_present: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_source_present'),
+      semantic_lineage_decision_gate_status: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_decision_gate_status') || '-',
+      semantic_lineage_direct_consumption_confirmed: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_direct_consumption_confirmed'),
+      semantic_lineage_retrofit_status: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_retrofit_status') || '-',
+      semantic_lineage_reason_code_count: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_reason_code_count') ?? 0,
+      semantic_lineage_reason_codes: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_reason_codes') || '-'
     };
 
     const loadedFrom = [contractInfo.source, statusInfo.source].filter(Boolean).join(' + ');
@@ -6342,7 +6417,13 @@ Customer: Thank you. Goodbye.`
         { label: 'blocking_issue_count', value: summary.blocking_issue_count },
         { label: 'admin_action_count', value: summary.admin_action_count },
         { label: 'blocked_item_count', value: summary.blocked_item_count },
-        { label: 'chart_lane', value: summary.chart_lane }
+        { label: 'chart_lane', value: summary.chart_lane },
+        { label: 'semantic_lineage_summary_present', value: summary.semantic_lineage_summary_present },
+        { label: 'semantic_lineage_source_present', value: summary.semantic_lineage_source_present },
+        { label: 'semantic_lineage_decision_gate_status', value: summary.semantic_lineage_decision_gate_status },
+        { label: 'semantic_lineage_direct_consumption_confirmed', value: summary.semantic_lineage_direct_consumption_confirmed },
+        { label: 'semantic_lineage_retrofit_status', value: summary.semantic_lineage_retrofit_status },
+        { label: 'semantic_lineage_reason_code_count', value: summary.semantic_lineage_reason_code_count }
       ];
       uc6Els.decisionSummary.innerHTML = cards.map((card) => `
         <div class="uc6-readiness-card is-${escapeHtml(getUC6DecisionTone(card.label, card.value))}">
@@ -6355,9 +6436,17 @@ Customer: Thank you. Goodbye.`
     renderUC6AdminReviewDecisionDetails(contract || {});
 
     if (uc6Els.decisionRawJson) {
+      const semanticLineageDecisionSummary = getUC6SemanticLineageDecisionSummary(contract, status);
       const rawPayload = contract
-        ? { admin_review_decision_contract_status: summary, admin_review_decision_contract: contract }
-        : { admin_review_decision_contract_status: summary };
+        ? {
+            admin_review_decision_contract_status: summary,
+            admin_review_decision_semantic_lineage_summary: semanticLineageDecisionSummary,
+            admin_review_decision_contract: contract
+          }
+        : {
+            admin_review_decision_contract_status: summary,
+            admin_review_decision_semantic_lineage_summary: semanticLineageDecisionSummary
+          };
       uc6Els.decisionRawJson.textContent = formatUC6Json(sanitizeUC6ForBrowserDebug(rawPayload));
     }
   }
