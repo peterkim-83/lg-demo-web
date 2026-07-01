@@ -31,7 +31,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-14e-admin-review-semantic-lineage-panel-2026-07-01-v1';
+const APP_VERSION = 'app.uc6-14f-pdf-preview-resilience-2026-07-01-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6579,6 +6579,53 @@ Customer: Thank you. Goodbye.`
     }
   }
 
+  function getUC6DeliveryRenderRunId(delivery) {
+    if (!isPlainObject(delivery)) return '';
+    return firstUC6Defined(
+      delivery.render_run_id,
+      delivery.renderRunId,
+      delivery.final_delivery?.render_run_id,
+      delivery.request?.render_run_id,
+      delivery.task_chain_summary?.final_pdf_conversion?.render_run_id
+    ) || '';
+  }
+
+  function getUC6ActiveRenderRunId(delivery) {
+    return firstUC6Defined(
+      uc6State.renderRunId,
+      uc6State.stageResponses.runtime_databag_prep?.render_run_id,
+      uc6State.stageResponses.runtime_render_bridge?.render_run_id,
+      uc6State.stageResponses.final_pdf_delivery?.render_run_id,
+      !uc6State.isRunning ? getUC6DeliveryRenderRunId(delivery) : null
+    ) || '';
+  }
+
+  function resetUC6PdfPreviewMount(reason) {
+    if (!uc6Els.pdfPlaceholder) return;
+    delete uc6Els.pdfPlaceholder.dataset.viewerUrl;
+    delete uc6Els.pdfPlaceholder.dataset.viewerRenderRunId;
+    delete uc6Els.pdfPlaceholder.dataset.viewerLoadState;
+    if (reason) uc6Els.pdfPlaceholder.dataset.viewerResetReason = reason;
+  }
+
+  function clearUC6RuntimeDeliveryStateForNewRun() {
+    [
+      'context_intelligence_prep',
+      'runtime_databag_prep',
+      'runtime_render_bridge',
+      'final_pdf_delivery'
+    ].forEach((stageId) => {
+      if (uc6State.stageResponses && Object.prototype.hasOwnProperty.call(uc6State.stageResponses, stageId)) {
+        delete uc6State.stageResponses[stageId];
+      }
+    });
+    uc6State.responsePayload = null;
+    uc6State.download = null;
+    uc6State.contextCollectionId = '';
+    uc6State.renderRunId = '';
+    resetUC6PdfPreviewMount('new_run');
+  }
+
   function renderUC6FinalDeliveryPreview(delivery, pdfUrl, pptxUrl) {
     const pdfStatus = getUC6DeliveryArtifactStatus(delivery, 'final_render_output_pdf');
     const pptxStatus = getUC6DeliveryArtifactStatus(delivery, 'final_render_output_pptx');
@@ -6587,6 +6634,12 @@ Customer: Thank you. Goodbye.`
     const mode = delivery.delivery_mode || delivery.phase || (pdfReady ? 'final_pdf_ready' : 'waiting');
     const downloadProxyReady = Boolean(pdfUrl || pptxUrl);
     const viewerUrl = buildUC6PdfViewerUrl(pdfUrl);
+    const deliveryRenderRunId = getUC6DeliveryRenderRunId(delivery);
+    const activeRenderRunId = getUC6ActiveRenderRunId(delivery);
+    const deliveryMatchesActiveRun = !deliveryRenderRunId || !activeRenderRunId || deliveryRenderRunId === activeRenderRunId;
+    const finalDeliveryRecorded = Boolean(uc6State.stageResponses.final_pdf_delivery?.final_pdf_ready || uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready);
+    const finalDeliveryPhaseReady = !uc6State.isRunning || uc6State.currentStage === 'final_pdf_delivery' || finalDeliveryRecorded;
+    const canMountPdfPreview = pdfReady && Boolean(viewerUrl) && deliveryMatchesActiveRun && finalDeliveryPhaseReady;
     const adminDecisionSource = getUC6AdminReviewDecisionContractSource();
     const adminEvidenceSource = getUC6AdminEvidenceContractSource();
     const adminReviewLoaded = Boolean(adminDecisionSource.contract || adminEvidenceSource.contract);
@@ -6637,16 +6690,64 @@ Customer: Thank you. Goodbye.`
       uc6Els.deliverySummaryPanel.innerHTML = deliverySummaryHtml;
     }
     if (!uc6Els.pdfPlaceholder) return;
-    uc6Els.pdfPlaceholder.classList.toggle('is-ready', pdfReady && Boolean(viewerUrl));
-    uc6Els.pdfPlaceholder.classList.toggle('is-waiting', !viewerUrl);
-    if (pdfReady && viewerUrl) {
+    uc6Els.pdfPlaceholder.classList.toggle('is-ready', canMountPdfPreview);
+    uc6Els.pdfPlaceholder.classList.toggle('is-waiting', !canMountPdfPreview);
+
+    if (canMountPdfPreview) {
+      const existingFrame = uc6Els.pdfPlaceholder.querySelector('iframe.uc6-pdf-viewer-frame');
+      if (
+        existingFrame
+        && uc6Els.pdfPlaceholder.dataset.viewerUrl === viewerUrl
+        && existingFrame.getAttribute('src') === viewerUrl
+      ) {
+        uc6Els.pdfPlaceholder.dataset.viewerRenderRunId = deliveryRenderRunId || activeRenderRunId || '';
+        return;
+      }
+      uc6Els.pdfPlaceholder.dataset.viewerUrl = viewerUrl;
+      uc6Els.pdfPlaceholder.dataset.viewerRenderRunId = deliveryRenderRunId || activeRenderRunId || '';
+      uc6Els.pdfPlaceholder.dataset.viewerLoadState = 'loading';
       uc6Els.pdfPlaceholder.innerHTML = `
         <div class="uc6-pdf-viewer-shell">
           <iframe class="uc6-pdf-viewer-frame" title="Final PDF Preview" src="${escapeHtml(viewerUrl)}" loading="lazy"></iframe>
         </div>
       `;
+      const iframe = uc6Els.pdfPlaceholder.querySelector('iframe.uc6-pdf-viewer-frame');
+      if (iframe) {
+        const loadToken = `${Date.now()}`;
+        uc6Els.pdfPlaceholder.dataset.viewerLoadToken = loadToken;
+        iframe.addEventListener('load', () => {
+          if (uc6Els.pdfPlaceholder?.dataset.viewerLoadToken === loadToken) {
+            uc6Els.pdfPlaceholder.dataset.viewerLoadState = 'loaded';
+          }
+        }, { once: true });
+        window.setTimeout(() => {
+          if (
+            uc6Els.pdfPlaceholder
+            && uc6Els.pdfPlaceholder.dataset.viewerLoadToken === loadToken
+            && uc6Els.pdfPlaceholder.dataset.viewerLoadState === 'loading'
+          ) {
+            uc6Els.pdfPlaceholder.dataset.viewerLoadState = 'slow';
+          }
+        }, 8000);
+      }
       return;
     }
+
+    resetUC6PdfPreviewMount(deliveryMatchesActiveRun ? 'waiting' : 'render_run_mismatch');
+    const waitingTitle = pdfReady && viewerUrl && !deliveryMatchesActiveRun
+      ? '이전 PDF Preview 보류'
+      : pdfReady && viewerUrl && !finalDeliveryPhaseReady
+        ? '02C Final Delivery 완료 대기'
+        : pdfReady
+          ? 'PDF URL 대기'
+          : 'Final PDF Preview 대기';
+    const waitingMessage = pdfReady && viewerUrl && !deliveryMatchesActiveRun
+      ? '이전 render_run_id의 PDF를 현재 실행 중인 run에 재마운트하지 않습니다.'
+      : pdfReady && viewerUrl && !finalDeliveryPhaseReady
+        ? '단계 전환 중에는 PDF iframe을 재생성하지 않고 02C 완료 후 한 번만 표시합니다.'
+        : pdfReady
+          ? 'PDF artifact는 준비됐지만 browser-safe public URL을 만들 수 없습니다.'
+          : '02C 완료 후 public_pdf_url을 현재 페이지 안의 PDF viewer에 표시합니다.';
     uc6Els.pdfPlaceholder.innerHTML = `
       <div class="uc6-pdf-mock-toolbar">
         <span></span><span></span><span></span>
@@ -6659,8 +6760,8 @@ Customer: Thank you. Goodbye.`
         <div class="uc6-pdf-mock-line w-48"></div>
       </div>
       <div class="uc6-placeholder-copy">
-        <strong>${pdfReady ? 'PDF URL 대기' : 'Final PDF Preview 대기'}</strong>
-        <p>${pdfReady ? 'PDF artifact는 준비됐지만 browser-safe public URL을 만들 수 없습니다.' : '02C 완료 후 public_pdf_url을 현재 페이지 안의 PDF viewer에 표시합니다.'}</p>
+        <strong>${escapeHtml(waitingTitle)}</strong>
+        <p>${escapeHtml(waitingMessage)}</p>
       </div>
     `;
   }
@@ -6759,6 +6860,7 @@ Customer: Thank you. Goodbye.`
     uc6State.download = null;
     uc6State.lastError = null;
     uc6State.isRunning = false;
+    resetUC6PdfPreviewMount('reset');
     if (uc6Els.runBtn) uc6Els.runBtn.disabled = false;
     try { localStorage.removeItem(UC6_STORAGE_KEY); } catch (_) {}
     renderUC6All();
@@ -6775,6 +6877,7 @@ Customer: Thank you. Goodbye.`
       uc6State.isRunning = true;
       uc6State.lastError = null;
       uc6State.stageErrors = {};
+      clearUC6RuntimeDeliveryStateForNewRun();
       uc6State.requestPayload = { batch_id: batchId || '(generated by 01A)', runtime_context: runtimeContext };
       uc6Els.runBtn.disabled = true;
       setUC6ActiveTab('debug');
