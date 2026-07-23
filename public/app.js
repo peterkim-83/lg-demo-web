@@ -1,4 +1,16 @@
 import { UltravoxSession } from 'https://esm.sh/ultravox-client@0.3.6';
+import {
+  UC6_BROWSER_ADMIN_ENDPOINTS,
+  UC6_GENERIC_PUBLIC_ERROR_MESSAGE,
+  classifyUc6AuthorizationFailure,
+  createUc6BrowserAdminApi,
+  mapUc6StateToView,
+  normalizeUc6JobId,
+  projectUc6PersistedState,
+  runUc6CreateJobAndSubmitInitialAnalysis,
+  splitDecisionTextLines,
+  validateUc6DecisionCommand
+} from './uc6-browser-admin.mjs';
 
 window.UltravoxSession = UltravoxSession;
 console.log('UltravoxSession loaded:', typeof window.UltravoxSession);
@@ -18,20 +30,13 @@ const CONFIG = {
   UC5_W02_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-template-blueprint-plan-responses',
   UC5_W03_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-slot-fill-render-responses',
   UC5_W99_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/uc5-source-cleanup-responses',
-  UC6_TEMPLATE_INTAKE_REVIEW_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/intake-review-prep',
-  UC6_TEMPLATE_REVIEW_STATUS_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/review-status',
-  UC6_TEMPLATE_APPROVAL_PUBLISH_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/template/approval-publish',
-  UC6_RUNTIME_CONTEXT_INTELLIGENCE_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/context-intelligence-prep',
-  UC6_RUNTIME_DATABAG_PREP_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/databag-prep',
-  UC6_RUNTIME_RENDER_BRIDGE_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/runtime/render-bridge',
-  UC6_FINAL_PDF_DELIVERY_WEBHOOK: 'https://peter-n8n.duckdns.org/webhook/fetchdoc/uc6/final/pdf-delivery',
-  UC6_FINAL_PPTX_DOWNLOAD_PROXY_BASE: 'https://api.peter-n8n.duckdns.org'
+  UC6_BROWSER_ADMIN_API_BASE: 'https://api.peter-n8n.duckdns.org'
 };
 
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-14f-pdf-preview-resilience-2026-07-01-v1';
+const APP_VERSION = 'app.uc6-browser-admin-control-plane-2026-07-23-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5079,1976 +5084,742 @@ Customer: Thank you. Goodbye.`
 
 
   // ==========================================
-  // 🧾 Use Case 6: FetchDoc 문서 생성 운영 관리
+  // 🧾 Use Case 6: FetchDoc browser-admin control plane
   // ==========================================
-  const UC6_DEFAULT_BATCH_ID = 'fd_norm_20260617_052857_8w19ym';
-  const UC6_STORAGE_KEY = 'fetchdoc.uc6.admin_stage_controller.v1';
+  const UC6_STORAGE_KEY = 'fetchdoc.uc6.browser_admin_control_plane.v1';
+  const UC6_FIREBASE_SDK_VERSION = '10.14.1';
   const UC6_POLL_INTERVAL_MS = 3500;
-  const UC6_REVIEW_MAX_ATTEMPTS = 90;
+  const UC6_MAX_TRANSIENT_ERRORS = 3;
+  const UC6_AUTHORIZED_LABEL = '승인된 FetchDoc 관리자';
 
-  const UC6_STAGE_SEQUENCE = [
-    'intake_review_prep',
-    'review_status',
-    'approval_publish',
-    'context_intelligence_prep',
-    'runtime_databag_prep',
-    'runtime_render_bridge',
-    'final_pdf_delivery'
-  ];
-
-  const UC6_STAGE_MODEL = [
-    { id: 'intake_review_prep', label: '01A Intake', detail: 'PPTX 분석/정규화' },
-    { id: 'review_status', label: '01B Review', detail: 'Review Ready 확인' },
-    { id: 'approval_publish', label: '01C Publish', detail: '관리자 승인/게시' },
-    { id: 'context_intelligence_prep', label: '02A0 Context', detail: 'Web Research + Databag 수집' },
-    { id: 'runtime_databag_prep', label: '02A Databag', detail: 'Enriched 입력 소비' },
-    { id: 'runtime_render_bridge', label: '02B Bridge', detail: 'Final Render 준비' },
-    { id: 'final_pdf_delivery', label: '02C Delivery', detail: 'PPTX 산출물 생성' }
-  ];
-
-  const UC6_SAMPLE_CASES = {
-    marriott_ai_hospitality: {
-      label: 'Marriott AI Hospitality 제안',
-      description: '02A0~02C smoke에서 검증한 rich runtime context 샘플입니다.',
-      runtime_context: {
-        account_name: 'Marriott International',
-        account_website: 'https://www.marriott.com',
-        industry: 'Hospitality',
-        region: 'Global / North America',
-        proposal_date: '2026-06-17',
-        vendor_name: 'LG CNS',
-        vendor_contact: 'Peter Kim',
-        target_audience: 'IT, Operations, Digital Transformation leadership',
-        proposal_objective: 'Prepare an executive proposal about AI-enabled hotel operations and customer experience improvement.',
-        proposal_tone: 'executive proposal',
-        solution_focus: [
-          'AI operations automation',
-          'customer experience personalization',
-          'data integration',
-          'workflow modernization'
-        ],
-        pain_points: [
-          'labor efficiency',
-          'service consistency',
-          'guest experience differentiation',
-          'operational visibility'
-        ],
-        competitors_or_alternatives: [],
-        must_include: ['business value', 'implementation roadmap', 'risk mitigation'],
-        must_exclude: ['unverified financial claims'],
-        notes: ''
-      }
-    },
-    lg_internal_demo: {
-      label: 'LG 내부 보고서 샘플',
-      description: '내부 보고서 생성 운영 흐름 확인용 샘플입니다.',
-      runtime_context: {
-        account_name: 'LG Electronics',
-        account_website: 'https://www.lg.com',
-        industry: 'Consumer Electronics',
-        region: 'Korea / Global',
-        proposal_date: '2026-06-18',
-        vendor_name: 'LG CNS',
-        vendor_contact: 'AI Transformation Team',
-        target_audience: 'DX leadership and operations teams',
-        proposal_objective: 'Prepare an internal executive report about AI document automation operating model.',
-        proposal_tone: 'executive briefing',
-        solution_focus: ['document automation', 'template governance', 'runtime databag readiness'],
-        pain_points: ['manual document preparation', 'inconsistent templates', 'slow approval cycles'],
-        must_include: ['operating model', 'governance', 'implementation roadmap'],
-        must_exclude: ['unverified ROI claims'],
-        notes: ''
-      }
-    },
-    partner_proposal_demo: {
-      label: '파트너 제안 샘플',
-      description: '파트너/고객사 제안서 생성을 위한 범용 샘플입니다.',
-      runtime_context: {
-        account_name: 'Global Partner Co.',
-        account_website: '',
-        industry: 'Technology Services',
-        region: 'APAC',
-        proposal_date: '2026-06-20',
-        vendor_name: 'LG CNS',
-        vendor_contact: 'Partner Success Manager',
-        target_audience: 'Partner executives and delivery leaders',
-        proposal_objective: 'Prepare a partner proposal focused on repeatable AI document generation operations.',
-        proposal_tone: 'business proposal',
-        solution_focus: ['template lifecycle', 'runtime context collection', 'final document delivery'],
-        pain_points: ['proposal turnaround time', 'manual content reuse', 'approval visibility'],
-        must_include: ['business value', 'delivery plan', 'risk control'],
-        must_exclude: [],
-        notes: ''
-      }
-    }
+  const UC6_AUTH_COPY = {
+    initializing: ['초기화 중', 'Firebase Auth와 FetchDoc 관리자 세션을 준비하고 있습니다.'],
+    signed_out: ['로그인 필요', 'Google 계정으로 로그인한 뒤 FetchDoc 관리자 권한을 확인하세요.'],
+    authenticating: ['로그인 진행 중', 'Firebase sign-in 흐름을 처리하고 있습니다.'],
+    authorizing: ['권한 확인 중', 'FetchDoc browser-admin 세션 권한을 확인하고 있습니다.'],
+    authorized: ['관리자 승인 완료', 'PPTX 업로드와 분석 검토를 진행할 수 있습니다.'],
+    access_denied: ['접근 거부', 'FetchDoc 관리자 권한이 확인되지 않았습니다.'],
+    temporarily_unavailable: ['일시적 사용 불가', '관리자 세션 확인을 잠시 후 다시 시도하세요.']
   };
 
-  const UC6_DEFAULT_ARTIFACTS = {
-    runtime_context_packet: '02A0 실행 후 표시',
-    runtime_enriched_databag_candidate: '02A0 실행 후 표시',
-    runtime_databag_candidate: '02A 실행 후 표시',
-    published_template_final_render_input: '02B 실행 후 표시',
-    admin_evidence_review_contract: '07B 연동 후 표시',
-    admin_review_decision_contract: '09C 연동 후 표시',
-    final_render_output_pptx: '02C 실행 후 표시',
-    final_render_output_pdf: '11A-B PDF 변환 후 표시'
+  const UC6_STATE_LABELS = {
+    source_ready: '소스 준비 완료',
+    analysis_queued: '분석 대기 중',
+    analysis_running: '분석 실행 중',
+    failed: '분석 실패',
+    review_ready: '검토 준비 완료',
+    review_ready_with_warnings: '경고 포함 검토 준비',
+    review_blocked: '검토 차단',
+    approved: '승인 완료',
+    revision_requested: '수정 요청 완료',
+    rejected: '반려 완료'
   };
 
-  const UC6_ADMIN_EVIDENCE_ARTIFACT_KEYS = [
-    'runtime_databag_prep',
-    'optional_text_injection_plan',
-    'optional_text_injection_dry_run_result',
-    'structured_slot_rendering_contract',
-    'structured_slot_rendering_capability_assessment',
-    'structured_chart_data_replacement_contract'
-  ];
+  const UC6_DECISION_LABELS = {
+    approve: '승인',
+    request_revision: '수정 요청',
+    reject: '반려'
+  };
 
   const uc6State = {
-    selectedSampleId: 'marriott_ai_hospitality',
-    selectedBatchId: UC6_DEFAULT_BATCH_ID,
-    approvalStatus: 'approved',
-    pptxFileName: '',
-    requestPayload: null,
-    responsePayload: null,
-    stageResponses: {},
-    stageErrors: {},
-    currentStage: null,
-    isRunning: false,
-    lastError: null,
-    activeTab: 'template',
-    presentationFocus: false,
-    contextCollectionId: '',
-    renderRunId: '',
-    download: null
+    authStatus: 'initializing',
+    firebaseClient: null,
+    firebaseUser: null,
+    api: null,
+    session: null,
+    jobId: '',
+    jobState: '',
+    source: null,
+    review: null,
+    decision: null,
+    selectedFile: null,
+    operationInFlight: false,
+    analysisSubmittedForJobId: '',
+    decisionSubmitted: false,
+    pollingTimer: null,
+    pollingAbortController: null,
+    operationAbortController: null,
+    statusRequestActive: false,
+    consecutivePollErrors: 0,
+    lastPollingTimestamp: 0
   };
 
   const uc6Els = {
     section: document.getElementById('view-uc6'),
-    heroStatusText: document.getElementById('uc6-heroStatusText'),
-    heroStatusSubtext: document.getElementById('uc6-heroStatusSubtext'),
-    pptxInput: document.getElementById('uc6-pptxInput'),
-    pptxUploadText: document.getElementById('uc6-pptxUploadText'),
-    pptxFileName: document.getElementById('uc6-pptxFileName'),
-    pptxStateChip: document.getElementById('uc6-pptxStateChip'),
-    batchSelect: document.getElementById('uc6-batchSelect'),
-    customBatchId: document.getElementById('uc6-customBatchId'),
-    approvalChip: document.getElementById('uc6-templateApprovalChip'),
-    gateButtons: document.querySelectorAll('[data-uc6-approval]'),
-    sampleCase: document.getElementById('uc6-sampleCase'),
-    runtimeEditor: document.getElementById('uc6-runtimeContextEditor'),
-    contextStateChip: document.getElementById('uc6-contextStateChip'),
-    runBtn: document.getElementById('uc6-runBtn'),
-    resetBtn: document.getElementById('uc6-resetBtn'),
-    focusToggle: document.getElementById('uc6-focusToggle'),
-    actionHelper: document.getElementById('uc6-actionHelper'),
-    miniPipeline: document.getElementById('uc6-miniPipeline'),
-    stageTimeline: document.getElementById('uc6-stageTimeline'),
-    tabs: document.querySelectorAll('[data-uc6-tab]'),
-    templateSummary: document.getElementById('uc6-templateSummary'),
-    slotTableBody: document.getElementById('uc6-slotTableBody'),
-    readinessSummary: document.getElementById('uc6-readinessSummary'),
-    evidenceStatus: document.getElementById('uc6-evidenceStatus'),
-    evidenceSummary: document.getElementById('uc6-evidenceSummary'),
-    evidenceArtifactTableBody: document.getElementById('uc6-evidenceArtifactTableBody'),
-    evidenceRawJson: document.getElementById('uc6-evidenceRawJson'),
+    authStateChip: document.getElementById('uc6-authStateChip'),
+    authStatus: document.getElementById('uc6-authStatus'),
+    signInBtn: document.getElementById('uc6-signInBtn'),
+    signOutBtn: document.getElementById('uc6-signOutBtn'),
+    refreshSessionBtn: document.getElementById('uc6-refreshSessionBtn'),
+    fileInput: document.getElementById('uc6-pptxFileInput'),
+    fileName: document.getElementById('uc6-selectedFileName'),
+    uploadBtn: document.getElementById('uc6-uploadBtn'),
+    uploadIndicator: document.getElementById('uc6-uploadIndicator'),
+    clearBtn: document.getElementById('uc6-clearBtn'),
+    sourceSize: document.getElementById('uc6-sourceSize'),
+    sourceSlides: document.getElementById('uc6-sourceSlides'),
+    jobId: document.getElementById('uc6-jobId'),
+    jobState: document.getElementById('uc6-jobState'),
+    analysisState: document.getElementById('uc6-analysisState'),
+    analysisMessage: document.getElementById('uc6-analysisMessage'),
+    pollingChip: document.getElementById('uc6-pollingChip'),
+    retryAnalysisBtn: document.getElementById('uc6-retryAnalysisBtn'),
+    resumePollingBtn: document.getElementById('uc6-resumePollingBtn'),
+    reviewStatus: document.getElementById('uc6-reviewStatus'),
+    reviewSummaryGrid: document.getElementById('uc6-reviewSummaryGrid'),
+    reviewSurfaceList: document.getElementById('uc6-reviewSurfaceList'),
+    runtimeReadinessList: document.getElementById('uc6-runtimeReadinessList'),
+    currentDecisionList: document.getElementById('uc6-currentDecisionList'),
+    reviewPackageHash: document.getElementById('uc6-reviewPackageHash'),
+    decisionChoice: document.getElementById('uc6-decisionChoice'),
+    reviewNotes: document.getElementById('uc6-reviewNotes'),
+    requestedRevisions: document.getElementById('uc6-requestedRevisions'),
+    submitDecisionBtn: document.getElementById('uc6-submitDecisionBtn'),
     decisionStatus: document.getElementById('uc6-decisionStatus'),
-    decisionSummary: document.getElementById('uc6-decisionSummary'),
-    decisionGateTableBody: document.getElementById('uc6-decisionGateTableBody'),
-    reviewChecklistTableBody: document.getElementById('uc6-reviewChecklistTableBody'),
-    warningSummary: document.getElementById('uc6-warningSummary'),
-    warningSourceTableBody: document.getElementById('uc6-warningSourceTableBody'),
-    decisionArtifactReviewTableBody: document.getElementById('uc6-decisionArtifactReviewTableBody'),
-    recommendedNextStepTableBody: document.getElementById('uc6-recommendedNextStepTableBody'),
-    decisionRawJson: document.getElementById('uc6-decisionRawJson'),
-    artifactTableBody: document.getElementById('uc6-artifactTableBody'),
-    debugJson: document.getElementById('uc6-debugJson'),
-    runtimeContextPreview: document.getElementById('uc6-runtimeContextPreview'),
-    deliverySummaryPanel: document.getElementById('uc6-deliverySummaryPanel'),
-    previewStateChip: document.getElementById('uc6-previewStateChip'),
-    pdfPlaceholder: document.getElementById('uc6-pdfPlaceholder'),
-    pdfOpenBtn: document.getElementById('uc6-pdfOpenBtn'),
-    pdfDownloadBtn: document.getElementById('uc6-pdfDownloadBtn'),
-    pptxDownloadBtn: document.getElementById('uc6-pptxDownloadBtn')
+    diagnosticsList: document.getElementById('uc6-diagnosticsList'),
+    diagnosticsStatus: document.getElementById('uc6-diagnosticsStatus')
   };
 
-  function isPlainObject(value) {
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  function uc6Text(value, fallback = '-') {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : fallback;
+    return String(value);
   }
 
-  function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  function setUc6Text(el, value, fallback = '-') {
+    if (el) el.textContent = uc6Text(value, fallback);
   }
 
-  function getUC6SelectedBatchId() {
-    if (uc6Els.batchSelect?.value === 'custom') {
-      return (uc6Els.customBatchId?.value || '').trim();
-    }
-    return uc6Els.batchSelect?.value || uc6State.selectedBatchId || UC6_DEFAULT_BATCH_ID;
-  }
-
-  function getUC6RuntimeContext() {
-    const text = uc6Els.runtimeEditor?.value || '{}';
-    return JSON.parse(text);
-  }
-
-  function setUC6Chip(el, text, stateClass) {
+  function setUc6Chip(el, label, tone = 'neutral') {
     if (!el) return;
-    el.textContent = text;
-    el.className = `uc6-chip ${stateClass || 'is-muted'}`;
+    el.textContent = label;
+    el.className = `uc6-admin-chip is-${tone}`;
   }
 
-  function formatUC6Json(value) {
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch (_) {
-      return String(value ?? '');
+  function formatUc6Bytes(value) {
+    const bytes = Number(value || 0);
+    if (!Number.isFinite(bytes) || bytes <= 0) return '-';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function boundedFilename(name) {
+    const cleaned = String(name || '').replace(/[\\/\u0000-\u001f]/g, '').trim();
+    if (!cleaned) return '';
+    return cleaned.length > 90 ? `${cleaned.slice(0, 42)}...${cleaned.slice(-36)}` : cleaned;
+  }
+
+  function uc6MessageFromError(error) {
+    if (error?.publicMessage) return error.publicMessage;
+    if (error?.name === 'AbortError') return '요청이 취소되었습니다.';
+    return UC6_GENERIC_PUBLIC_ERROR_MESSAGE;
+  }
+
+  function isUc6Authorized() {
+    return uc6State.authStatus === 'authorized';
+  }
+
+  function validateUc6SessionContract(session) {
+    const principal = session?.principal || {};
+    return session?.status === 'authorized'
+      && principal.authenticated === true
+      && principal.authorized === true
+      && principal.email_verified === true
+      && principal.admin_claim === 'fetchdoc_admin';
+  }
+
+  function setUc6AuthState(status, message) {
+    uc6State.authStatus = status;
+    const copy = UC6_AUTH_COPY[status] || UC6_AUTH_COPY.temporarily_unavailable;
+    setUc6Chip(uc6Els.authStateChip, copy[0], status === 'authorized' ? 'ready' : status === 'access_denied' ? 'danger' : status === 'temporarily_unavailable' ? 'warning' : 'neutral');
+    setUc6Text(uc6Els.authStatus, message || copy[1]);
+    renderUC6All();
+  }
+
+  function createUc6Item(label, value) {
+    const item = document.createElement('div');
+    item.className = 'uc6-kv-item';
+    const key = document.createElement('span');
+    key.textContent = label;
+    const val = document.createElement('strong');
+    val.textContent = uc6Text(value);
+    item.append(key, val);
+    return item;
+  }
+
+  function createUc6ListItem(value) {
+    const li = document.createElement('li');
+    li.textContent = uc6Text(value);
+    return li;
+  }
+
+  function toUc6DisplayLines(value, preferredKeys = []) {
+    if (Array.isArray(value)) return value.slice(0, 8).map(uc6Text);
+    if (!value || typeof value !== 'object') return value ? [uc6Text(value)] : [];
+    const lines = [];
+    preferredKeys.forEach((key) => {
+      if (value[key] !== undefined && value[key] !== null && value[key] !== '') lines.push(`${key}: ${uc6Text(value[key])}`);
+    });
+    if (lines.length) return lines.slice(0, 8);
+    return Object.keys(value).slice(0, 6).map((key) => `${key}: ${uc6Text(value[key])}`);
+  }
+
+  function renderUc6List(el, values, emptyText) {
+    if (!el) return;
+    const lines = Array.isArray(values) ? values.filter((item) => item !== undefined && item !== null && item !== '') : [];
+    if (!lines.length) {
+      el.replaceChildren(createUc6ListItem(emptyText));
+      return;
     }
-  }
-
-  function isUC6SafeIdentifier(value) {
-    return typeof value === 'string' && /^[a-zA-Z0-9_.-]+$/.test(value.trim());
-  }
-
-  function isUC6BrowserUnsafeString(value) {
-    if (typeof value !== 'string') return false;
-    const unsafeFragments = [
-      ['http:', '', 'fastapi-app'].join('/'),
-      ['', 'data', 'fetchdoc'].join('/'),
-      ['x', 'internal', 'token'].join('-'),
-      'authorization',
-      ['n8n', 'internal', 'secret'].join('-')
-    ];
-    return unsafeFragments.some((fragment) => value.toLowerCase().includes(fragment.toLowerCase()));
-  }
-
-  function isUC6BrowserUnsafeKey(key) {
-    return /internal_token|authorization|x_internal_token|fastapi|internal_download_path|internal_artifact_status_path|requires_internal_token/i.test(String(key || ''));
-  }
-
-  function sanitizeUC6ForBrowserDebug(value, parentKey = '') {
-    if (isUC6BrowserUnsafeKey(parentKey)) return '[redacted: browser download proxy boundary]';
-    if (typeof value === 'string') return isUC6BrowserUnsafeString(value) ? '[redacted: internal runtime value]' : value;
-    if (Array.isArray(value)) return value.map((item) => sanitizeUC6ForBrowserDebug(item, parentKey));
-    if (isPlainObject(value)) {
-      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeUC6ForBrowserDebug(item, key)]));
-    }
-    return value;
-  }
-
-  function normalizeUC6ProxyBaseUrl(value) {
-    const raw = String(value || '').trim().replace(/\/+$/, '');
-    return /^https:\/\//i.test(raw) ? raw : '';
-  }
-
-  function normalizeUC6DownloadPath(path) {
-    const raw = String(path || '').trim();
-    if (!raw.startsWith('/fetchdoc/jobs/')) return '';
-    if (isUC6BrowserUnsafeString(raw)) return '';
-    if (raw.includes('..') || raw.includes('\\')) return '';
-    return raw;
-  }
-
-  function getUC6NestedDownloadValue(delivery, key) {
-    if (!isPlainObject(delivery)) return '';
-    if (isPlainObject(delivery.download) && typeof delivery.download[key] === 'string') return delivery.download[key];
-    return typeof delivery[key] === 'string' ? delivery[key] : '';
-  }
-
-  function getUC6DeliveryArtifactStatus(delivery, artifact) {
-    if (!isPlainObject(delivery) || !artifact) return {};
-    const artifactStatus = isPlainObject(delivery.artifact_status) ? delivery.artifact_status : {};
-    const taskSummary = isPlainObject(delivery.task_chain_summary) ? delivery.task_chain_summary : {};
-    const artifacts = isPlainObject(delivery.artifacts) ? delivery.artifacts : {};
-    return coerceUC6ObjectCandidate(artifactStatus[artifact])
-      || coerceUC6ObjectCandidate(taskSummary[artifact])
-      || coerceUC6ObjectCandidate(artifacts[artifact])
-      || {};
-  }
-
-  function isUC6DeliveryArtifactReady(delivery, artifact) {
-    const status = getUC6DeliveryArtifactStatus(delivery, artifact);
-    return status.ready === true || (status.exists === true && (status.status === 'completed' || status.status === 'ready'));
-  }
-
-  function buildUC6ArtifactDownloadUrl(delivery, artifact, ready) {
-    if (!isPlainObject(delivery) || !ready || !isUC6SafeIdentifier(artifact)) return '';
-
-    const artifactFromResponseDownload = getUC6NestedDownloadValue(delivery, 'artifact');
-    const directCandidates = [];
-    if (artifact === 'final_render_output_pdf') {
-      directCandidates.push(
-        getUC6NestedDownloadValue(delivery, 'public_pdf_url'),
-        getUC6NestedDownloadValue(delivery, 'pdf_url'),
-        getUC6NestedDownloadValue(delivery, 'pdf_download_url'),
-        getUC6NestedDownloadValue(delivery, 'url'),
-        getUC6NestedDownloadValue(delivery, 'download_url')
-      );
-    } else if (artifact === 'final_render_output_pptx') {
-      directCandidates.push(
-        getUC6NestedDownloadValue(delivery, 'public_pptx_url'),
-        getUC6NestedDownloadValue(delivery, 'pptx_url'),
-        getUC6NestedDownloadValue(delivery, 'pptx_download_url'),
-        getUC6NestedDownloadValue(delivery, 'final_pptx_url')
-      );
-    }
-
-    for (const candidate of directCandidates.filter(Boolean)) {
-      if (/^https:\/\//i.test(candidate) && !isUC6BrowserUnsafeString(candidate)) return candidate;
-    }
-
-    const proxyBaseUrl = normalizeUC6ProxyBaseUrl(CONFIG.UC6_FINAL_PPTX_DOWNLOAD_PROXY_BASE);
-    if (!proxyBaseUrl) return '';
-
-    if (artifactFromResponseDownload === artifact) {
-      const responsePath = normalizeUC6DownloadPath(getUC6NestedDownloadValue(delivery, 'internal_download_path'));
-      if (responsePath) return `${proxyBaseUrl}${responsePath}`;
-    }
-
-    const batchId = delivery.published_template_batch_id || delivery.batch_id || uc6State.selectedBatchId || getUC6SelectedBatchId();
-    if (!isUC6SafeIdentifier(batchId)) return '';
-    return `${proxyBaseUrl}/fetchdoc/jobs/${encodeURIComponent(batchId.trim())}/artifacts/${encodeURIComponent(artifact)}/download`;
-  }
-
-  function buildUC6PdfDownloadUrl(delivery) {
-    const pdfReady = isPlainObject(delivery) && (delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf'));
-    return buildUC6ArtifactDownloadUrl(delivery, 'final_render_output_pdf', pdfReady);
-  }
-
-  function buildUC6PptxDownloadUrl(delivery) {
-    const pptxReady = isPlainObject(delivery) && (delivery.final_pptx_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pptx'));
-    return buildUC6ArtifactDownloadUrl(delivery, 'final_render_output_pptx', pptxReady);
-  }
-
-  function getUC6PptxSuggestedFilename(delivery) {
-    const nested = getUC6NestedDownloadValue(delivery, 'suggested_filename');
-    if (getUC6NestedDownloadValue(delivery, 'artifact') === 'final_render_output_pptx' && nested && !nested.includes('/') && !nested.includes('\\')) return nested;
-    const batchId = delivery?.published_template_batch_id || delivery?.batch_id || uc6State.selectedBatchId || getUC6SelectedBatchId();
-    return isUC6SafeIdentifier(batchId) ? `fetchdoc_final_render_${batchId}.pptx` : 'fetchdoc_final_render_output.pptx';
-  }
-
-  function getUC6PdfSuggestedFilename(delivery) {
-    const nested = getUC6NestedDownloadValue(delivery, 'suggested_filename');
-    if (getUC6NestedDownloadValue(delivery, 'artifact') === 'final_render_output_pdf' && nested && !nested.includes('/') && !nested.includes('\\')) return nested;
-    const batchId = delivery?.published_template_batch_id || delivery?.batch_id || uc6State.selectedBatchId || getUC6SelectedBatchId();
-    return isUC6SafeIdentifier(batchId) ? `fetchdoc_final_render_${batchId}.pdf` : 'fetchdoc_final_render_output.pdf';
-  }
-
-  function buildUC6PdfViewerUrl(url) {
-    if (!url || typeof url !== 'string') return '';
-    const trimmed = url.trim();
-    if (!/^https:\/\//i.test(trimmed) || isUC6BrowserUnsafeString(trimmed)) return '';
-    if (trimmed.includes('#')) return trimmed;
-    return `${trimmed}#toolbar=1&navpanes=0&view=FitH`;
-  }
-
-  function triggerUC6BrowserDownload(url, filename) {
-    if (!url) return false;
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    if (filename) anchor.download = filename;
-    anchor.target = '_blank';
-    anchor.rel = 'noopener noreferrer';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    return true;
-  }
-
-  function getUC6StageLabel(stageId) {
-    return UC6_STAGE_MODEL.find((stage) => stage.id === stageId)?.label || stageId;
-  }
-
-  function getUC6LatestResponse() {
-    return uc6State.responsePayload || uc6State.stageResponses.final_pdf_delivery || uc6State.stageResponses.runtime_render_bridge || uc6State.stageResponses.runtime_databag_prep || uc6State.stageResponses.context_intelligence_prep || uc6State.stageResponses.approval_publish || uc6State.stageResponses.review_status || uc6State.stageResponses.intake_review_prep || null;
+    el.replaceChildren(...lines.slice(0, 8).map(createUc6ListItem));
   }
 
   function saveUC6LocalState() {
     try {
-      const persisted = {
-        selectedSampleId: uc6State.selectedSampleId,
-        selectedBatchId: uc6State.selectedBatchId,
-        approvalStatus: uc6State.approvalStatus,
-        contextCollectionId: uc6State.contextCollectionId,
-        renderRunId: uc6State.renderRunId,
-        responsePayload: uc6State.responsePayload,
-        stageResponses: uc6State.stageResponses,
-        download: uc6State.download
-      };
-      localStorage.setItem(UC6_STORAGE_KEY, JSON.stringify(persisted));
+      const projected = projectUc6PersistedState({
+        job_id: uc6State.jobId,
+        last_known_public_state: uc6State.jobState,
+        last_polling_timestamp: uc6State.lastPollingTimestamp,
+        selected_panel: 'review'
+      });
+      localStorage.setItem(UC6_STORAGE_KEY, JSON.stringify(projected));
     } catch (_) {
-      // localStorage is optional.
+      // Local persistence is optional and contains only public job state.
     }
   }
 
   function loadUC6LocalState() {
     try {
       const raw = localStorage.getItem(UC6_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!isPlainObject(parsed)) return;
-      if (parsed.selectedSampleId && UC6_SAMPLE_CASES[parsed.selectedSampleId]) uc6State.selectedSampleId = parsed.selectedSampleId;
-      if (typeof parsed.selectedBatchId === 'string') uc6State.selectedBatchId = parsed.selectedBatchId;
-      if (typeof parsed.approvalStatus === 'string') uc6State.approvalStatus = parsed.approvalStatus;
-      if (typeof parsed.contextCollectionId === 'string') uc6State.contextCollectionId = parsed.contextCollectionId;
-      if (typeof parsed.renderRunId === 'string') uc6State.renderRunId = parsed.renderRunId;
-      if (isPlainObject(parsed.stageResponses)) uc6State.stageResponses = parsed.stageResponses;
-      if (isPlainObject(parsed.responsePayload)) uc6State.responsePayload = parsed.responsePayload;
-      if (isPlainObject(parsed.download)) uc6State.download = parsed.download;
+      if (!raw) return {};
+      return projectUc6PersistedState(JSON.parse(raw));
     } catch (_) {
-      // Ignore corrupted persisted state.
+      return {};
     }
   }
 
-  async function parseUC6JsonResponse(res, stageLabel) {
-    const rawText = await res.text();
-    let data;
-    try {
-      data = rawText ? JSON.parse(rawText) : {};
-    } catch (_) {
-      throw new Error(`${stageLabel} 응답 JSON 파싱 실패 (${res.status})`);
-    }
-    if (!res.ok) {
-      const message = data.message || data.error || data.errorMessage || `${stageLabel} HTTP 실패 (${res.status})`;
-      throw new Error(message);
-    }
-    return data;
+  function clearUC6LocalState() {
+    try { localStorage.removeItem(UC6_STORAGE_KEY); } catch (_) {}
   }
 
-  async function uc6PostJson(url, payload, stageLabel) {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-    return parseUC6JsonResponse(res, stageLabel);
+  function abortUC6Operations() {
+    if (uc6State.operationAbortController) uc6State.operationAbortController.abort();
+    if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
+    uc6State.operationAbortController = null;
+    uc6State.pollingAbortController = null;
+    uc6State.statusRequestActive = false;
   }
 
-  async function uc6GetJson(url, query, stageLabel) {
-    const target = new URL(url);
-    Object.entries(query || {}).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && String(value).trim() !== '') target.searchParams.set(key, value);
-    });
-    const res = await fetch(target.toString(), { method: 'GET', headers: { 'Accept': 'application/json' } });
-    return parseUC6JsonResponse(res, stageLabel);
+  function stopUC6Polling() {
+    if (uc6State.pollingTimer) clearTimeout(uc6State.pollingTimer);
+    uc6State.pollingTimer = null;
   }
 
-  function setUC6StageRunning(stageId) {
-    uc6State.currentStage = stageId;
-    if (uc6Els.actionHelper) uc6Els.actionHelper.textContent = `${getUC6StageLabel(stageId)} 실행 중입니다.`;
+  function resetUC6JobState(clearStorage = false) {
+    stopUC6Polling();
+    abortUC6Operations();
+    uc6State.jobId = '';
+    uc6State.jobState = '';
+    uc6State.source = null;
+    uc6State.review = null;
+    uc6State.decision = null;
+    uc6State.selectedFile = null;
+    uc6State.operationInFlight = false;
+    uc6State.analysisSubmittedForJobId = '';
+    uc6State.decisionSubmitted = false;
+    uc6State.consecutivePollErrors = 0;
+    uc6State.lastPollingTimestamp = 0;
+    if (uc6Els.fileInput) uc6Els.fileInput.value = '';
+    if (clearStorage) clearUC6LocalState();
     renderUC6All();
   }
 
-  function recordUC6Stage(stageId, response) {
-    uc6State.stageResponses[stageId] = response || {};
-    uc6State.responsePayload = response || uc6State.responsePayload;
-    if (response?.batch_id || response?.published_template_batch_id) {
-      uc6State.selectedBatchId = response.published_template_batch_id || response.batch_id;
+  function validateUc6PptxSelection(files) {
+    if (!files || files.length !== 1) return { ok: false, message: 'PPTX 파일을 하나만 선택하세요.' };
+    const file = files[0];
+    const name = file?.name || '';
+    if (!file || file.size <= 0) return { ok: false, message: '비어 있지 않은 PPTX 파일을 선택하세요.' };
+    if (!/\.pptx$/i.test(name)) return { ok: false, message: '확장자가 .pptx인 파일만 업로드할 수 있습니다.' };
+    const suppliedType = String(file.type || '').trim();
+    if (suppliedType && suppliedType !== 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+      return { ok: false, message: '브라우저가 PPTX MIME 형식으로 인식한 파일만 업로드할 수 있습니다.' };
     }
-    if (response?.context_collection_id) uc6State.contextCollectionId = response.context_collection_id;
-    if (response?.render_run_id) uc6State.renderRunId = response.render_run_id;
-    if (response?.download && isPlainObject(response.download)) uc6State.download = response.download;
+    return { ok: true, file };
+  }
+
+  function handleUC6AuthorizationFailure(error) {
+    const authState = classifyUc6AuthorizationFailure(error);
+    if (!authState) return false;
+    uc6State.session = null;
+    stopUC6Polling();
+    if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
+    uc6State.pollingAbortController = null;
+    uc6State.statusRequestActive = false;
     saveUC6LocalState();
-    renderUC6All();
-  }
-
-  function assertUC6StageSuccess(response, stageLabel) {
-    if (!response || response.success === false || response.status === 'blocked') {
-      const issue = Array.isArray(response?.blocking_issues) && response.blocking_issues.length
-        ? response.blocking_issues[0]?.message || response.blocking_issues[0]?.check
-        : null;
-      throw new Error(`${stageLabel} 실패: ${issue || response?.phase || response?.status || 'unknown'}`);
+    if (authState === 'signed_out') {
+      setUc6AuthState('signed_out', '관리자 인증이 만료되었습니다. 다시 로그인하세요.');
+      return true;
     }
-    return response;
+    setUc6AuthState('access_denied', uc6MessageFromError(error));
+    return true;
   }
 
-  function buildUC6RequestContext(stageId) {
-    return {
-      caller: 'webapp',
-      request_source: 'uc6_admin_stage_controller',
-      view: 'uc6_fetchdoc_admin_stage_controller',
-      uc6_stage: stageId,
-      sample_case_id: uc6State.selectedSampleId,
-      template_approval_status: uc6State.approvalStatus,
-      requested_at: new Date().toISOString()
-    };
-  }
-
-  async function callUC6IntakeReviewPrep() {
-    const file = uc6Els.pptxInput?.files?.[0];
-    if (!file) return null;
-    setUC6StageRunning('intake_review_prep');
-    const form = new FormData();
-    form.append('upload', file, file.name);
-    const selectedBatchId = getUC6SelectedBatchId();
-    if (uc6Els.batchSelect?.value === 'custom' && selectedBatchId) form.append('batch_id', selectedBatchId);
-    form.append('request_source', 'uc6_admin_stage_controller');
-    form.append('sample_case_id', uc6State.selectedSampleId);
-
-    const res = await fetch(CONFIG.UC6_TEMPLATE_INTAKE_REVIEW_PREP_WEBHOOK, {
-      method: 'POST',
-      body: form,
-      headers: { 'Accept': 'application/json' }
+  async function loadUC6FirebaseClient() {
+    if (uc6State.firebaseClient) return uc6State.firebaseClient;
+    const initResponse = await fetch('/__/firebase/init.json', { cache: 'no-store' });
+    if (!initResponse.ok) throw new Error('firebase_init_unavailable');
+    const firebaseConfig = await initResponse.json();
+    const [appMod, authMod] = await Promise.all([
+      import(`https://www.gstatic.com/firebasejs/${UC6_FIREBASE_SDK_VERSION}/firebase-app.js`),
+      import(`https://www.gstatic.com/firebasejs/${UC6_FIREBASE_SDK_VERSION}/firebase-auth.js`)
+    ]);
+    const app = appMod.getApps().length ? appMod.getApps()[0] : appMod.initializeApp(firebaseConfig);
+    const auth = authMod.getAuth(app);
+    await authMod.setPersistence(auth, authMod.browserSessionPersistence);
+    try { await authMod.getRedirectResult(auth); } catch (_) {}
+    uc6State.firebaseClient = { app, auth, authMod };
+    uc6State.api = createUc6BrowserAdminApi({
+      apiBaseUrl: CONFIG.UC6_BROWSER_ADMIN_API_BASE,
+      fetchImpl: fetch,
+      getIdToken: async (forceRefresh = false) => {
+        if (!uc6State.firebaseUser) throw new Error('firebase_user_missing');
+        return uc6State.firebaseUser.getIdToken(forceRefresh === true);
+      }
     });
-    const data = await parseUC6JsonResponse(res, '01A Intake Review Prep');
-    recordUC6Stage('intake_review_prep', data);
-    return data;
+    return uc6State.firebaseClient;
   }
 
-  async function pollUC6ReviewStatus(batchId) {
-    setUC6StageRunning('review_status');
-    let last = null;
-    for (let attempt = 1; attempt <= UC6_REVIEW_MAX_ATTEMPTS; attempt += 1) {
-      const data = await uc6GetJson(CONFIG.UC6_TEMPLATE_REVIEW_STATUS_WEBHOOK, { batch_id: batchId }, '01B Review Status');
-      last = data;
-      recordUC6Stage('review_status', data);
-      const ready = data.success === true && (
-        data.phase === 'template_review_ready' ||
-        data.template_status === 'review_ready' ||
-        data.approval_allowed === true ||
-        data.publish_ready === true
-      );
-      const alreadyPublished = data.success === true && (
-        data.phase === 'template_approval_publish_accepted' ||
-        data.template_status === 'publish_accepted' ||
-        data.catalog_publish_accepted === true
-      );
-      if (ready || alreadyPublished) return data;
-      if (data.success === false || data.status === 'blocked') {
-        throw new Error(`01B Review Status blocked: ${data.phase || data.status}`);
-      }
-      if (uc6Els.actionHelper) uc6Els.actionHelper.textContent = `01B Review Status 대기 중... (${attempt}/${UC6_REVIEW_MAX_ATTEMPTS})`;
-      await wait(UC6_POLL_INTERVAL_MS);
-    }
-    throw new Error(`01B Review Status timeout: ${last?.phase || last?.status || 'no_status'}`);
-  }
-
-  async function callUC6ApprovalPublish(batchId) {
-    setUC6StageRunning('approval_publish');
-    const payload = {
-      batch_id: batchId,
-      decision: 'approve',
-      admin_id: 'webapp_admin',
-      admin_note: 'UC6 webapp admin approval publish',
-      idempotency_key: `uc6_webapp_approve_${batchId}_${Date.now()}`,
-      request_source: 'uc6_admin_stage_controller'
-    };
-    const data = await uc6PostJson(CONFIG.UC6_TEMPLATE_APPROVAL_PUBLISH_WEBHOOK, payload, '01C Approval Publish');
-    recordUC6Stage('approval_publish', assertUC6StageSuccess(data, '01C Approval Publish'));
-    return data;
-  }
-
-  async function callUC6ContextIntelligencePrep(batchId, runtimeContext) {
-    setUC6StageRunning('context_intelligence_prep');
-    const payload = {
-      published_template_batch_id: batchId,
-      runtime_context: runtimeContext,
-      collection_options: {
-        use_user_input: true,
-        use_web_search: true,
-        use_internal_catalog: false,
-        use_crm_lookup: false,
-        allow_llm_fill_optional_text_slots: true,
-        allow_chart_data_generation: false,
-        max_research_queries: 6,
-        max_synthesized_slots: 40
-      },
-      request_context: buildUC6RequestContext('UC6-02A0')
-    };
-    const data = await uc6PostJson(CONFIG.UC6_RUNTIME_CONTEXT_INTELLIGENCE_PREP_WEBHOOK, payload, '02A0 Context Intelligence Prep');
-    recordUC6Stage('context_intelligence_prep', assertUC6StageSuccess(data, '02A0 Context Intelligence Prep'));
-    return data;
-  }
-
-  async function callUC6RuntimeDatabagPrep(batchId, contextCollectionId, runtimeContext) {
-    setUC6StageRunning('runtime_databag_prep');
-    const payload = {
-      published_template_batch_id: batchId,
-      batch_id: batchId,
-      context_collection_id: contextCollectionId,
-      runtime_context: runtimeContext,
-      collection_options: {
-        use_enriched_databag: true,
-        use_user_input: true,
-        allow_runtime_context_override: true,
-        readiness_poll_mode: 'single_wait_then_read'
-      },
-      request_context: buildUC6RequestContext('UC6-02A')
-    };
-    const data = await uc6PostJson(CONFIG.UC6_RUNTIME_DATABAG_PREP_WEBHOOK, payload, '02A Runtime Databag Prep');
-    recordUC6Stage('runtime_databag_prep', assertUC6StageSuccess(data, '02A Runtime Databag Prep'));
-    return data;
-  }
-
-  async function callUC6RuntimeRenderBridge(batchId, renderRunId, contextCollectionId) {
-    setUC6StageRunning('runtime_render_bridge');
-    const payload = {
-      published_template_batch_id: batchId,
-      batch_id: batchId,
-      render_run_id: renderRunId,
-      context_collection_id: contextCollectionId,
-      request_context: {
-        ...buildUC6RequestContext('UC6-02B'),
-        previous_stage: 'UC6-02A'
-      }
-    };
-    const data = await uc6PostJson(CONFIG.UC6_RUNTIME_RENDER_BRIDGE_WEBHOOK, payload, '02B Runtime Render Bridge');
-    recordUC6Stage('runtime_render_bridge', assertUC6StageSuccess(data, '02B Runtime Render Bridge'));
-    return data;
-  }
-
-  async function callUC6FinalPdfDelivery(batchId, renderRunId, contextCollectionId) {
-    setUC6StageRunning('final_pdf_delivery');
-    const payload = {
-      published_template_batch_id: batchId,
-      batch_id: batchId,
-      render_run_id: renderRunId,
-      context_collection_id: contextCollectionId,
-      delivery_options: {
-        preferred_format: 'pdf',
-        pdf_delivery_requested: true,
-        allow_pptx_fallback: true,
-        requested_artifact: 'final_render_output_pdf'
-      },
-      request_context: {
-        ...buildUC6RequestContext('UC6-02C'),
-        previous_stage: 'UC6-02B'
-      }
-    };
-    const data = await uc6PostJson(CONFIG.UC6_FINAL_PDF_DELIVERY_WEBHOOK, payload, '02C Final PDF Delivery');
-    recordUC6Stage('final_pdf_delivery', assertUC6StageSuccess(data, '02C Final PDF Delivery'));
-    return data;
-  }
-
-  function getUC6RequiredSlots() {
-    const databag = uc6State.stageResponses.runtime_databag_prep || {};
-    const contextPrep = uc6State.stageResponses.context_intelligence_prep || {};
-    const responseSlots = Array.isArray(databag.required_slot_keys)
-      ? databag.required_slot_keys
-      : Array.isArray(contextPrep.required_slot_keys)
-        ? contextPrep.required_slot_keys
-        : [];
-    if (responseSlots.length) return responseSlots;
-    try {
-      const runtimeContext = getUC6RuntimeContext();
-      return Object.keys(runtimeContext).filter((key) => ['string', 'number', 'boolean'].includes(typeof runtimeContext[key]));
-    } catch (_) {
-      return ['account_name', 'proposal_date', 'vendor_contact', 'vendor_name'];
-    }
-  }
-
-  function renderUC6TemplateSummary() {
-    if (!uc6Els.templateSummary) return;
-    const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.marriott_ai_hospitality;
-    const batchId = getUC6SelectedBatchId();
-    const latest = getUC6LatestResponse() || {};
-    const summaryItems = [
-      { label: 'Template Batch ID', value: uc6State.selectedBatchId || batchId || '미입력' },
-      { label: 'Approval Status', value: uc6State.approvalStatus === 'approved' ? '승인 완료' : uc6State.approvalStatus === 'needs_review' ? '수정 필요' : '검토 중' },
-      { label: 'Sample Case', value: sample.label },
-      { label: 'Current Phase', value: latest.phase || 'uc6_frontend_ready' },
-      { label: 'Context Collection ID', value: uc6State.contextCollectionId || latest.context_collection_id || '02A0 이후 표시' },
-      { label: 'Render Run ID', value: uc6State.renderRunId || latest.render_run_id || '02A 이후 표시' },
-      { label: 'Next Action', value: latest.next_action || 'uc6_e2e_ready_to_run' }
-    ];
-    uc6Els.templateSummary.innerHTML = summaryItems.map(item => `
-      <div class="uc6-summary-card">
-        <span>${escapeHtml(item.label)}</span>
-        <strong>${escapeHtml(item.value)}</strong>
-      </div>
-    `).join('');
-  }
-
-  function renderUC6SlotTable() {
-    if (!uc6Els.slotTableBody) return;
-    let runtimeContext = {};
-    try { runtimeContext = getUC6RuntimeContext(); } catch (_) { runtimeContext = {}; }
-    const databag = uc6State.stageResponses.runtime_databag_prep || {};
-    const source = databag.runtime_context_summary?.source || 'runtime_context';
-    const keys = getUC6RequiredSlots();
-    uc6Els.slotTableBody.innerHTML = keys.map((key) => {
-      const value = runtimeContext[key];
-      const filled = value !== undefined && value !== null && String(value).trim() !== '';
-      return `
-        <tr>
-          <td><code>${escapeHtml(key)}</code></td>
-          <td>${escapeHtml(source)}</td>
-          <td>${['account_name', 'proposal_date', 'vendor_contact', 'vendor_name'].includes(key) ? 'Yes' : 'No'}</td>
-          <td><span class="uc6-table-status ${filled || source === 'enriched_databag' ? 'is-ready' : 'is-warning'}">${filled || source === 'enriched_databag' ? 'ready' : 'missing'}</span></td>
-        </tr>
-      `;
-    }).join('') || '<tr><td colspan="4">표시할 Slot이 없습니다.</td></tr>';
-  }
-
-  function renderUC6ReadinessSummary() {
-    if (!uc6Els.readinessSummary) return;
-    const latest = getUC6LatestResponse() || {};
-    const databag = uc6State.stageResponses.runtime_databag_prep || {};
-    const bridge = uc6State.stageResponses.runtime_render_bridge || {};
-    const delivery = uc6State.stageResponses.final_pdf_delivery || {};
-    const cards = [
-      { label: 'success', value: latest.success === true ? 'true' : latest.success === false ? 'false' : 'not_run', tone: latest.success === true ? 'ready' : latest.success === false ? 'danger' : 'muted' },
-      { label: 'current_phase', value: latest.phase || 'not_run', tone: latest.success === true ? 'ready' : 'muted' },
-      { label: 'context_collection_id', value: uc6State.contextCollectionId || '-', tone: uc6State.contextCollectionId ? 'ready' : 'muted' },
-      { label: 'render_run_id', value: uc6State.renderRunId || '-', tone: uc6State.renderRunId ? 'ready' : 'muted' },
-      { label: 'candidate_slot_value_count', value: databag.candidate_slot_value_count ?? bridge.runtime_databag_candidate_slot_value_count ?? '-', tone: 'muted' },
-      { label: 'final_render_ready', value: bridge.final_render_ready === true ? 'true' : '-', tone: bridge.final_render_ready === true ? 'ready' : 'muted' },
-      { label: 'final_pptx_ready', value: delivery.final_pptx_ready === true ? 'true' : '-', tone: delivery.final_pptx_ready === true ? 'ready' : 'muted' },
-      { label: 'final_pdf_ready', value: delivery.final_pdf_ready === true ? 'true' : delivery.final_pdf_ready === false ? 'false' : '-', tone: delivery.final_pdf_ready === true ? 'ready' : 'locked' },
-      { label: 'blocking_issue_count', value: latest.blocking_issue_count ?? '-', tone: latest.blocking_issue_count === 0 ? 'ready' : latest.blocking_issue_count > 0 ? 'danger' : 'muted' },
-      { label: 'warning_count', value: latest.warning_count ?? '-', tone: latest.warning_count === 0 ? 'ready' : latest.warning_count > 0 ? 'warning' : 'muted' }
-    ];
-    uc6Els.readinessSummary.innerHTML = cards.map(card => `
-      <div class="uc6-readiness-card is-${escapeHtml(card.tone)}">
-        <span>${escapeHtml(card.label)}</span>
-        <strong>${escapeHtml(card.value)}</strong>
-      </div>
-    `).join('');
-  }
-
-
-  function coerceUC6ObjectCandidate(value) {
-    if (isPlainObject(value)) return value;
-    if (typeof value === 'string' && value.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(value);
-        return isPlainObject(parsed) ? parsed : null;
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  function getUC6AdminEvidenceContractSource() {
-    const stages = uc6State.stageResponses || {};
-    const response = uc6State.responsePayload || {};
-    const candidates = [
-      { source: 'stageResponses.final_pdf_delivery.admin_evidence_review_contract', value: stages.final_pdf_delivery?.admin_evidence_review_contract },
-      { source: 'stageResponses.runtime_render_bridge.admin_evidence_review_contract', value: stages.runtime_render_bridge?.admin_evidence_review_contract },
-      { source: 'stageResponses.runtime_databag_prep.admin_evidence_review_contract', value: stages.runtime_databag_prep?.admin_evidence_review_contract },
-      { source: 'responsePayload.admin_evidence_review_contract', value: response.admin_evidence_review_contract },
-      { source: 'responsePayload.artifacts.admin_evidence_review_contract.content', value: response.artifacts?.admin_evidence_review_contract?.content }
-    ];
-
-    for (const candidate of candidates) {
-      const contract = coerceUC6ObjectCandidate(candidate.value);
-      if (contract) return { contract, source: candidate.source };
-    }
-    return { contract: null, source: null };
-  }
-
-  function getUC6AdminEvidenceStatusSource(contract) {
-    const stages = uc6State.stageResponses || {};
-    const response = uc6State.responsePayload || {};
-    const candidates = [
-      { source: 'stageResponses.final_pdf_delivery.admin_evidence_review_contract_status', value: stages.final_pdf_delivery?.admin_evidence_review_contract_status },
-      { source: 'responsePayload.admin_evidence_review_contract_status', value: response.admin_evidence_review_contract_status },
-      { source: 'stageResponses.final_pdf_delivery.artifact_status.admin_evidence_review_contract', value: stages.final_pdf_delivery?.artifact_status?.admin_evidence_review_contract },
-      { source: 'responsePayload.artifact_status.admin_evidence_review_contract', value: response.artifact_status?.admin_evidence_review_contract },
-      { source: 'stageResponses.final_pdf_delivery.task_chain_summary.admin_evidence_review_contract', value: stages.final_pdf_delivery?.task_chain_summary?.admin_evidence_review_contract },
-      { source: 'responsePayload.task_chain_summary.admin_evidence_review_contract', value: response.task_chain_summary?.admin_evidence_review_contract }
-    ];
-
-    for (const candidate of candidates) {
-      const status = coerceUC6ObjectCandidate(candidate.value);
-      if (status) return { status, source: candidate.source };
-    }
-
-    if (isPlainObject(contract?.summary)) {
-      return { status: contract.summary, source: 'admin_evidence_review_contract.summary' };
-    }
-    if (isPlainObject(contract?.readiness_summary)) {
-      return { status: contract.readiness_summary, source: 'admin_evidence_review_contract.readiness_summary' };
-    }
-    return { status: null, source: null };
-  }
-
-  function getUC6NestedEvidenceValue(contract, status, key) {
-    const summary = isPlainObject(contract?.summary) ? contract.summary : {};
-    const readinessSummary = isPlainObject(contract?.readiness_summary) ? contract.readiness_summary : {};
-    const reviewPolicy = isPlainObject(contract?.review_policy) ? contract.review_policy : {};
-    const jobSummary = isPlainObject(contract?.job_summary) ? contract.job_summary : {};
-    const chartLane = isPlainObject(contract?.chart_lane) ? contract.chart_lane : {};
-    const chartLaneSummary = isPlainObject(contract?.chart_lane_summary) ? contract.chart_lane_summary : {};
-    const warningArrayCount = Array.isArray(contract?.warnings) ? contract.warnings.length : null;
-
-    const valueMap = {
-      status: [contract?.status, status?.contract_status, status?.status, jobSummary.status],
-      schema_version: [contract?.schema_version, status?.schema_version],
-      review_only: [contract?.review_only, reviewPolicy.review_only, readinessSummary.review_only, summary.review_only, status?.review_only],
-      warning_count: [contract?.warning_count, readinessSummary.warning_count, summary.warning_count, warningArrayCount, status?.warning_count],
-      blocking_issue_count: [contract?.blocking_issue_count, readinessSummary.blocking_issue_count, summary.blocking_issue_count, status?.blocking_issue_count],
-      chart_lane: [
-        contract?.chart_lane_status,
-        chartLaneSummary.chart_lane_status,
-        chartLaneSummary.status,
-        chartLaneSummary.policy,
-        chartLane.status,
-        chartLane.policy,
-        summary.chart_lane_status,
-        status?.chart_lane_status,
-        status?.chart_lane
-      ]
-    };
-    return firstUC6Defined(...(valueMap[key] || []));
-  }
-
-  function getUC6DecisionContractDetailScore(contract) {
-    if (!isPlainObject(contract)) return 0;
-    let score = 1;
-    if (Array.isArray(contract.decision_gates)) score += contract.decision_gates.length ? 20 + contract.decision_gates.length : 3;
-    if (Array.isArray(contract.review_checklist)) score += contract.review_checklist.length ? 20 + contract.review_checklist.length : 3;
-    if (Array.isArray(contract.artifact_review_summary)) score += contract.artifact_review_summary.length ? 16 + contract.artifact_review_summary.length : 3;
-    if (Array.isArray(contract.recommended_next_steps)) score += contract.recommended_next_steps.length ? 10 + contract.recommended_next_steps.length : 2;
-    if (isPlainObject(contract.warning_summary)) score += 10;
-    if (isPlainObject(contract.semantic_lineage_decision_summary)) score += 10;
-    if (isPlainObject(contract.chart_lane_summary)) score += 6;
-    if (isPlainObject(contract.review_policy)) score += 4;
-    if (isPlainObject(contract.decision_summary)) score += 4;
-    return score;
-  }
-
-  function getUC6AdminReviewDecisionContractSource() {
-    const stages = uc6State.stageResponses || {};
-    const finalDelivery = stages.final_pdf_delivery || {};
-    const response = uc6State.responsePayload || {};
-    const topResponse = uc6State.response || {};
-    const candidates = [
-      { source: 'stageResponses.final_pdf_delivery.admin_review_decision_contract', value: finalDelivery.admin_review_decision_contract },
-      { source: 'stageResponses.final_pdf_delivery.response.admin_review_decision_contract', value: finalDelivery.response?.admin_review_decision_contract },
-      { source: 'responsePayload.admin_review_decision_contract', value: response.admin_review_decision_contract },
-      { source: 'responsePayload.response.admin_review_decision_contract', value: response.response?.admin_review_decision_contract },
-      { source: 'response.admin_review_decision_contract', value: topResponse.admin_review_decision_contract },
-      { source: 'stageResponses.final_pdf_delivery.artifacts.admin_review_decision_contract.content', value: finalDelivery.artifacts?.admin_review_decision_contract?.content },
-      { source: 'responsePayload.artifacts.admin_review_decision_contract.content', value: response.artifacts?.admin_review_decision_contract?.content },
-      { source: 'response.artifacts.admin_review_decision_contract.content', value: topResponse.artifacts?.admin_review_decision_contract?.content }
-    ];
-
-    let best = { contract: null, source: null, score: 0 };
-    for (const candidate of candidates) {
-      const contract = coerceUC6ObjectCandidate(candidate.value);
-      if (!contract) continue;
-      const score = getUC6DecisionContractDetailScore(contract);
-      if (score > best.score) {
-        best = { contract, source: candidate.source, score };
-      }
-    }
-    return { contract: best.contract, source: best.source };
-  }
-
-  function getUC6AdminReviewDecisionStatusSource(contract) {
-    const stages = uc6State.stageResponses || {};
-    const response = uc6State.responsePayload || {};
-    const candidates = [
-      { source: 'stageResponses.final_pdf_delivery.admin_review_decision_contract_status', value: stages.final_pdf_delivery?.admin_review_decision_contract_status },
-      { source: 'responsePayload.admin_review_decision_contract_status', value: response.admin_review_decision_contract_status },
-      { source: 'stageResponses.final_pdf_delivery.artifact_status.admin_review_decision_contract', value: stages.final_pdf_delivery?.artifact_status?.admin_review_decision_contract },
-      { source: 'responsePayload.artifact_status.admin_review_decision_contract', value: response.artifact_status?.admin_review_decision_contract },
-      { source: 'stageResponses.final_pdf_delivery.task_chain_summary.admin_review_decision_contract', value: stages.final_pdf_delivery?.task_chain_summary?.admin_review_decision_contract },
-      { source: 'responsePayload.task_chain_summary.admin_review_decision_contract', value: response.task_chain_summary?.admin_review_decision_contract }
-    ];
-
-    for (const candidate of candidates) {
-      const status = coerceUC6ObjectCandidate(candidate.value);
-      if (status) return { status, source: candidate.source };
-    }
-
-    if (isPlainObject(contract?.decision_summary)) {
-      return { status: contract.decision_summary, source: 'admin_review_decision_contract.decision_summary' };
-    }
-    return { status: null, source: null };
-  }
-
-  function firstUC6Defined(...values) {
-    for (const value of values) {
-      if (value !== undefined && value !== null && value !== '') return value;
-    }
-    return null;
-  }
-
-  function getUC6NestedDecisionValue(contract, status, key) {
-    const decisionSummary = isPlainObject(contract?.decision_summary) ? contract.decision_summary : {};
-    const reviewPolicy = isPlainObject(contract?.review_policy) ? contract.review_policy : {};
-    const sourceContract = isPlainObject(contract?.source_contract) ? contract.source_contract : {};
-    const chartLaneSummary = isPlainObject(contract?.chart_lane_summary) ? contract.chart_lane_summary : {};
-    const warningSummary = isPlainObject(contract?.warning_summary) ? contract.warning_summary : {};
-    const blockedSummary = isPlainObject(contract?.blocked_summary) ? contract.blocked_summary : {};
-    const semanticLineageSummary = getUC6SemanticLineageDecisionSummary(contract, status);
-    const semanticLineageReasonCodes = Array.isArray(semanticLineageSummary.reason_codes)
-      ? semanticLineageSummary.reason_codes
-      : Array.isArray(status?.semantic_lineage_reason_codes) ? status.semantic_lineage_reason_codes : [];
-
-    const valueMap = {
-      status: [status?.status, status?.contract_status, contract?.status],
-      schema_version: [status?.schema_version, contract?.schema_version],
-      source_contract_status: [status?.source_contract_status, sourceContract.status, sourceContract.contract_status],
-      admin_review_ready: [status?.admin_review_ready, decisionSummary.admin_review_ready],
-      review_only: [status?.review_only, decisionSummary.review_only, reviewPolicy.review_only],
-      decision_required: [status?.decision_required, decisionSummary.decision_required, reviewPolicy.decision_required],
-      can_approve_final_pptx: [status?.can_approve_final_pptx, decisionSummary.can_approve_final_pptx, reviewPolicy.can_approve_final_pptx],
-      can_mutate_artifacts: [status?.can_mutate_artifacts, decisionSummary.can_mutate_artifacts, reviewPolicy.can_mutate_artifacts],
-      can_execute_chart_replacement: [status?.can_execute_chart_replacement, decisionSummary.can_execute_chart_replacement, reviewPolicy.can_execute_chart_replacement],
-      blocking_issue_count: [status?.blocking_issue_count, decisionSummary.blocking_issue_count, blockedSummary.blocking_issue_count, contract?.blocking_issue_count],
-      warning_count: [status?.warning_count, decisionSummary.warning_count, warningSummary.warning_count, contract?.warning_count],
-      admin_action_count: [status?.admin_action_count, decisionSummary.admin_action_count, contract?.admin_action_count],
-      blocked_item_count: [status?.blocked_item_count, decisionSummary.blocked_item_count, blockedSummary.blocked_item_count, contract?.blocked_item_count],
-      chart_lane: [status?.chart_lane, status?.chart_lane_status, chartLaneSummary.status, chartLaneSummary.chart_lane_status, chartLaneSummary.policy, chartLaneSummary.freeze_status],
-      semantic_lineage_summary_present: [status?.semantic_lineage_summary_present, isPlainObject(semanticLineageSummary) && Object.keys(semanticLineageSummary).length > 0],
-      semantic_lineage_source_present: [status?.semantic_lineage_source_present, semanticLineageSummary.source_present],
-      semantic_lineage_decision_gate_status: [status?.semantic_lineage_decision_gate_status, semanticLineageSummary.decision_gate_status, decisionSummary.semantic_lineage_decision_gate_status],
-      semantic_lineage_direct_consumption_confirmed: [status?.semantic_lineage_direct_consumption_confirmed, semanticLineageSummary.direct_consumption_confirmed, decisionSummary.semantic_lineage_direct_consumption_confirmed],
-      semantic_lineage_retrofit_status: [status?.semantic_lineage_retrofit_status, semanticLineageSummary.retrofit_status, decisionSummary.semantic_lineage_retrofit_status],
-      semantic_lineage_reason_code_count: [semanticLineageReasonCodes.length],
-      semantic_lineage_reason_codes: [semanticLineageReasonCodes.length ? semanticLineageReasonCodes.join(', ') : null]
-    };
-    return firstUC6Defined(...(valueMap[key] || []));
-  }
-
-  function getUC6SemanticLineageDecisionSummary(contract, status) {
-    if (isPlainObject(contract?.semantic_lineage_decision_summary)) return contract.semantic_lineage_decision_summary;
-    const stages = uc6State.stageResponses || {};
-    const finalDelivery = stages.final_pdf_delivery || {};
-    const response = uc6State.responsePayload || {};
-    const topResponse = uc6State.response || {};
-    const candidates = [
-      finalDelivery.admin_review_decision_semantic_lineage_summary,
-      response.admin_review_decision_semantic_lineage_summary,
-      topResponse.admin_review_decision_semantic_lineage_summary,
-      finalDelivery.task_chain_summary?.admin_review_decision_contract,
-      response.task_chain_summary?.admin_review_decision_contract,
-      finalDelivery.artifact_status?.admin_review_decision_contract,
-      response.artifact_status?.admin_review_decision_contract,
-      status
-    ];
-    for (const candidate of candidates) {
-      const summary = coerceUC6ObjectCandidate(candidate);
-      if (isPlainObject(summary?.semantic_lineage_decision_summary)) return summary.semantic_lineage_decision_summary;
-      if (summary && (
-        summary.semantic_lineage_decision_gate_status !== undefined
-        || summary.semantic_lineage_retrofit_status !== undefined
-        || summary.semantic_lineage_direct_consumption_confirmed !== undefined
-        || summary.semantic_lineage_source_present !== undefined
-      )) {
-        return {
-          source_present: summary.semantic_lineage_source_present ?? null,
-          decision_gate_status: summary.semantic_lineage_decision_gate_status ?? null,
-          direct_consumption_confirmed: summary.semantic_lineage_direct_consumption_confirmed ?? null,
-          retrofit_status: summary.semantic_lineage_retrofit_status ?? null,
-          reason_codes: Array.isArray(summary.semantic_lineage_reason_codes) ? summary.semantic_lineage_reason_codes : []
-        };
-      }
-    }
-    return {};
-  }
-
-  function getUC6DecisionTone(label, value) {
-    if (label === 'blocking_issue_count') return Number(value) > 0 ? 'danger' : 'ready';
-    if (label === 'warning_count') return Number(value) > 0 ? 'warning' : 'ready';
-    if (label === 'admin_review_ready') return value === true ? 'ready' : 'warning';
-    if (label === 'review_only') return value === true ? 'ready' : 'danger';
-    if (label === 'can_approve_final_pptx') return value === false ? 'ready' : 'warning';
-    if (label === 'can_mutate_artifacts') return value === false ? 'ready' : 'danger';
-    if (label === 'can_execute_chart_replacement') return value === false ? 'ready' : 'danger';
-    if (label === 'schema_version') return value === 'uc6_09a_admin_review_decision_contract_v1' ? 'ready' : 'warning';
-    if (label === 'contract_status') return String(value).includes('insufficient') || String(value).includes('blocked') ? 'danger' : String(value).includes('warning') ? 'warning' : 'ready';
-    if (label === 'source_contract_status') return String(value).includes('ready') ? 'ready' : value ? 'warning' : 'muted';
-    if (label === 'chart_lane') return String(value).includes('frozen') || String(value).includes('defer') ? 'warning' : value ? 'muted' : 'locked';
-    if (label === 'semantic_lineage_summary_present') return value === true ? 'ready' : 'muted';
-    if (label === 'semantic_lineage_source_present') return value === true ? 'ready' : value === false ? 'warning' : 'muted';
-    if (label === 'semantic_lineage_direct_consumption_confirmed') return value === true ? 'ready' : value === false ? 'warning' : 'muted';
-    if (label === 'semantic_lineage_decision_gate_status') {
-      const normalized = String(value || '').toLowerCase();
-      if (normalized === 'satisfied') return 'ready';
-      if (normalized === 'invalid_source') return 'danger';
-      if (normalized === 'missing_source' || normalized === 'partially_satisfied') return 'warning';
-      return normalized ? 'muted' : 'locked';
-    }
-    if (label === 'semantic_lineage_retrofit_status') {
-      const normalized = String(value || '').toLowerCase();
-      if (normalized === 'consumed') return 'ready';
-      if (normalized === 'invalid_source') return 'danger';
-      if (normalized === 'missing_source' || normalized === 'partially_consumed') return 'warning';
-      return normalized ? 'muted' : 'locked';
-    }
-    if (label === 'semantic_lineage_reason_code_count') return Number(value) > 0 ? 'warning' : 'ready';
-    if (label === 'semantic_lineage_reason_codes') return value ? 'warning' : 'muted';
-    return value === null || value === undefined || value === '-' ? 'muted' : 'ready';
-  }
-
-  function getUC6ReviewRowTone(status, severity) {
-    const normalizedStatus = String(status || '').toLowerCase();
-    const normalizedSeverity = String(severity || '').toLowerCase();
-    if (normalizedStatus.includes('fail') || normalizedStatus.includes('block') || normalizedSeverity.includes('error') || normalizedSeverity.includes('danger')) return 'is-danger';
-    if (normalizedStatus.includes('warning') || normalizedSeverity.includes('warning')) return 'is-warning';
-    if (normalizedStatus.includes('pass') || normalizedStatus.includes('ready') || normalizedStatus.includes('complete') || normalizedSeverity.includes('info')) return 'is-ready';
-    return 'is-muted';
-  }
-
-  function renderUC6EmptyTableRow(el, columnCount, message) {
-    if (!el) return;
-    el.innerHTML = `
-      <tr>
-        <td colspan="${columnCount}"><span class="uc6-table-status is-muted">${escapeHtml(message)}</span></td>
-      </tr>
-    `;
-  }
-
-  function renderUC6DecisionDetailPlaceholders(message = 'Admin Review Decision contract not loaded.') {
-    renderUC6EmptyTableRow(uc6Els.decisionGateTableBody, 5, message);
-    renderUC6EmptyTableRow(uc6Els.reviewChecklistTableBody, 5, message);
-    renderUC6EmptyTableRow(uc6Els.warningSourceTableBody, 2, message);
-    renderUC6EmptyTableRow(uc6Els.decisionArtifactReviewTableBody, 6, message);
-    renderUC6EmptyTableRow(uc6Els.recommendedNextStepTableBody, 4, message);
-    if (uc6Els.warningSummary) {
-      uc6Els.warningSummary.innerHTML = `
-        <div class="uc6-readiness-card is-locked"><span>warning_count</span><strong>-</strong></div>
-        <div class="uc6-readiness-card is-locked"><span>warning_codes</span><strong>-</strong></div>
-      `;
-    }
-  }
-
-  function normalizeUC6ReviewDetailItem(item, fallbackIdPrefix, index) {
-    if (isPlainObject(item)) return item;
-    if (typeof item === 'string') {
-      return {
-        step_id: `${fallbackIdPrefix}_${index + 1}`,
-        label: item,
-        message: item,
-        severity: 'info',
-        review_only: true
-      };
-    }
-    return {};
-  }
-
-  function getUC6DecisionDetailArray(contract, key) {
-    const value = contract?.[key];
-    if (Array.isArray(value)) return value;
-    if (isPlainObject(value)) {
-      return Object.entries(value).map(([entryKey, entryValue]) => {
-        if (isPlainObject(entryValue)) return { key: entryKey, artifact_key: entryKey, source_artifact: entryKey, ...entryValue };
-        return { key: entryKey, artifact_key: entryKey, label: String(entryValue), value: entryValue };
-      });
-    }
-    return [];
-  }
-
-  function renderUC6AdminReviewDecisionDetails(contract) {
-    const decisionGates = getUC6DecisionDetailArray(contract, 'decision_gates');
-    if (uc6Els.decisionGateTableBody) {
-      uc6Els.decisionGateTableBody.innerHTML = decisionGates.length ? decisionGates.map((rawGate, index) => {
-        const gate = normalizeUC6ReviewDetailItem(rawGate, 'decision_gate', index);
-        const status = gate?.status || '-';
-        const severity = gate?.severity || '-';
-        return `
-          <tr>
-            <td><code>${escapeHtml(gate?.gate_id || gate?.id || '-')}</code></td>
-            <td><span class="uc6-table-status ${getUC6ReviewRowTone(status, severity)}">${escapeHtml(status)}</span></td>
-            <td>${escapeHtml(severity)}</td>
-            <td>${gate?.review_only === true ? 'true' : gate?.review_only === false ? 'false' : '-'}</td>
-            <td>${escapeHtml(gate?.message || '-')}</td>
-          </tr>
-        `;
-      }).join('') : `
-        <tr><td colspan="5"><span class="uc6-table-status is-muted">decision_gates not provided</span></td></tr>
-      `;
-    }
-
-    const checklist = getUC6DecisionDetailArray(contract, 'review_checklist');
-    if (uc6Els.reviewChecklistTableBody) {
-      uc6Els.reviewChecklistTableBody.innerHTML = checklist.length ? checklist.map((rawItem, index) => {
-        const item = normalizeUC6ReviewDetailItem(rawItem, 'review_checklist', index);
-        const status = item?.status || '-';
-        const severity = item?.severity || '-';
-        return `
-          <tr>
-            <td><code>${escapeHtml(item?.item_id || item?.id || '-')}</code></td>
-            <td><span class="uc6-table-status ${getUC6ReviewRowTone(status, severity)}">${escapeHtml(status)}</span></td>
-            <td>${escapeHtml(severity)}</td>
-            <td>${item?.review_only === true ? 'true' : item?.review_only === false ? 'false' : '-'}</td>
-            <td><strong>${escapeHtml(item?.source || '-')}</strong><br>${escapeHtml(item?.label || '-')}</td>
-          </tr>
-        `;
-      }).join('') : `
-        <tr><td colspan="5"><span class="uc6-table-status is-muted">review_checklist not provided</span></td></tr>
-      `;
-    }
-
-    const warningSummary = isPlainObject(contract?.warning_summary) ? contract.warning_summary : {};
-    const warningBySource = isPlainObject(warningSummary.warnings_by_source_artifact) ? warningSummary.warnings_by_source_artifact : {};
-    const warningCodes = Array.isArray(warningSummary.warning_codes) ? warningSummary.warning_codes : [];
-    if (uc6Els.warningSummary) {
-      const warningCount = warningSummary.warning_count ?? warningCodes.length ?? 0;
-      uc6Els.warningSummary.innerHTML = [
-        { label: 'warning_count', value: warningCount, tone: Number(warningCount) > 0 ? 'warning' : 'ready' },
-        { label: 'warning_codes', value: warningCodes.length ? warningCodes.join(', ') : '-', tone: warningCodes.length ? 'warning' : 'ready' }
-      ].map((card) => `
-        <div class="uc6-readiness-card is-${escapeHtml(card.tone)}">
-          <span>${escapeHtml(card.label)}</span>
-          <strong>${escapeHtml(card.value)}</strong>
-        </div>
-      `).join('');
-    }
-    if (uc6Els.warningSourceTableBody) {
-      const warningRows = Object.entries(warningBySource);
-      uc6Els.warningSourceTableBody.innerHTML = warningRows.length ? warningRows.map(([source, count]) => `
-        <tr>
-          <td><code>${escapeHtml(source)}</code></td>
-          <td>${escapeHtml(count)}</td>
-        </tr>
-      `).join('') : `
-        <tr><td colspan="2"><span class="uc6-table-status is-muted">warnings_by_source_artifact not provided</span></td></tr>
-      `;
-    }
-
-    const artifactRows = getUC6DecisionDetailArray(contract, 'artifact_review_summary');
-    if (uc6Els.decisionArtifactReviewTableBody) {
-      uc6Els.decisionArtifactReviewTableBody.innerHTML = artifactRows.length ? artifactRows.map((item) => {
-        const status = item?.status || (item?.provided === true ? 'provided' : 'missing');
-        const warnings = item?.warning_count ?? 0;
-        const blocking = item?.blocking_issue_count ?? 0;
-        const tone = Number(blocking) > 0 ? 'is-danger' : Number(warnings) > 0 ? 'is-warning' : item?.provided === true ? 'is-ready' : 'is-muted';
-        return `
-          <tr>
-            <td><code>${escapeHtml(item?.artifact_key || item?.artifact || '-')}</code></td>
-            <td>${item?.provided === true ? 'true' : item?.provided === false ? 'false' : '-'}</td>
-            <td>${item?.required_for_minimum_review === true ? 'true' : item?.required_for_minimum_review === false ? 'false' : '-'}</td>
-            <td><span class="uc6-table-status ${tone}">${escapeHtml(status)}</span></td>
-            <td>${escapeHtml(warnings)}</td>
-            <td>${escapeHtml(blocking)}</td>
-          </tr>
-        `;
-      }).join('') : `
-        <tr><td colspan="6"><span class="uc6-table-status is-muted">artifact_review_summary not provided</span></td></tr>
-      `;
-    }
-
-    const nextSteps = getUC6DecisionDetailArray(contract, 'recommended_next_steps');
-    if (uc6Els.recommendedNextStepTableBody) {
-      uc6Els.recommendedNextStepTableBody.innerHTML = nextSteps.length ? nextSteps.map((rawStep, index) => {
-        const step = normalizeUC6ReviewDetailItem(rawStep, 'recommended_next_step', index);
-        const severity = step?.severity || '-';
-        return `
-          <tr>
-            <td><code>${escapeHtml(step?.step_id || step?.id || '-')}</code></td>
-            <td><span class="uc6-table-status ${getUC6ReviewRowTone(step?.status, severity)}">${escapeHtml(severity)}</span></td>
-            <td>${step?.review_only === true ? 'true' : step?.review_only === false ? 'false' : '-'}</td>
-            <td>${escapeHtml(step?.label || step?.message || '-')}</td>
-          </tr>
-        `;
-      }).join('') : `
-        <tr><td colspan="4"><span class="uc6-table-status is-muted">recommended_next_steps not provided</span></td></tr>
-      `;
-    }
-  }
-
-  function getUC6ContractValue(contract, keys, fallback = '-') {
-    for (const key of keys) {
-      if (contract && contract[key] !== undefined && contract[key] !== null && contract[key] !== '') return contract[key];
-    }
-    return fallback;
-  }
-
-  function normalizeUC6EvidenceArtifactRows(contract) {
-    const summary = isPlainObject(contract?.artifact_summary)
-      ? contract.artifact_summary
-      : isPlainObject(contract?.evidence_artifacts)
-        ? contract.evidence_artifacts
-        : {};
-    const summaryList = Array.isArray(summary) ? summary : null;
-
-    return UC6_ADMIN_EVIDENCE_ARTIFACT_KEYS.map((key) => {
-      const raw = summaryList
-        ? summaryList.find((item) => item?.artifact === key || item?.key === key || item?.name === key)
-        : summary[key];
-      const item = isPlainObject(raw) ? raw : {};
-      const provided = item.provided === true || item.exists === true || item.ready === true || item.status === 'provided' || item.status === 'ready';
-      return {
-        key,
-        provided,
-        status: item.status || (provided ? 'provided' : 'missing'),
-        warningCount: item.warning_count ?? item.warnings ?? 0,
-        blockingCount: item.blocking_issue_count ?? item.blocking_issues ?? 0
-      };
-    });
-  }
-
-  function getUC6EvidenceArtifactTone(row) {
-    if (Number(row.blockingCount) > 0) return 'is-danger';
-    if (row.provided && Number(row.warningCount) === 0) return 'is-ready';
-    if (row.provided || Number(row.warningCount) > 0) return 'is-warning';
-    return 'is-muted';
-  }
-
-  function renderUC6AdminEvidencePanel() {
-    const sourceInfo = getUC6AdminEvidenceContractSource();
-    const contract = sourceInfo.contract;
-
-    if (!contract) {
-      if (uc6Els.evidenceStatus) uc6Els.evidenceStatus.textContent = 'Admin Evidence contract not loaded. 07B artifact alias는 준비됐지만 현재 webapp 응답에는 아직 포함되지 않았습니다.';
-      if (uc6Els.evidenceSummary) uc6Els.evidenceSummary.innerHTML = `
-        <div class="uc6-readiness-card is-locked"><span>contract_status</span><strong>not_loaded</strong></div>
-        <div class="uc6-readiness-card is-locked"><span>expected_alias</span><strong>admin_evidence_review_contract</strong></div>
-      `;
-      if (uc6Els.evidenceArtifactTableBody) {
-        uc6Els.evidenceArtifactTableBody.innerHTML = UC6_ADMIN_EVIDENCE_ARTIFACT_KEYS.map((key) => `
-          <tr>
-            <td><code>${escapeHtml(key)}</code></td>
-            <td>false</td>
-            <td><span class="uc6-table-status is-muted">contract not loaded</span></td>
-            <td>-</td>
-            <td>-</td>
-          </tr>
-        `).join('');
-      }
-      if (uc6Els.evidenceRawJson) uc6Els.evidenceRawJson.textContent = 'Admin Evidence contract not loaded.';
+  async function authorizeUC6Session() {
+    if (!uc6State.firebaseUser || !uc6State.api) {
+      setUc6AuthState('signed_out');
       return;
     }
-
-    const statusInfo = getUC6AdminEvidenceStatusSource(contract);
-    const status = statusInfo.status || {};
-    const contractStatus = getUC6NestedEvidenceValue(contract, status, 'status') || 'loaded';
-    const schemaVersion = getUC6NestedEvidenceValue(contract, status, 'schema_version') || '-';
-    const reviewOnly = getUC6NestedEvidenceValue(contract, status, 'review_only');
-    const warningCount = getUC6NestedEvidenceValue(contract, status, 'warning_count') ?? 0;
-    const blockingCount = getUC6NestedEvidenceValue(contract, status, 'blocking_issue_count') ?? 0;
-    const chartPolicy = getUC6NestedEvidenceValue(contract, status, 'chart_lane') || '-';
-
-    if (uc6Els.evidenceStatus) {
-      uc6Els.evidenceStatus.textContent = statusInfo.source
-        ? `Loaded from ${sourceInfo.source} + ${statusInfo.source}`
-        : `Loaded from ${sourceInfo.source}`;
-    }
-    if (uc6Els.evidenceSummary) {
-      const cards = [
-        { label: 'contract_status', value: contractStatus, tone: Number(blockingCount) > 0 ? 'danger' : Number(warningCount) > 0 ? 'warning' : 'ready' },
-        { label: 'schema_version', value: schemaVersion, tone: schemaVersion === 'uc6_07a_admin_evidence_review_contract_v1' ? 'ready' : 'warning' },
-        { label: 'review_only', value: String(reviewOnly), tone: reviewOnly === true ? 'ready' : 'warning' },
-        { label: 'warning_count', value: warningCount, tone: Number(warningCount) > 0 ? 'warning' : 'ready' },
-        { label: 'blocking_issue_count', value: blockingCount, tone: Number(blockingCount) > 0 ? 'danger' : 'ready' },
-        { label: 'chart_lane', value: chartPolicy, tone: String(chartPolicy).includes('frozen') || String(chartPolicy).includes('defer') ? 'warning' : 'muted' }
-      ];
-      uc6Els.evidenceSummary.innerHTML = cards.map((card) => `
-        <div class="uc6-readiness-card is-${escapeHtml(card.tone)}">
-          <span>${escapeHtml(card.label)}</span>
-          <strong>${escapeHtml(card.value)}</strong>
-        </div>
-      `).join('');
-    }
-
-    if (uc6Els.evidenceArtifactTableBody) {
-      uc6Els.evidenceArtifactTableBody.innerHTML = normalizeUC6EvidenceArtifactRows(contract).map((row) => `
-        <tr>
-          <td><code>${escapeHtml(row.key)}</code></td>
-          <td>${row.provided ? 'true' : 'false'}</td>
-          <td><span class="uc6-table-status ${getUC6EvidenceArtifactTone(row)}">${escapeHtml(row.status)}</span></td>
-          <td>${escapeHtml(row.warningCount)}</td>
-          <td>${escapeHtml(row.blockingCount)}</td>
-        </tr>
-      `).join('');
-    }
-
-    if (uc6Els.evidenceRawJson) {
-      uc6Els.evidenceRawJson.textContent = formatUC6Json(sanitizeUC6ForBrowserDebug(contract));
-    }
-  }
-
-  function renderUC6AdminReviewDecisionPanel() {
-    const contractInfo = getUC6AdminReviewDecisionContractSource();
-    const contract = contractInfo.contract;
-    const statusInfo = getUC6AdminReviewDecisionStatusSource(contract);
-    const status = statusInfo.status;
-
-    if (!contract && !status) {
-      if (uc6Els.decisionStatus) uc6Els.decisionStatus.textContent = 'Admin Review Decision contract not loaded. 09C final delivery response embedding 또는 n8n import 상태를 확인하세요.';
-      if (uc6Els.decisionSummary) uc6Els.decisionSummary.innerHTML = `
-        <div class="uc6-readiness-card is-locked"><span>contract_status</span><strong>not_loaded</strong></div>
-        <div class="uc6-readiness-card is-locked"><span>expected_alias</span><strong>admin_review_decision_contract</strong></div>
-      `;
-      renderUC6DecisionDetailPlaceholders();
-      if (uc6Els.decisionRawJson) uc6Els.decisionRawJson.textContent = 'Admin Review Decision contract not loaded.';
-      return;
-    }
-
-    const summary = {
-      contract_status: getUC6NestedDecisionValue(contract, status, 'status') || 'loaded',
-      schema_version: getUC6NestedDecisionValue(contract, status, 'schema_version') || '-',
-      source_contract_status: getUC6NestedDecisionValue(contract, status, 'source_contract_status') || '-',
-      admin_review_ready: getUC6NestedDecisionValue(contract, status, 'admin_review_ready'),
-      review_only: getUC6NestedDecisionValue(contract, status, 'review_only'),
-      decision_required: getUC6NestedDecisionValue(contract, status, 'decision_required'),
-      can_approve_final_pptx: getUC6NestedDecisionValue(contract, status, 'can_approve_final_pptx'),
-      can_mutate_artifacts: getUC6NestedDecisionValue(contract, status, 'can_mutate_artifacts'),
-      can_execute_chart_replacement: getUC6NestedDecisionValue(contract, status, 'can_execute_chart_replacement'),
-      warning_count: getUC6NestedDecisionValue(contract, status, 'warning_count') ?? 0,
-      blocking_issue_count: getUC6NestedDecisionValue(contract, status, 'blocking_issue_count') ?? 0,
-      admin_action_count: getUC6NestedDecisionValue(contract, status, 'admin_action_count') ?? 0,
-      blocked_item_count: getUC6NestedDecisionValue(contract, status, 'blocked_item_count') ?? 0,
-      chart_lane: getUC6NestedDecisionValue(contract, status, 'chart_lane') || 'frozen_after_uc6_06e',
-      semantic_lineage_summary_present: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_summary_present'),
-      semantic_lineage_source_present: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_source_present'),
-      semantic_lineage_decision_gate_status: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_decision_gate_status') || '-',
-      semantic_lineage_direct_consumption_confirmed: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_direct_consumption_confirmed'),
-      semantic_lineage_retrofit_status: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_retrofit_status') || '-',
-      semantic_lineage_reason_code_count: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_reason_code_count') ?? 0,
-      semantic_lineage_reason_codes: getUC6NestedDecisionValue(contract, status, 'semantic_lineage_reason_codes') || '-'
-    };
-
-    const loadedFrom = [contractInfo.source, statusInfo.source].filter(Boolean).join(' + ');
-    if (uc6Els.decisionStatus) {
-      uc6Els.decisionStatus.textContent = `Loaded from ${loadedFrom || 'admin_review_decision_contract_status fallback'}`;
-    }
-
-    if (uc6Els.decisionSummary) {
-      const cards = [
-        { label: 'contract_status', value: summary.contract_status },
-        { label: 'schema_version', value: summary.schema_version },
-        { label: 'source_contract_status', value: summary.source_contract_status },
-        { label: 'admin_review_ready', value: summary.admin_review_ready },
-        { label: 'review_only', value: summary.review_only },
-        { label: 'decision_required', value: summary.decision_required },
-        { label: 'can_approve_final_pptx', value: summary.can_approve_final_pptx },
-        { label: 'can_mutate_artifacts', value: summary.can_mutate_artifacts },
-        { label: 'can_execute_chart_replacement', value: summary.can_execute_chart_replacement },
-        { label: 'warning_count', value: summary.warning_count },
-        { label: 'blocking_issue_count', value: summary.blocking_issue_count },
-        { label: 'admin_action_count', value: summary.admin_action_count },
-        { label: 'blocked_item_count', value: summary.blocked_item_count },
-        { label: 'chart_lane', value: summary.chart_lane },
-        { label: 'semantic_lineage_summary_present', value: summary.semantic_lineage_summary_present },
-        { label: 'semantic_lineage_source_present', value: summary.semantic_lineage_source_present },
-        { label: 'semantic_lineage_decision_gate_status', value: summary.semantic_lineage_decision_gate_status },
-        { label: 'semantic_lineage_direct_consumption_confirmed', value: summary.semantic_lineage_direct_consumption_confirmed },
-        { label: 'semantic_lineage_retrofit_status', value: summary.semantic_lineage_retrofit_status },
-        { label: 'semantic_lineage_reason_code_count', value: summary.semantic_lineage_reason_code_count }
-      ];
-      uc6Els.decisionSummary.innerHTML = cards.map((card) => `
-        <div class="uc6-readiness-card is-${escapeHtml(getUC6DecisionTone(card.label, card.value))}">
-          <span>${escapeHtml(card.label)}</span>
-          <strong>${escapeHtml(card.value === undefined || card.value === null ? '-' : String(card.value))}</strong>
-        </div>
-      `).join('');
-    }
-
-    renderUC6AdminReviewDecisionDetails(contract || {});
-
-    if (uc6Els.decisionRawJson) {
-      const semanticLineageDecisionSummary = getUC6SemanticLineageDecisionSummary(contract, status);
-      const rawPayload = contract
-        ? {
-            admin_review_decision_contract_status: summary,
-            admin_review_decision_semantic_lineage_summary: semanticLineageDecisionSummary,
-            admin_review_decision_contract: contract
-          }
-        : {
-            admin_review_decision_contract_status: summary,
-            admin_review_decision_semantic_lineage_summary: semanticLineageDecisionSummary
-          };
-      uc6Els.decisionRawJson.textContent = formatUC6Json(sanitizeUC6ForBrowserDebug(rawPayload));
-    }
-  }
-
-  function renderUC6ArtifactTable() {
-    if (!uc6Els.artifactTableBody) return;
-    const combined = { ...UC6_DEFAULT_ARTIFACTS };
-    UC6_STAGE_SEQUENCE.forEach((stageId) => {
-      const artifacts = uc6State.stageResponses[stageId]?.artifacts;
-      if (isPlainObject(artifacts)) {
-        Object.assign(combined, artifacts);
-      }
-    });
-    uc6Els.artifactTableBody.innerHTML = Object.entries(combined).map(([alias, file]) => {
-      const reported = file && !String(file).includes('이후 표시');
-      return `
-        <tr>
-          <td><code>${escapeHtml(alias)}</code></td>
-          <td>${escapeHtml(file)}</td>
-          <td><span class="uc6-table-status ${reported ? 'is-ready' : 'is-muted'}">${reported ? 'reported' : 'expected'}</span></td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  function renderUC6DebugPanel() {
-    if (!uc6Els.debugJson) return;
-    const delivery = uc6State.stageResponses.final_pdf_delivery || {};
-    const debugPayload = {
-      safety_boundary: {
-        browser_calls: 'n8n public webhook and public download proxy only',
-        forbidden_in_browser: ['internal auth header', 'FastAPI internal endpoint', 'internal file path'],
-        download: 'public proxy URL is derived without exposing internal token or /data path'
-      },
-      current_stage: uc6State.currentStage,
-      selected_batch_id: uc6State.selectedBatchId,
-      context_collection_id: uc6State.contextCollectionId,
-      render_run_id: uc6State.renderRunId,
-      final_pdf_download_url_available: Boolean(buildUC6PdfDownloadUrl(delivery)),
-      final_pdf_suggested_filename: delivery.final_pdf_ready === true ? getUC6PdfSuggestedFilename(delivery) : null,
-      final_pptx_download_url_available: Boolean(buildUC6PptxDownloadUrl(delivery)),
-      final_pptx_suggested_filename: delivery.final_pptx_ready === true ? getUC6PptxSuggestedFilename(delivery) : null,
-      request: sanitizeUC6ForBrowserDebug(uc6State.requestPayload),
-      stage_responses: sanitizeUC6ForBrowserDebug(uc6State.stageResponses),
-      response: sanitizeUC6ForBrowserDebug(uc6State.responsePayload),
-      error: uc6State.lastError
-    };
-    uc6Els.debugJson.textContent = formatUC6Json(debugPayload);
-  }
-
-  function getUC6StageState(stageId) {
-    if (uc6State.stageErrors[stageId]) return 'error';
-    if (uc6State.currentStage === stageId && uc6State.isRunning) return 'active';
-    if (uc6State.stageResponses[stageId]?.success === true || uc6State.stageResponses[stageId]?.status === 'completed') return 'done';
-    if (stageId === 'intake_review_prep' && !uc6Els.pptxInput?.files?.[0] && uc6State.selectedBatchId) return 'done';
-    const order = UC6_STAGE_SEQUENCE.indexOf(stageId);
-    const activeOrder = uc6State.currentStage ? UC6_STAGE_SEQUENCE.indexOf(uc6State.currentStage) : -1;
-    if (uc6State.isRunning && activeOrder >= 0 && order < activeOrder) return 'done';
-    if (uc6State.isRunning && activeOrder >= 0 && order > activeOrder) return 'idle';
-    if (order === 0) return 'active';
-    return 'idle';
-  }
-
-  function renderUC6StageTimeline() {
-    if (!uc6Els.stageTimeline) return;
-    uc6Els.stageTimeline.innerHTML = UC6_STAGE_MODEL.map((stage, idx) => {
-      const state = getUC6StageState(stage.id);
-      return `
-        <div class="uc6-stage-node is-${escapeHtml(state)}">
-          <span class="uc6-stage-index">${idx + 1}</span>
-          <div>
-            <strong>${escapeHtml(stage.label)}</strong>
-            <small>${escapeHtml(stage.detail)}</small>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  function renderUC6MiniPipeline() {
-    if (!uc6Els.miniPipeline) return;
-    const hasContext = Boolean(uc6State.contextCollectionId || uc6State.stageResponses.context_intelligence_prep?.success);
-    const hasDatabag = Boolean(uc6State.renderRunId || uc6State.stageResponses.runtime_databag_prep?.success);
-    const hasBridge = Boolean(uc6State.stageResponses.runtime_render_bridge?.final_render_ready === true);
-    const hasDelivery = Boolean(uc6State.stageResponses.final_pdf_delivery?.final_pdf_ready === true || uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready === true);
-    uc6Els.miniPipeline.innerHTML = `
-      <span class="uc6-pipeline-pill ${uc6State.stageResponses.approval_publish || !uc6Els.pptxInput?.files?.[0] ? 'is-done' : 'is-idle'}">Template</span>
-      <span class="uc6-pipeline-pill ${hasContext ? 'is-done' : uc6State.currentStage === 'context_intelligence_prep' ? 'is-active' : 'is-idle'}">Context</span>
-      <span class="uc6-pipeline-pill ${hasDatabag ? 'is-done' : uc6State.currentStage === 'runtime_databag_prep' ? 'is-active' : 'is-idle'}">Databag</span>
-      <span class="uc6-pipeline-pill ${hasBridge ? 'is-done' : uc6State.currentStage === 'runtime_render_bridge' ? 'is-active' : 'is-idle'}">Bridge</span>
-      <span class="uc6-pipeline-pill ${hasDelivery ? 'is-done' : uc6State.currentStage === 'final_pdf_delivery' ? 'is-active' : 'is-locked'}">PDF</span>
-    `;
-  }
-
-  function renderUC6RuntimeContextPreview() {
-    if (!uc6Els.runtimeContextPreview) return;
+    setUc6AuthState('authorizing');
     try {
-      const context = getUC6RuntimeContext();
-      uc6Els.runtimeContextPreview.textContent = formatUC6Json(context);
-      setUC6Chip(uc6Els.contextStateChip, 'Context JSON 정상', 'is-ready');
-    } catch (error) {
-      uc6Els.runtimeContextPreview.textContent = `Runtime Context JSON 오류: ${error.message}`;
-      setUC6Chip(uc6Els.contextStateChip, 'JSON 오류', 'is-danger');
-    }
-  }
-
-  function renderUC6Hero() {
-    const latest = getUC6LatestResponse();
-    if (uc6Els.heroStatusText) {
-      if (uc6State.isRunning) uc6Els.heroStatusText.textContent = `${getUC6StageLabel(uc6State.currentStage)} 실행 중`;
-      else if (uc6State.lastError) uc6Els.heroStatusText.textContent = 'UC6 실행 실패';
-      else if (uc6State.stageResponses.final_pdf_delivery?.final_pdf_ready) uc6Els.heroStatusText.textContent = 'Final PDF 준비 완료';
-      else if (uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready) uc6Els.heroStatusText.textContent = 'Final PPTX 준비 완료';
-      else if (uc6State.stageResponses.runtime_render_bridge?.final_render_ready) uc6Els.heroStatusText.textContent = 'Final Render 준비 완료';
-      else if (latest?.success === true) uc6Els.heroStatusText.textContent = 'UC6 단계 진행 중';
-      else uc6Els.heroStatusText.textContent = 'UC6 E2E 준비';
-    }
-    if (uc6Els.heroStatusSubtext) {
-      if (uc6State.lastError) uc6Els.heroStatusSubtext.textContent = uc6State.lastError.message || '실행 중 오류가 발생했습니다.';
-      else if (uc6State.renderRunId) uc6Els.heroStatusSubtext.textContent = uc6State.renderRunId;
-      else if (uc6State.selectedBatchId) uc6Els.heroStatusSubtext.textContent = uc6State.selectedBatchId;
-      else uc6Els.heroStatusSubtext.textContent = '01A~02C workflow를 순차 실행합니다.';
-    }
-    if (uc6Els.actionHelper) {
-      if (uc6State.isRunning) uc6Els.actionHelper.textContent = `${getUC6StageLabel(uc6State.currentStage)} 응답을 기다리는 중입니다.`;
-      else if (uc6State.lastError) uc6Els.actionHelper.textContent = `오류: ${uc6State.lastError.message}`;
-      else if (uc6State.stageResponses.final_pdf_delivery?.final_pdf_ready) uc6Els.actionHelper.textContent = 'Final PDF artifact가 준비되었습니다. Public download proxy가 있으면 미리보기/다운로드가 가능합니다.';
-      else if (uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready) uc6Els.actionHelper.textContent = 'Final PPTX artifact가 준비되었습니다. PDF 변환 상태를 확인하세요.';
-      else uc6Els.actionHelper.textContent = '파일을 선택하면 01A부터, 파일이 없으면 선택된 published batch로 02A0부터 실행합니다.';
-    }
-  }
-
-  function getUC6DeliveryRenderRunId(delivery) {
-    if (!isPlainObject(delivery)) return '';
-    return firstUC6Defined(
-      delivery.render_run_id,
-      delivery.renderRunId,
-      delivery.final_delivery?.render_run_id,
-      delivery.request?.render_run_id,
-      delivery.task_chain_summary?.final_pdf_conversion?.render_run_id
-    ) || '';
-  }
-
-  function getUC6ActiveRenderRunId(delivery) {
-    return firstUC6Defined(
-      uc6State.renderRunId,
-      uc6State.stageResponses.runtime_databag_prep?.render_run_id,
-      uc6State.stageResponses.runtime_render_bridge?.render_run_id,
-      uc6State.stageResponses.final_pdf_delivery?.render_run_id,
-      !uc6State.isRunning ? getUC6DeliveryRenderRunId(delivery) : null
-    ) || '';
-  }
-
-  function resetUC6PdfPreviewMount(reason) {
-    if (!uc6Els.pdfPlaceholder) return;
-    delete uc6Els.pdfPlaceholder.dataset.viewerUrl;
-    delete uc6Els.pdfPlaceholder.dataset.viewerRenderRunId;
-    delete uc6Els.pdfPlaceholder.dataset.viewerLoadState;
-    if (reason) uc6Els.pdfPlaceholder.dataset.viewerResetReason = reason;
-  }
-
-  function clearUC6RuntimeDeliveryStateForNewRun() {
-    [
-      'context_intelligence_prep',
-      'runtime_databag_prep',
-      'runtime_render_bridge',
-      'final_pdf_delivery'
-    ].forEach((stageId) => {
-      if (uc6State.stageResponses && Object.prototype.hasOwnProperty.call(uc6State.stageResponses, stageId)) {
-        delete uc6State.stageResponses[stageId];
-      }
-    });
-    uc6State.responsePayload = null;
-    uc6State.download = null;
-    uc6State.contextCollectionId = '';
-    uc6State.renderRunId = '';
-    resetUC6PdfPreviewMount('new_run');
-  }
-
-  function renderUC6FinalDeliveryPreview(delivery, pdfUrl, pptxUrl) {
-    const pdfStatus = getUC6DeliveryArtifactStatus(delivery, 'final_render_output_pdf');
-    const pptxStatus = getUC6DeliveryArtifactStatus(delivery, 'final_render_output_pptx');
-    const pdfReady = delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf');
-    const pptxReady = delivery.final_pptx_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pptx');
-    const mode = delivery.delivery_mode || delivery.phase || (pdfReady ? 'final_pdf_ready' : 'waiting');
-    const downloadProxyReady = Boolean(pdfUrl || pptxUrl);
-    const viewerUrl = buildUC6PdfViewerUrl(pdfUrl);
-    const deliveryRenderRunId = getUC6DeliveryRenderRunId(delivery);
-    const activeRenderRunId = getUC6ActiveRenderRunId(delivery);
-    const deliveryMatchesActiveRun = !deliveryRenderRunId || !activeRenderRunId || deliveryRenderRunId === activeRenderRunId;
-    const finalDeliveryRecorded = Boolean(uc6State.stageResponses.final_pdf_delivery?.final_pdf_ready || uc6State.stageResponses.final_pdf_delivery?.final_pptx_ready);
-    const finalDeliveryPhaseReady = !uc6State.isRunning || uc6State.currentStage === 'final_pdf_delivery' || finalDeliveryRecorded;
-    const canMountPdfPreview = pdfReady && Boolean(viewerUrl) && deliveryMatchesActiveRun && finalDeliveryPhaseReady;
-    const adminDecisionSource = getUC6AdminReviewDecisionContractSource();
-    const adminEvidenceSource = getUC6AdminEvidenceContractSource();
-    const adminReviewLoaded = Boolean(adminDecisionSource.contract || adminEvidenceSource.contract);
-    const cards = [
-      { label: 'PDF Artifact', value: pdfReady ? 'ready' : 'waiting', tone: pdfReady ? 'ready' : 'locked' },
-      { label: 'PPTX Fallback', value: pptxReady ? 'ready' : 'waiting', tone: pptxReady ? 'ready' : 'locked' },
-      { label: 'Delivery Mode', value: mode, tone: pdfReady ? 'ready' : 'warning' },
-      { label: 'Admin Review', value: adminReviewLoaded ? 'loaded' : 'not_loaded', tone: adminReviewLoaded ? 'ready' : 'muted' }
-    ];
-    const deliverySummaryHtml = `
-      <div class="uc6-pdf-ready-panel ${pdfReady ? 'is-ready' : 'is-waiting'}">
-        <div class="uc6-pdf-ready-icon">${pdfReady ? '📄' : '⏳'}</div>
-        <div class="uc6-pdf-ready-copy">
-          <span class="uc6-preview-kicker">Delivery Summary</span>
-          <strong>${pdfReady ? 'Final PDF artifact ready' : 'Final PDF artifact waiting'}</strong>
-          <p>${pdfReady ? 'public_pdf_url 또는 public download proxy를 기준으로 현재 페이지의 PDF viewer와 다운로드 액션을 준비했습니다.' : '02C Final Delivery 완료 후 final_render_output_pdf readiness와 public URL 상태를 표시합니다.'}</p>
-        </div>
-      </div>
-      <div class="uc6-pdf-status-grid">
-        ${cards.map((card) => `
-          <div class="uc6-pdf-status-card is-${escapeHtml(card.tone)}">
-            <span>${escapeHtml(card.label)}</span>
-            <strong>${escapeHtml(card.value)}</strong>
-          </div>
-        `).join('')}
-      </div>
-      <div class="uc6-pdf-download-summary">
-        <div>
-          <span>Primary artifact</span>
-          <strong><code>final_render_output_pdf</code></strong>
-        </div>
-        <div>
-          <span>Download proxy</span>
-          <strong>${downloadProxyReady ? 'available' : 'not_configured'}</strong>
-        </div>
-        <div>
-          <span>PDF status</span>
-          <strong>${escapeHtml(pdfStatus.status || (pdfReady ? 'completed' : 'pending'))}</strong>
-        </div>
-        <div>
-          <span>PPTX status</span>
-          <strong>${escapeHtml(pptxStatus.status || (pptxReady ? 'completed' : 'pending'))}</strong>
-        </div>
-      </div>
-    `;
-
-    if (uc6Els.deliverySummaryPanel) {
-      uc6Els.deliverySummaryPanel.innerHTML = deliverySummaryHtml;
-    }
-    if (!uc6Els.pdfPlaceholder) return;
-    uc6Els.pdfPlaceholder.classList.toggle('is-ready', canMountPdfPreview);
-    uc6Els.pdfPlaceholder.classList.toggle('is-waiting', !canMountPdfPreview);
-
-    if (canMountPdfPreview) {
-      const existingFrame = uc6Els.pdfPlaceholder.querySelector('iframe.uc6-pdf-viewer-frame');
-      if (
-        existingFrame
-        && uc6Els.pdfPlaceholder.dataset.viewerUrl === viewerUrl
-        && existingFrame.getAttribute('src') === viewerUrl
-      ) {
-        uc6Els.pdfPlaceholder.dataset.viewerRenderRunId = deliveryRenderRunId || activeRenderRunId || '';
+      await uc6State.firebaseUser.getIdToken(true);
+      const session = await uc6State.api.getSession();
+      if (!validateUc6SessionContract(session)) {
+        setUc6AuthState('access_denied');
         return;
       }
-      uc6Els.pdfPlaceholder.dataset.viewerUrl = viewerUrl;
-      uc6Els.pdfPlaceholder.dataset.viewerRenderRunId = deliveryRenderRunId || activeRenderRunId || '';
-      uc6Els.pdfPlaceholder.dataset.viewerLoadState = 'loading';
-      uc6Els.pdfPlaceholder.innerHTML = `
-        <div class="uc6-pdf-viewer-shell">
-          <iframe class="uc6-pdf-viewer-frame" title="Final PDF Preview" src="${escapeHtml(viewerUrl)}" loading="lazy"></iframe>
-        </div>
-      `;
-      const iframe = uc6Els.pdfPlaceholder.querySelector('iframe.uc6-pdf-viewer-frame');
-      if (iframe) {
-        const loadToken = `${Date.now()}`;
-        uc6Els.pdfPlaceholder.dataset.viewerLoadToken = loadToken;
-        iframe.addEventListener('load', () => {
-          if (uc6Els.pdfPlaceholder?.dataset.viewerLoadToken === loadToken) {
-            uc6Els.pdfPlaceholder.dataset.viewerLoadState = 'loaded';
-          }
-        }, { once: true });
-        window.setTimeout(() => {
-          if (
-            uc6Els.pdfPlaceholder
-            && uc6Els.pdfPlaceholder.dataset.viewerLoadToken === loadToken
-            && uc6Els.pdfPlaceholder.dataset.viewerLoadState === 'loading'
-          ) {
-            uc6Els.pdfPlaceholder.dataset.viewerLoadState = 'slow';
-          }
-        }, 8000);
+      uc6State.session = session;
+      setUc6AuthState('authorized', UC6_AUTHORIZED_LABEL);
+      await resumeUC6PersistedJob();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      setUc6AuthState('temporarily_unavailable', uc6MessageFromError(error));
+    }
+  }
+
+  async function initUC6FirebaseAuth() {
+    setUc6AuthState('initializing');
+    try {
+      const { auth, authMod } = await loadUC6FirebaseClient();
+      authMod.onAuthStateChanged(auth, async (user) => {
+        uc6State.firebaseUser = user || null;
+        uc6State.session = null;
+        if (!user) {
+          resetUC6JobState(false);
+          setUc6AuthState('signed_out');
+          return;
+        }
+        await authorizeUC6Session();
+      });
+    } catch (_) {
+      setUc6AuthState('temporarily_unavailable');
+    }
+  }
+
+  async function signInUC6() {
+    try {
+      setUc6AuthState('authenticating');
+      const { auth, authMod } = await loadUC6FirebaseClient();
+      const provider = new authMod.GoogleAuthProvider();
+      try {
+        await authMod.signInWithPopup(auth, provider);
+      } catch (error) {
+        const code = String(error?.code || '');
+        if (code === 'auth/popup-blocked' || code === 'auth/popup-closed-by-user' || code === 'auth/operation-not-supported-in-this-environment') {
+          await authMod.signInWithRedirect(auth, provider);
+          return;
+        }
+        throw error;
       }
+    } catch (_) {
+      setUc6AuthState('signed_out', '로그인을 완료하지 못했습니다. 다시 시도하세요.');
+    }
+  }
+
+  async function signOutUC6() {
+    try {
+      const client = uc6State.firebaseClient || await loadUC6FirebaseClient();
+      abortUC6Operations();
+      stopUC6Polling();
+      await client.authMod.signOut(client.auth);
+    } catch (_) {
+      resetUC6JobState(false);
+      setUc6AuthState('signed_out');
+    }
+  }
+
+  async function refreshUC6Session() {
+    if (!uc6State.firebaseUser) {
+      setUc6AuthState('signed_out');
       return;
     }
-
-    resetUC6PdfPreviewMount(deliveryMatchesActiveRun ? 'waiting' : 'render_run_mismatch');
-    const waitingTitle = pdfReady && viewerUrl && !deliveryMatchesActiveRun
-      ? '이전 PDF Preview 보류'
-      : pdfReady && viewerUrl && !finalDeliveryPhaseReady
-        ? '02C Final Delivery 완료 대기'
-        : pdfReady
-          ? 'PDF URL 대기'
-          : 'Final PDF Preview 대기';
-    const waitingMessage = pdfReady && viewerUrl && !deliveryMatchesActiveRun
-      ? '이전 render_run_id의 PDF를 현재 실행 중인 run에 재마운트하지 않습니다.'
-      : pdfReady && viewerUrl && !finalDeliveryPhaseReady
-        ? '단계 전환 중에는 PDF iframe을 재생성하지 않고 02C 완료 후 한 번만 표시합니다.'
-        : pdfReady
-          ? 'PDF artifact는 준비됐지만 browser-safe public URL을 만들 수 없습니다.'
-          : '02C 완료 후 public_pdf_url을 현재 페이지 안의 PDF viewer에 표시합니다.';
-    uc6Els.pdfPlaceholder.innerHTML = `
-      <div class="uc6-pdf-mock-toolbar">
-        <span></span><span></span><span></span>
-      </div>
-      <div class="uc6-pdf-mock-page">
-        <div class="uc6-pdf-mock-line w-72"></div>
-        <div class="uc6-pdf-mock-line w-56"></div>
-        <div class="uc6-pdf-mock-block"></div>
-        <div class="uc6-pdf-mock-line w-84"></div>
-        <div class="uc6-pdf-mock-line w-48"></div>
-      </div>
-      <div class="uc6-placeholder-copy">
-        <strong>${escapeHtml(waitingTitle)}</strong>
-        <p>${escapeHtml(waitingMessage)}</p>
-      </div>
-    `;
+    await authorizeUC6Session();
   }
 
-  function renderUC6DownloadPlaceholders() {
-    const delivery = uc6State.stageResponses.final_pdf_delivery || {};
-    const pdfReady = delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf');
-    const pptxReady = delivery.final_pptx_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pptx');
-    const pdfUrl = buildUC6PdfDownloadUrl(delivery);
-    const pptxUrl = buildUC6PptxDownloadUrl(delivery);
-    const pdfSuggestedFilename = pdfReady ? getUC6PdfSuggestedFilename(delivery) : '';
-    const pptxSuggestedFilename = pptxReady ? getUC6PptxSuggestedFilename(delivery) : '';
-
-    renderUC6FinalDeliveryPreview(delivery, pdfUrl, pptxUrl);
-
-    if (uc6Els.previewStateChip) {
-      if (pdfReady && pdfUrl) setUC6Chip(uc6Els.previewStateChip, 'PDF Preview Ready', 'is-ready');
-      else if (pdfReady) setUC6Chip(uc6Els.previewStateChip, 'PDF Ready', 'is-warning');
-      else if (pptxReady) setUC6Chip(uc6Els.previewStateChip, 'PPTX Fallback Ready', 'is-warning');
-      else if (uc6State.stageResponses.runtime_render_bridge?.final_render_ready === true) setUC6Chip(uc6Els.previewStateChip, 'Final Render Ready', 'is-ready');
-      else setUC6Chip(uc6Els.previewStateChip, 'Preview 대기', 'is-locked');
-    }
-    if (uc6Els.pdfOpenBtn) {
-      uc6Els.pdfOpenBtn.disabled = !pdfReady || !pdfUrl;
-      uc6Els.pdfOpenBtn.textContent = pdfReady && pdfUrl ? '↗ PDF 새 탭 열기' : pdfReady ? '↗ PDF URL 대기' : '↗ PDF 대기';
-      uc6Els.pdfOpenBtn.dataset.downloadUrl = pdfUrl;
-      uc6Els.pdfOpenBtn.dataset.suggestedFilename = pdfSuggestedFilename;
-      uc6Els.pdfOpenBtn.title = pdfReady
-        ? (pdfUrl ? `새 창에서 ${pdfSuggestedFilename} 파일을 엽니다.` : 'PDF artifact는 준비됐지만 public download proxy URL을 만들 수 없습니다.')
-        : '02C Final Delivery 완료 후 활성화됩니다.';
-    }
-    if (uc6Els.pdfDownloadBtn) {
-      uc6Els.pdfDownloadBtn.disabled = !pdfReady || !pdfUrl;
-      uc6Els.pdfDownloadBtn.textContent = pdfReady && pdfUrl ? '📄 PDF 다운로드' : pdfReady ? '📄 PDF URL 대기' : '📄 PDF 변환 대기';
-      uc6Els.pdfDownloadBtn.dataset.downloadUrl = pdfUrl;
-      uc6Els.pdfDownloadBtn.dataset.suggestedFilename = pdfSuggestedFilename;
-      uc6Els.pdfDownloadBtn.title = pdfReady
-        ? (pdfUrl ? `${pdfSuggestedFilename} 파일 다운로드를 시도합니다.` : 'PDF artifact는 준비됐지만 public download proxy URL을 만들 수 없습니다.')
-        : '02C Final Delivery 완료 후 활성화됩니다.';
-    }
-    if (uc6Els.pptxDownloadBtn) {
-      uc6Els.pptxDownloadBtn.disabled = !pptxReady || !pptxUrl;
-      uc6Els.pptxDownloadBtn.textContent = pptxReady && pptxUrl ? '📊 PPTX fallback 다운로드' : pptxReady ? '📊 PPTX 준비 완료' : '📊 PPTX 다운로드';
-      uc6Els.pptxDownloadBtn.dataset.downloadUrl = pptxUrl;
-      uc6Els.pptxDownloadBtn.dataset.suggestedFilename = pptxSuggestedFilename;
-      uc6Els.pptxDownloadBtn.title = pptxReady
-        ? (pptxUrl ? `새 창에서 ${pptxSuggestedFilename} 파일을 엽니다.` : 'PPTX artifact는 준비됐지만 public download proxy URL을 만들 수 없습니다.')
-        : '02C 완료 후 fallback으로 활성화됩니다.';
+  async function resumeUC6PersistedJob() {
+    const persisted = loadUC6LocalState();
+    if (!persisted.job_id) return;
+    try {
+      uc6State.jobId = normalizeUc6JobId(persisted.job_id);
+      await refreshUC6JobStatus({ fetchReview: true });
+      const mapped = mapUc6StateToView(uc6State.jobState);
+      if (mapped.pollable) startUC6Polling();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      clearUC6LocalState();
+      resetUC6JobState(false);
     }
   }
 
-  function renderUC6PresentationFocusState() {
-    if (!uc6Els.section) return;
-    uc6Els.section.classList.toggle('is-presentation-focus', uc6State.presentationFocus === true);
-    if (uc6Els.focusToggle) {
-      uc6Els.focusToggle.setAttribute('aria-pressed', uc6State.presentationFocus === true ? 'true' : 'false');
-      uc6Els.focusToggle.textContent = uc6State.presentationFocus === true ? '운영 화면 보기' : 'PDF 집중 보기';
+  function createUC6OperationController() {
+    if (uc6State.operationAbortController) uc6State.operationAbortController.abort();
+    uc6State.operationAbortController = new AbortController();
+    return uc6State.operationAbortController;
+  }
+
+  async function uploadUC6PptxJob() {
+    if (!isUc6Authorized() || uc6State.operationInFlight) return;
+    const validation = validateUc6PptxSelection(uc6Els.fileInput?.files);
+    if (!validation.ok) {
+      setUc6Text(uc6Els.analysisMessage, validation.message);
+      return;
     }
+    resetUC6JobState(true);
+    uc6State.selectedFile = validation.file;
+    uc6State.operationInFlight = true;
+    renderUC6All();
+    const controller = createUC6OperationController();
+    try {
+      const result = await runUc6CreateJobAndSubmitInitialAnalysis({
+        api: uc6State.api,
+        file: validation.file,
+        signal: controller.signal,
+        onJobCreated: (jobId, created) => {
+          uc6State.jobId = jobId;
+          uc6State.jobState = created.state || 'source_ready';
+          uc6State.source = {
+            size_bytes: created.source?.size_bytes,
+            slide_count: created.source?.slide_count,
+            filename: boundedFilename(created.source?.filename || validation.file.name)
+          };
+          saveUC6LocalState();
+          renderUC6All();
+        }
+      });
+      uc6State.analysisSubmittedForJobId = result.jobId;
+      uc6State.jobState = result.analysisResponse?.state || uc6State.jobState || 'analysis_queued';
+      uc6State.consecutivePollErrors = 0;
+      saveUC6LocalState();
+      renderUC6All();
+      startUC6Polling();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      setUc6Text(uc6Els.analysisMessage, uc6MessageFromError(error));
+    } finally {
+      uc6State.operationInFlight = false;
+      renderUC6All();
+    }
+  }
+
+  async function submitUC6Analysis(retryFailed) {
+    if (!isUc6Authorized() || uc6State.operationInFlight || !uc6State.jobId) return;
+    if (!retryFailed && uc6State.analysisSubmittedForJobId === uc6State.jobId) return;
+    uc6State.operationInFlight = true;
+    uc6State.review = null;
+    uc6State.decision = null;
+    uc6State.decisionSubmitted = false;
+    renderUC6All();
+    const controller = createUC6OperationController();
+    try {
+      const submitted = await uc6State.api.submitAnalysis(uc6State.jobId, { retryFailed: retryFailed === true, signal: controller.signal });
+      uc6State.analysisSubmittedForJobId = uc6State.jobId;
+      uc6State.jobState = submitted.state || uc6State.jobState || 'analysis_queued';
+      uc6State.consecutivePollErrors = 0;
+      saveUC6LocalState();
+      renderUC6All();
+      startUC6Polling();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      setUc6Text(uc6Els.analysisMessage, uc6MessageFromError(error));
+    } finally {
+      uc6State.operationInFlight = false;
+      renderUC6All();
+    }
+  }
+
+  function startUC6Polling() {
+    stopUC6Polling();
+    if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
+    uc6State.pollingAbortController = new AbortController();
+    scheduleUC6Poll(0);
+  }
+
+  function scheduleUC6Poll(delay = UC6_POLL_INTERVAL_MS) {
+    stopUC6Polling();
+    if (!isUc6Authorized() || !uc6State.jobId) return;
+    uc6State.pollingTimer = setTimeout(() => {
+      pollUC6JobStatus().catch(() => {});
+    }, delay);
+  }
+
+  async function pollUC6JobStatus() {
+    if (uc6State.statusRequestActive || !uc6State.pollingAbortController) return;
+    uc6State.statusRequestActive = true;
+    try {
+      await refreshUC6JobStatus({ signal: uc6State.pollingAbortController.signal, fetchReview: true });
+      uc6State.consecutivePollErrors = 0;
+      const mapped = mapUc6StateToView(uc6State.jobState);
+      if (mapped.pollable) scheduleUC6Poll();
+      else stopUC6Polling();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) {
+        stopUC6Polling();
+        return;
+      }
+      if (error?.name !== 'AbortError') {
+        uc6State.consecutivePollErrors += 1;
+        if (uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS) {
+          stopUC6Polling();
+          setUc6Text(uc6Els.analysisMessage, '상태 확인을 잠시 중단했습니다. 수동으로 다시 시작할 수 있습니다.');
+        } else {
+          scheduleUC6Poll();
+        }
+      }
+    } finally {
+      uc6State.statusRequestActive = false;
+      renderUC6All();
+    }
+  }
+
+  async function refreshUC6JobStatus(options = {}) {
+    if (!isUc6Authorized() || !uc6State.jobId) return;
+    const job = await uc6State.api.getJob(uc6State.jobId, { signal: options.signal });
+    uc6State.jobState = job.state || uc6State.jobState;
+    uc6State.lastPollingTimestamp = Date.now();
+    saveUC6LocalState();
+    const mapped = mapUc6StateToView(uc6State.jobState);
+    if (options.fetchReview && mapped.reviewReady) await fetchUC6Review(options.signal);
+    renderUC6All();
+  }
+
+  async function fetchUC6Review(signal) {
+    if (!isUc6Authorized() || !uc6State.jobId) return;
+    try {
+      const review = await uc6State.api.getReview(uc6State.jobId, { signal });
+      uc6State.review = {
+        job_id: review.job_id,
+        state: review.state,
+        schema_version: review.schema_version,
+        status: review.status,
+        global_readiness_status: review.global_readiness_status,
+        blocking_issue_count: review.blocking_issue_count,
+        warning_count: review.warning_count,
+        public_review_surface: review.public_review_surface,
+        runtime_readiness_summary: review.runtime_readiness_summary,
+        current_decision_summary: review.current_decision_summary,
+        review_package_sha256: review.review_package_sha256,
+        control_plane_contract_version: review.control_plane_contract_version
+      };
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      setUc6Text(uc6Els.reviewStatus, uc6MessageFromError(error));
+    }
+  }
+
+  async function submitUC6Decision() {
+    if (!isUc6Authorized() || uc6State.operationInFlight || uc6State.decisionSubmitted || !uc6State.jobId) return;
+    let reviewNotes;
+    let requestedRevisions;
+    try {
+      reviewNotes = splitDecisionTextLines(uc6Els.reviewNotes?.value || '');
+      requestedRevisions = splitDecisionTextLines(uc6Els.requestedRevisions?.value || '');
+    } catch (error) {
+      setUc6Text(uc6Els.decisionStatus, error?.message === 'too_many_decision_entries' ? '입력 항목은 최대 20개까지 허용됩니다.' : '각 입력 항목은 1000자 이하로 작성하세요.');
+      return;
+    }
+    const decision = uc6Els.decisionChoice?.value || '';
+    const validation = validateUc6DecisionCommand({
+      state: uc6State.jobState,
+      decision,
+      review_notes: reviewNotes,
+      requested_revisions: requestedRevisions
+    });
+    if (!validation.ok) {
+      setUc6Text(uc6Els.decisionStatus, validation.message);
+      return;
+    }
+    uc6State.operationInFlight = true;
+    renderUC6All();
+    const controller = createUC6OperationController();
+    try {
+      const submitted = await uc6State.api.submitDecision(uc6State.jobId, {
+        state: uc6State.jobState,
+        decision,
+        review_notes: reviewNotes,
+        requested_revisions: requestedRevisions
+      }, { signal: controller.signal });
+      uc6State.decision = {
+        job_id: submitted.job_id,
+        state: submitted.state,
+        decision: submitted.decision,
+        created: submitted.created,
+        control_plane_contract_version: submitted.control_plane_contract_version
+      };
+      uc6State.jobState = submitted.state || uc6State.jobState;
+      uc6State.decisionSubmitted = true;
+      saveUC6LocalState();
+      await refreshUC6JobStatus({ fetchReview: true });
+      setUc6Text(uc6Els.decisionStatus, `${UC6_DECISION_LABELS[decision]} 결정이 기록되었습니다.`);
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      setUc6Text(uc6Els.decisionStatus, uc6MessageFromError(error));
+    } finally {
+      uc6State.operationInFlight = false;
+      renderUC6All();
+    }
+  }
+
+  function renderUC6Session() {
+    const authorized = isUc6Authorized();
+    if (uc6Els.signInBtn) uc6Els.signInBtn.disabled = uc6State.authStatus === 'authenticating' || uc6State.authStatus === 'authorizing' || authorized;
+    if (uc6Els.signOutBtn) uc6Els.signOutBtn.disabled = !uc6State.firebaseUser;
+    if (uc6Els.refreshSessionBtn) uc6Els.refreshSessionBtn.disabled = !uc6State.firebaseUser || uc6State.authStatus === 'authorizing';
+  }
+
+  function renderUC6Intake() {
+    const authorized = isUc6Authorized();
+    const selected = validateUc6PptxSelection(uc6Els.fileInput?.files || []);
+    const file = selected.ok ? selected.file : uc6State.selectedFile;
+    setUc6Text(uc6Els.fileName, file ? boundedFilename(file.name) : '선택된 파일 없음');
+    if (uc6Els.uploadBtn) uc6Els.uploadBtn.disabled = !authorized || uc6State.operationInFlight || !selected.ok;
+    if (uc6Els.clearBtn) uc6Els.clearBtn.disabled = uc6State.operationInFlight || (!uc6State.jobId && !file);
+    if (uc6Els.uploadIndicator) uc6Els.uploadIndicator.hidden = !uc6State.operationInFlight;
+    setUc6Text(uc6Els.sourceSize, formatUc6Bytes(uc6State.source?.size_bytes));
+    setUc6Text(uc6Els.sourceSlides, uc6State.source?.slide_count);
+    setUc6Text(uc6Els.jobId, uc6State.jobId);
+    setUc6Text(uc6Els.jobState, UC6_STATE_LABELS[uc6State.jobState] || uc6State.jobState);
+  }
+
+  function renderUC6Analysis() {
+    const mapped = mapUc6StateToView(uc6State.jobState);
+    setUc6Chip(uc6Els.pollingChip, mapped.pollable ? 'Polling' : 'Idle', mapped.pollable ? 'warning' : 'neutral');
+    setUc6Text(uc6Els.analysisState, UC6_STATE_LABELS[uc6State.jobState] || '작업 없음');
+    if (!uc6Els.analysisMessage?.textContent) {
+      const message = mapped.canRetry ? '분석 실패 상태입니다. 명시적으로 재시도할 수 있습니다.' : mapped.reviewReady ? '관리자 검토 정보가 준비되었습니다.' : mapped.pollable ? '분석 상태를 확인하고 있습니다.' : 'PPTX 업로드 후 분석을 시작합니다.';
+      setUc6Text(uc6Els.analysisMessage, message);
+    }
+    if (uc6Els.retryAnalysisBtn) uc6Els.retryAnalysisBtn.disabled = !isUc6Authorized() || !mapped.canRetry || uc6State.operationInFlight;
+    if (uc6Els.resumePollingBtn) uc6Els.resumePollingBtn.disabled = !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight || uc6State.consecutivePollErrors < UC6_MAX_TRANSIENT_ERRORS;
+  }
+
+  function renderUC6Review() {
+    const review = uc6State.review || {};
+    const surface = review.public_review_surface || {};
+    setUc6Text(uc6Els.reviewStatus, review.state ? 'bounded admin review loaded' : '관리자 검토 정보 대기 중');
+    if (uc6Els.reviewSummaryGrid) {
+      uc6Els.reviewSummaryGrid.replaceChildren(
+        createUc6Item('global readiness', review.global_readiness_status),
+        createUc6Item('blockers', review.blocking_issue_count ?? 0),
+        createUc6Item('warnings', review.warning_count ?? 0),
+        createUc6Item('admin actions', surface.required_admin_action_count ?? surface.admin_action_count ?? '-'),
+        createUc6Item('next phase', surface.next_recommended_phase || '-'),
+        createUc6Item('state', UC6_STATE_LABELS[review.state] || review.state || '-')
+      );
+    }
+    renderUc6List(uc6Els.reviewSurfaceList, [
+      ...toUc6DisplayLines(surface.top_blockers || surface.blockers, ['code', 'message', 'severity']),
+      ...toUc6DisplayLines(surface.top_warnings || surface.warnings, ['code', 'message', 'severity']),
+      ...toUc6DisplayLines(surface.required_admin_actions, ['action', 'label', 'severity']),
+      ...toUc6DisplayLines(surface.topology_audit_summary, ['status', 'message', 'summary']),
+      ...toUc6DisplayLines(surface.dependency_cascade_summary, ['status', 'message', 'summary']),
+      ...toUc6DisplayLines(surface.version_lock_summary, ['status', 'message', 'summary'])
+    ], 'bounded review surface 대기 중');
+    renderUc6List(uc6Els.runtimeReadinessList, toUc6DisplayLines(review.runtime_readiness_summary, ['status', 'ready', 'blocked', 'warning_count']), 'runtime readiness summary 대기 중');
+    renderUc6List(uc6Els.currentDecisionList, toUc6DisplayLines(review.current_decision_summary, ['decision', 'state', 'created', 'status']), 'current decision summary 없음');
+    const hash = typeof review.review_package_sha256 === 'string' && review.review_package_sha256.length >= 12
+      ? `${review.review_package_sha256.slice(0, 12)}...`
+      : '-';
+    setUc6Text(uc6Els.reviewPackageHash, hash);
+  }
+
+  function renderUC6Decision() {
+    const mapped = mapUc6StateToView(uc6State.jobState);
+    const disabled = !isUc6Authorized() || uc6State.operationInFlight || uc6State.decisionSubmitted || !mapped.canDecide;
+    if (uc6Els.decisionChoice) uc6Els.decisionChoice.disabled = disabled;
+    if (uc6Els.reviewNotes) uc6Els.reviewNotes.disabled = disabled;
+    if (uc6Els.requestedRevisions) uc6Els.requestedRevisions.disabled = disabled;
+    if (uc6Els.submitDecisionBtn) uc6Els.submitDecisionBtn.disabled = disabled;
+    if (uc6State.decision) {
+      setUc6Text(uc6Els.decisionStatus, `${UC6_DECISION_LABELS[uc6State.decision.decision] || uc6State.decision.decision} / ${UC6_STATE_LABELS[uc6State.decision.state] || uc6State.decision.state}`);
+    } else if (!mapped.canDecide) {
+      setUc6Text(uc6Els.decisionStatus, '검토 준비 상태가 되면 결정 입력이 활성화됩니다.');
+    }
+  }
+
+  function renderUC6Diagnostics() {
+    if (uc6Els.diagnosticsList) {
+      uc6Els.diagnosticsList.replaceChildren(
+        createUc6Item('browser-admin endpoints', Object.keys(UC6_BROWSER_ADMIN_ENDPOINTS).length),
+        createUc6Item('auth state', uc6State.authStatus),
+        createUc6Item('public job state', uc6State.jobState || '-'),
+        createUc6Item('poll errors', uc6State.consecutivePollErrors),
+        createUc6Item('contract', uc6State.session?.http_boundary_contract_version || uc6State.review?.control_plane_contract_version || '-')
+      );
+    }
+    setUc6Text(uc6Els.diagnosticsStatus, 'Public-safe diagnostics only. Tokens, identity values, raw responses, and internal paths are not rendered.');
   }
 
   function renderUC6All() {
     if (!uc6Els.section) return;
-    renderUC6PresentationFocusState();
-    renderUC6TemplateSummary();
-    renderUC6SlotTable();
-    renderUC6ReadinessSummary();
-    renderUC6AdminEvidencePanel();
-    renderUC6AdminReviewDecisionPanel();
-    renderUC6ArtifactTable();
-    renderUC6DebugPanel();
-    renderUC6StageTimeline();
-    renderUC6MiniPipeline();
-    renderUC6RuntimeContextPreview();
-    renderUC6Hero();
-    renderUC6DownloadPlaceholders();
-  }
-
-  function setUC6ActiveTab(tabId) {
-    uc6State.activeTab = tabId;
-    uc6Els.tabs.forEach((tab) => {
-      tab.classList.toggle('active', tab.dataset.uc6Tab === tabId);
-    });
-    document.querySelectorAll('#view-uc6 .uc6-tab-panel').forEach((panel) => {
-      panel.classList.toggle('active', panel.id === `uc6-panel-${tabId}`);
-    });
-  }
-
-  function resetUC6Shell() {
-    uc6State.requestPayload = null;
-    uc6State.responsePayload = null;
-    uc6State.stageResponses = {};
-    uc6State.stageErrors = {};
-    uc6State.currentStage = null;
-    uc6State.contextCollectionId = '';
-    uc6State.renderRunId = '';
-    uc6State.download = null;
-    uc6State.lastError = null;
-    uc6State.isRunning = false;
-    resetUC6PdfPreviewMount('reset');
-    if (uc6Els.runBtn) uc6Els.runBtn.disabled = false;
-    try { localStorage.removeItem(UC6_STORAGE_KEY); } catch (_) {}
-    renderUC6All();
-    setUC6ActiveTab('template');
-  }
-
-  async function runUC6EndToEnd() {
-    if (!uc6Els.runBtn) return;
-    try {
-      const runtimeContext = getUC6RuntimeContext();
-      if (!isPlainObject(runtimeContext)) throw new Error('Runtime Context는 JSON object여야 합니다.');
-      let batchId = getUC6SelectedBatchId();
-      if (!batchId && !uc6Els.pptxInput?.files?.[0]) throw new Error('PPTX 파일을 선택하거나 published_template_batch_id를 입력하세요.');
-      uc6State.isRunning = true;
-      uc6State.lastError = null;
-      uc6State.stageErrors = {};
-      clearUC6RuntimeDeliveryStateForNewRun();
-      uc6State.requestPayload = { batch_id: batchId || '(generated by 01A)', runtime_context: runtimeContext };
-      uc6Els.runBtn.disabled = true;
-      setUC6ActiveTab('debug');
-      renderUC6All();
-
-      const intake = await callUC6IntakeReviewPrep();
-      if (intake?.batch_id) batchId = intake.batch_id;
-      if (!batchId) throw new Error('batch_id를 확인할 수 없습니다.');
-      uc6State.selectedBatchId = batchId;
-
-      if (intake) {
-        await pollUC6ReviewStatus(batchId);
-        if (uc6State.approvalStatus !== 'approved') {
-          throw new Error('템플릿 승인 상태가 승인 완료가 아닙니다. 승인 후 다시 실행하세요.');
-        }
-        await callUC6ApprovalPublish(batchId);
-      } else if (!uc6State.stageResponses.approval_publish?.success) {
-        // Existing published template path. The selected batch must already have a 01C publish-accepted status file.
-        uc6State.stageResponses.intake_review_prep = { success: true, status: 'skipped', phase: 'existing_published_template_selected', batch_id: batchId };
-        uc6State.stageResponses.review_status = { success: true, status: 'skipped', phase: 'existing_published_template_selected', batch_id: batchId };
-        uc6State.stageResponses.approval_publish = { success: true, status: 'skipped', phase: 'existing_published_template_selected', batch_id: batchId, template_status: 'publish_accepted' };
-      }
-
-      const contextPrep = await callUC6ContextIntelligencePrep(batchId, runtimeContext);
-      const contextCollectionId = contextPrep.context_collection_id || uc6State.contextCollectionId;
-      if (!contextCollectionId) throw new Error('02A0 context_collection_id가 없습니다.');
-
-      const databag = await callUC6RuntimeDatabagPrep(batchId, contextCollectionId, runtimeContext);
-      const renderRunId = databag.render_run_id || uc6State.renderRunId;
-      if (!renderRunId) throw new Error('02A render_run_id가 없습니다.');
-
-      await callUC6RuntimeRenderBridge(batchId, renderRunId, contextCollectionId);
-      await callUC6FinalPdfDelivery(batchId, renderRunId, contextCollectionId);
-
-      setUC6ActiveTab('artifacts');
-    } catch (error) {
-      if (uc6State.currentStage) {
-        uc6State.stageErrors[uc6State.currentStage] = { message: error.message || 'unknown error' };
-      }
-      uc6State.lastError = { message: error.message || '알 수 없는 오류', name: error.name || 'Error' };
-      setUC6ActiveTab('debug');
-    } finally {
-      uc6State.isRunning = false;
-      uc6State.currentStage = null;
-      if (uc6Els.runBtn) uc6Els.runBtn.disabled = false;
-      saveUC6LocalState();
-      renderUC6All();
-    }
+    renderUC6Session();
+    renderUC6Intake();
+    renderUC6Analysis();
+    renderUC6Review();
+    renderUC6Decision();
+    renderUC6Diagnostics();
   }
 
   function initUC6() {
     if (!uc6Els.section) return;
-    loadUC6LocalState();
-    const defaultSample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.marriott_ai_hospitality;
-    if (uc6Els.runtimeEditor && !uc6Els.runtimeEditor.value) {
-      uc6Els.runtimeEditor.value = formatUC6Json(defaultSample.runtime_context);
-    }
-    if (uc6Els.batchSelect) {
-      const hasDefaultOption = Array.from(uc6Els.batchSelect.options).some((option) => option.value === UC6_DEFAULT_BATCH_ID);
-      if (!hasDefaultOption) {
-        const option = document.createElement('option');
-        option.value = UC6_DEFAULT_BATCH_ID;
-        option.textContent = UC6_DEFAULT_BATCH_ID;
-        uc6Els.batchSelect.insertBefore(option, uc6Els.batchSelect.firstChild);
-      }
-      uc6Els.batchSelect.value = Array.from(uc6Els.batchSelect.options).some((option) => option.value === uc6State.selectedBatchId)
-        ? uc6State.selectedBatchId
-        : UC6_DEFAULT_BATCH_ID;
-    }
-    if (uc6Els.sampleCase) uc6Els.sampleCase.value = uc6State.selectedSampleId;
-    uc6Els.gateButtons.forEach((btn) => {
-      const active = btn.dataset.uc6Approval === uc6State.approvalStatus;
-      btn.classList.toggle('active', active);
-    });
-    if (uc6State.approvalStatus === 'approved') setUC6Chip(uc6Els.approvalChip, '승인 완료', 'is-ready');
-
-    uc6Els.pptxInput?.addEventListener('change', (event) => {
-      const file = event.target.files?.[0];
-      uc6State.pptxFileName = file?.name || '';
-      if (uc6State.pptxFileName) {
-        if (uc6Els.pptxUploadText) uc6Els.pptxUploadText.textContent = 'PPTX 선택 완료';
-        if (uc6Els.pptxFileName) {
-          uc6Els.pptxFileName.textContent = uc6State.pptxFileName;
-          uc6Els.pptxFileName.style.display = 'block';
-        }
-        setUC6Chip(uc6Els.pptxStateChip, '파일 선택됨', 'is-ready');
-      } else {
-        setUC6Chip(uc6Els.pptxStateChip, '업로드 대기', 'is-muted');
-      }
-      resetUC6Shell();
-    });
-
-    uc6Els.batchSelect?.addEventListener('change', () => {
-      const isCustom = uc6Els.batchSelect.value === 'custom';
-      if (uc6Els.customBatchId) uc6Els.customBatchId.style.display = isCustom ? 'block' : 'none';
-      uc6State.selectedBatchId = getUC6SelectedBatchId();
-      resetUC6Shell();
-    });
-
-    uc6Els.customBatchId?.addEventListener('input', () => {
-      uc6State.selectedBatchId = getUC6SelectedBatchId();
+    setUc6AuthState('initializing');
+    uc6Els.signInBtn?.addEventListener('click', signInUC6);
+    uc6Els.signOutBtn?.addEventListener('click', signOutUC6);
+    uc6Els.refreshSessionBtn?.addEventListener('click', refreshUC6Session);
+    uc6Els.fileInput?.addEventListener('change', () => {
+      const validation = validateUc6PptxSelection(uc6Els.fileInput.files);
+      setUc6Text(uc6Els.analysisMessage, validation.ok ? '업로드 준비가 완료되었습니다.' : validation.message);
       renderUC6All();
     });
-
-    uc6Els.gateButtons.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        uc6State.approvalStatus = btn.dataset.uc6Approval || 'pending';
-        uc6Els.gateButtons.forEach((item) => item.classList.toggle('active', item === btn));
-        if (uc6State.approvalStatus === 'approved') setUC6Chip(uc6Els.approvalChip, '승인 완료', 'is-ready');
-        else if (uc6State.approvalStatus === 'needs_review') setUC6Chip(uc6Els.approvalChip, '수정 필요', 'is-danger');
-        else setUC6Chip(uc6Els.approvalChip, '승인 대기', 'is-warning');
-        renderUC6All();
-      });
-    });
-
-    uc6Els.sampleCase?.addEventListener('change', () => {
-      uc6State.selectedSampleId = uc6Els.sampleCase.value;
-      const sample = UC6_SAMPLE_CASES[uc6State.selectedSampleId] || UC6_SAMPLE_CASES.marriott_ai_hospitality;
-      if (uc6Els.runtimeEditor) uc6Els.runtimeEditor.value = formatUC6Json(sample.runtime_context);
-      resetUC6Shell();
-    });
-
-    uc6Els.runtimeEditor?.addEventListener('input', () => {
-      uc6State.responsePayload = null;
-      uc6State.lastError = null;
+    uc6Els.uploadBtn?.addEventListener('click', uploadUC6PptxJob);
+    uc6Els.clearBtn?.addEventListener('click', () => resetUC6JobState(true));
+    uc6Els.retryAnalysisBtn?.addEventListener('click', () => submitUC6Analysis(true));
+    uc6Els.resumePollingBtn?.addEventListener('click', () => {
+      uc6State.consecutivePollErrors = 0;
+      startUC6Polling();
       renderUC6All();
     });
-
-    uc6Els.tabs.forEach((tab) => {
-      tab.addEventListener('click', () => setUC6ActiveTab(tab.dataset.uc6Tab || 'template'));
+    uc6Els.submitDecisionBtn?.addEventListener('click', submitUC6Decision);
+    window.addEventListener('beforeunload', () => {
+      stopUC6Polling();
+      abortUC6Operations();
     });
-
-    uc6Els.runBtn?.addEventListener('click', runUC6EndToEnd);
-    uc6Els.resetBtn?.addEventListener('click', resetUC6Shell);
-    uc6Els.focusToggle?.addEventListener('click', () => {
-      uc6State.presentationFocus = !uc6State.presentationFocus;
-      renderUC6PresentationFocusState();
-    });
-    uc6Els.pdfOpenBtn?.addEventListener('click', () => {
-      const delivery = uc6State.stageResponses.final_pdf_delivery || {};
-      const url = uc6Els.pdfOpenBtn?.dataset?.downloadUrl || buildUC6PdfDownloadUrl(delivery);
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-      if (delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf')) {
-        alert('PDF artifact는 준비되었습니다. public download proxy URL을 만들 수 없습니다. final_render_output_pdf artifact-status/download 설정을 확인하세요.');
-      }
-    });
-    uc6Els.pdfDownloadBtn?.addEventListener('click', () => {
-      const delivery = uc6State.stageResponses.final_pdf_delivery || {};
-      const url = uc6Els.pdfDownloadBtn?.dataset?.downloadUrl || buildUC6PdfDownloadUrl(delivery);
-      const filename = uc6Els.pdfDownloadBtn?.dataset?.suggestedFilename || getUC6PdfSuggestedFilename(delivery);
-      if (triggerUC6BrowserDownload(url, filename)) return;
-      if (delivery.final_pdf_ready === true || isUC6DeliveryArtifactReady(delivery, 'final_render_output_pdf')) {
-        alert('PDF artifact는 준비되었습니다. public download proxy URL을 만들 수 없습니다. final_render_output_pdf artifact-status/download 설정을 확인하세요.');
-      }
-    });
-
-    uc6Els.pptxDownloadBtn?.addEventListener('click', () => {
-      const delivery = uc6State.stageResponses.final_pdf_delivery || {};
-      const url = uc6Els.pptxDownloadBtn?.dataset?.downloadUrl || buildUC6PptxDownloadUrl(delivery);
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-      if (delivery.final_pptx_ready === true) {
-        alert('PPTX artifact는 준비되었습니다. public download proxy URL을 만들 수 없습니다. 서버의 final_render_output_pptx artifact-status/download 설정을 확인하세요.');
-      }
-    });
-
+    initUC6FirebaseAuth();
     renderUC6All();
   }
 

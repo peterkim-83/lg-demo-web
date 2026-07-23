@@ -418,368 +418,145 @@
       </section>
 
       <section class="view-section" id="view-uc6">
-        <div class="uc6-dashboard-container">
-          <div class="uc6-page-hero">
+        <div class="uc6-admin-shell">
+          <header class="uc6-admin-hero">
             <div>
-              <span class="uc6-eyebrow">FetchDoc Admin Stage Controller</span>
-              <h1>🧾 FetchDoc 문서 생성 운영 관리</h1>
-              <p>완성본 PPTX를 템플릿화하고, Slot·Databag·렌더링 준비 상태를 단계별로 확인하는 관리자용 운영 Shell입니다.</p>
+              <span class="uc6-admin-eyebrow">FetchDoc Browser Admin</span>
+              <h1>문서 템플릿 관리자 검토</h1>
+              <p>Firebase 로그인 후 FetchDoc 관리자 세션을 확인하고, PPTX 분석 결과를 bounded control-plane API로 검토합니다.</p>
             </div>
-            <div class="uc6-hero-status">
-              <span class="uc6-status-dot"></span>
-              <div>
-                <strong id="uc6-heroStatusText">UI Shell 준비</strong>
-                <small id="uc6-heroStatusSubtext">01A~02C E2E workflow를 순차 실행합니다.</small>
-              </div>
-            </div>
-          </div>
+            <span class="uc6-admin-chip is-neutral" id="uc6-authStateChip">초기화 중</span>
+          </header>
 
-          <div class="uc6-top-control-bar">
-            <div class="uc6-control-box uc6-admin-card">
-              <div class="uc6-card-heading-row">
-                <span class="uc6-control-label">1. 완성본 PPTX</span>
-                <span class="uc6-chip is-muted" id="uc6-pptxStateChip">업로드 대기</span>
-              </div>
-              <label class="uc6-upload-wrapper" id="uc6-pptxDropzone" for="uc6-pptxInput">
-                <span class="uc6-upload-icon">📤</span>
-                <div class="uc6-upload-content">
-                  <span class="uc6-upload-text" id="uc6-pptxUploadText">PPTX를 드롭하거나 선택하세요</span>
-                  <span class="uc6-upload-hint">파일을 선택하면 01A Intake부터 실행합니다. 파일이 없으면 선택된 published batch로 02A0부터 실행합니다.</span>
-                </div>
-                <span class="uc6-file-name" id="uc6-pptxFileName" style="display: none;"></span>
-              </label>
-              <input type="file" id="uc6-pptxInput" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />
-            </div>
-
-            <div class="uc6-control-box uc6-admin-card">
-              <div class="uc6-card-heading-row">
-                <span class="uc6-control-label">2. 템플릿 확인</span>
-                <span class="uc6-chip is-warning" id="uc6-templateApprovalChip">승인 대기</span>
-              </div>
-              <label class="uc6-mini-field" for="uc6-batchSelect">
-                <span>게시 템플릿 배치</span>
-                <select id="uc6-batchSelect">
-                  <option value="fd_norm_20260617_052857_8w19ym" selected>fd_norm_20260617_052857_8w19ym</option>
-                  <option value="fd_norm_n8n_7f18_lookup_20260606_055620">fd_norm_n8n_7f18_lookup_20260606_055620</option>
-                  <option value="custom">직접 입력</option>
-                </select>
-              </label>
-              <input class="uc6-inline-input" id="uc6-customBatchId" type="text" placeholder="custom published_template_batch_id" style="display: none;" />
-              <div class="uc6-template-gate-row">
-                <button class="uc6-gate-btn" type="button" data-uc6-approval="pending">검토 중</button>
-                <button class="uc6-gate-btn active" type="button" data-uc6-approval="approved">승인 완료</button>
-                <button class="uc6-gate-btn" type="button" data-uc6-approval="needs_review">수정 필요</button>
-              </div>
-            </div>
-
-            <div class="uc6-control-box uc6-admin-card">
-              <div class="uc6-card-heading-row">
-                <span class="uc6-control-label">3. Runtime Context & Databag 수집</span>
-                <span class="uc6-chip is-ready" id="uc6-contextStateChip">샘플 준비</span>
-              </div>
-              <label class="uc6-mini-field" for="uc6-sampleCase">
-                <span>샘플 케이스</span>
-                <select id="uc6-sampleCase">
-                  <option value="marriott_ai_hospitality" selected>Marriott AI Hospitality 제안</option>
-                  <option value="lg_internal_demo">LG 내부 보고서 샘플</option>
-                  <option value="partner_proposal_demo">파트너 제안 샘플</option>
-                </select>
-              </label>
-              <textarea class="uc6-context-editor" id="uc6-runtimeContextEditor" spellcheck="false"></textarea>
-            </div>
-
-            <div class="uc6-control-box uc6-admin-card uc6-action-box">
-              <span class="uc6-control-label">4. 생성 단계 제어</span>
-              <div class="uc6-mini-pipeline" id="uc6-miniPipeline">
-                <span class="uc6-pipeline-pill is-done">Template</span>
-                <span class="uc6-pipeline-pill is-active">Context</span>
-                <span class="uc6-pipeline-pill is-idle">Databag</span>
-                <span class="uc6-pipeline-pill is-idle">Bridge</span>
-                <span class="uc6-pipeline-pill is-locked">PDF</span>
-              </div>
-              <button class="btn btn-primary w-full" id="uc6-runBtn">UC6 01A~02C 실행</button>
-              <button class="btn btn-outline w-full" id="uc6-resetBtn" type="button">단계 초기화</button>
-            </div>
-          </div>
-
-          <div class="uc6-stage-strip" id="uc6-stageTimeline" aria-label="FetchDoc 생성 단계 타임라인"></div>
-
-          <div class="uc6-workbench">
-            <div class="uc6-inspector-panel">
-              <div class="uc6-tabs" role="tablist" aria-label="FetchDoc 운영 정보 탭">
-                <button class="uc6-tab active" type="button" data-uc6-tab="template">템플릿</button>
-                <button class="uc6-tab" type="button" data-uc6-tab="slot">Slot</button>
-                <button class="uc6-tab" type="button" data-uc6-tab="databag">Databag</button>
-                <button class="uc6-tab" type="button" data-uc6-tab="evidence">Evidence</button>
-                <button class="uc6-tab" type="button" data-uc6-tab="artifacts">Artifacts</button>
-                <button class="uc6-tab" type="button" data-uc6-tab="delivery">Delivery</button>
-                <button class="uc6-tab" type="button" data-uc6-tab="debug">Debug</button>
-              </div>
-
-              <div class="uc6-tab-panel active" id="uc6-panel-template">
-                <div class="uc6-panel-header">
-                  <h3>템플릿 확인 및 승인 Gate</h3>
-                  <p>현재 Shell에서는 템플릿화 결과를 시뮬레이션하고, 승인 상태만 UI에서 관리합니다.</p>
-                </div>
-                <div class="uc6-template-summary-grid" id="uc6-templateSummary"></div>
-              </div>
-
-              <div class="uc6-tab-panel" id="uc6-panel-slot">
-                <div class="uc6-panel-header">
-                  <h3>Slot 구성 확인</h3>
-                  <p>Runtime Context와 B1 readiness 응답을 기준으로 필수 Slot 상태를 표시합니다.</p>
-                </div>
-                <div class="uc6-slot-table-wrap">
-                  <table class="uc6-table">
-                    <thead>
-                      <tr>
-                        <th>Slot Key</th>
-                        <th>Source</th>
-                        <th>Required</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody id="uc6-slotTableBody"></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="uc6-tab-panel" id="uc6-panel-databag">
-                <div class="uc6-panel-header">
-                  <h3>UC6 Runtime / Delivery Summary</h3>
-                  <p>02A0~02C workflow의 public-safe summary만 표시합니다.</p>
-                </div>
-                <div class="uc6-readiness-grid" id="uc6-readinessSummary"></div>
-              </div>
-
-              <div class="uc6-tab-panel" id="uc6-panel-evidence">
-                <div class="uc6-panel-header">
-                  <h3>Admin Evidence Review</h3>
-                  <p>07B admin_evidence_review_contract를 public-safe 응답 안에서 탐색해 검토 전용 진단 패널로 표시합니다.</p>
-                </div>
-                <div class="uc6-evidence-status" id="uc6-evidenceStatus">Admin Evidence contract not loaded.</div>
-                <div class="uc6-readiness-grid" id="uc6-evidenceSummary"></div>
-                <div class="uc6-evidence-section">
-                  <div class="uc6-panel-header compact">
-                    <h3>Admin Review Decision</h3>
-                    <p>09C admin_review_decision_contract와 C90 summary를 기준으로 review-only gate, mutation lock, chart lane freeze 상태를 표시합니다.</p>
-                  </div>
-                  <div class="uc6-evidence-status" id="uc6-decisionStatus">Admin Review Decision contract not loaded.</div>
-                  <div class="uc6-readiness-grid" id="uc6-decisionSummary"></div>
-                  <div class="uc6-evidence-section">
-                    <div class="uc6-panel-header compact">
-                      <h3>Decision Gates</h3>
-                      <p>09A/09C decision gate의 pass, warning, blocked 상태를 읽기 전용으로 표시합니다.</p>
-                    </div>
-                    <div class="uc6-artifact-table-wrap">
-                      <table class="uc6-table">
-                        <thead>
-                          <tr>
-                            <th>Gate</th>
-                            <th>Status</th>
-                            <th>Severity</th>
-                            <th>Review Only</th>
-                            <th>Message</th>
-                          </tr>
-                        </thead>
-                        <tbody id="uc6-decisionGateTableBody"></tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div class="uc6-evidence-section">
-                    <div class="uc6-panel-header compact">
-                      <h3>Review Checklist</h3>
-                      <p>운영자가 확인해야 할 checklist를 contract source와 함께 표시합니다.</p>
-                    </div>
-                    <div class="uc6-artifact-table-wrap">
-                      <table class="uc6-table">
-                        <thead>
-                          <tr>
-                            <th>Checklist Item</th>
-                            <th>Status</th>
-                            <th>Severity</th>
-                            <th>Review Only</th>
-                            <th>Source / Label</th>
-                          </tr>
-                        </thead>
-                        <tbody id="uc6-reviewChecklistTableBody"></tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div class="uc6-evidence-section">
-                    <div class="uc6-panel-header compact">
-                      <h3>Warning Summary</h3>
-                      <p>warning code와 source artifact별 warning 분포를 표시합니다.</p>
-                    </div>
-                    <div class="uc6-readiness-grid" id="uc6-warningSummary"></div>
-                    <div class="uc6-artifact-table-wrap">
-                      <table class="uc6-table">
-                        <thead>
-                          <tr>
-                            <th>Source Artifact</th>
-                            <th>Warning Count</th>
-                          </tr>
-                        </thead>
-                        <tbody id="uc6-warningSourceTableBody"></tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div class="uc6-evidence-section">
-                    <div class="uc6-panel-header compact">
-                      <h3>Artifact Review Summary</h3>
-                      <p>minimum review에 필요한 artifact와 optional evidence 상태를 연결해 표시합니다.</p>
-                    </div>
-                    <div class="uc6-artifact-table-wrap">
-                      <table class="uc6-table">
-                        <thead>
-                          <tr>
-                            <th>Artifact</th>
-                            <th>Provided</th>
-                            <th>Required</th>
-                            <th>Status</th>
-                            <th>Warnings</th>
-                            <th>Blocking</th>
-                          </tr>
-                        </thead>
-                        <tbody id="uc6-decisionArtifactReviewTableBody"></tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div class="uc6-evidence-section">
-                    <div class="uc6-panel-header compact">
-                      <h3>Recommended Next Steps</h3>
-                      <p>후속 phase에서 검토하거나 보류해야 할 action을 표시합니다. 이 섹션도 read-only입니다.</p>
-                    </div>
-                    <div class="uc6-artifact-table-wrap">
-                      <table class="uc6-table">
-                        <thead>
-                          <tr>
-                            <th>Step</th>
-                            <th>Severity</th>
-                            <th>Review Only</th>
-                            <th>Label</th>
-                          </tr>
-                        </thead>
-                        <tbody id="uc6-recommendedNextStepTableBody"></tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <pre class="uc6-debug-json uc6-evidence-raw-json" id="uc6-decisionRawJson">Admin Review Decision contract not loaded.</pre>
-                </div>
-                <div class="uc6-evidence-section">
-                  <div class="uc6-panel-header compact">
-                    <h3>Evidence Artifacts</h3>
-                    <p>07B helper가 소비한 input evidence artifact의 provided/missing 상태를 우선 표시합니다.</p>
-                  </div>
-                  <div class="uc6-artifact-table-wrap">
-                    <table class="uc6-table">
-                      <thead>
-                        <tr>
-                          <th>Evidence Artifact</th>
-                          <th>Provided</th>
-                          <th>Status</th>
-                          <th>Warnings</th>
-                          <th>Blocking</th>
-                        </tr>
-                      </thead>
-                      <tbody id="uc6-evidenceArtifactTableBody"></tbody>
-                    </table>
-                  </div>
-                </div>
-                <div class="uc6-evidence-section">
-                  <div class="uc6-panel-header compact">
-                    <h3>Raw Contract</h3>
-                    <p>내부 경로와 인증 정보는 redaction 후 표시합니다.</p>
-                  </div>
-                  <pre class="uc6-debug-json uc6-evidence-raw-json" id="uc6-evidenceRawJson">Admin Evidence contract not loaded.</pre>
-                </div>
-              </div>
-
-              <div class="uc6-tab-panel" id="uc6-panel-artifacts">
-                <div class="uc6-panel-header">
-                  <h3>UC6 Runtime / Final Artifacts</h3>
-                  <p>브라우저는 내부 아티팩트 조회 API나 내부 파일 경로를 직접 호출하지 않습니다. Public download proxy가 있는 경우에만 다운로드 버튼이 직접 열립니다.</p>
-                </div>
-                <div class="uc6-artifact-table-wrap">
-                  <table class="uc6-table">
-                    <thead>
-                      <tr>
-                        <th>Alias</th>
-                        <th>Reported File</th>
-                        <th>UI Status</th>
-                      </tr>
-                    </thead>
-                    <tbody id="uc6-artifactTableBody"></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="uc6-tab-panel" id="uc6-panel-delivery">
-                <div class="uc6-panel-header">
-                  <h3>Delivery</h3>
-                  <p>Final PDF/PPTX readiness와 public URL 상태를 요약합니다. 우측 영역은 PDF presentation 전용으로 유지합니다.</p>
-                </div>
-                <div class="uc6-delivery-summary-panel" id="uc6-deliverySummaryPanel">
-                  <div class="uc6-pdf-ready-panel is-waiting">
-                    <div class="uc6-pdf-ready-icon">⏳</div>
-                    <div class="uc6-pdf-ready-copy">
-                      <span class="uc6-preview-kicker">Delivery Summary</span>
-                      <strong>Final Delivery 대기</strong>
-                      <p>02C Final PDF Delivery 완료 후 readiness, artifact alias, public URL 상태를 표시합니다.</p>
-                    </div>
-                  </div>
-                </div>
-                <div class="uc6-runtime-context-preview">
-                  <div class="uc6-panel-header compact">
-                    <h3>Runtime Context Preview</h3>
-                    <p>02A0 Runtime Context Intelligence Prep에 전달되는 입력값입니다.</p>
-                  </div>
-                  <pre id="uc6-runtimeContextPreview"></pre>
-                </div>
-              </div>
-
-              <div class="uc6-tab-panel" id="uc6-panel-debug">
-                <div class="uc6-panel-header">
-                  <h3>Raw JSON / Debug</h3>
-                  <p>내부 인증 헤더, FastAPI 내부 URL, 내부 파일 경로는 표시하지 않습니다.</p>
-                </div>
-                <pre class="uc6-debug-json" id="uc6-debugJson">아직 실행된 요청이 없습니다.</pre>
-              </div>
-            </div>
-
-            <div class="uc6-preview-panel">
-              <div class="uc6-preview-header">
+          <div class="uc6-admin-grid">
+            <section class="uc6-admin-panel uc6-session-panel" aria-labelledby="uc6-sessionTitle">
+              <div class="uc6-panel-heading">
+                <span class="uc6-section-index">1</span>
                 <div>
-                  <span class="uc6-preview-kicker">Presentation Layer</span>
-                  <h3>Final PDF Preview</h3>
-                </div>
-                <div class="uc6-preview-header-actions">
-                  <span class="uc6-chip is-locked" id="uc6-previewStateChip">Render Bridge 대기</span>
-                  <button class="btn btn-outline btn-sm" id="uc6-focusToggle" type="button" aria-pressed="false">PDF 집중 보기</button>
+                  <h2 id="uc6-sessionTitle">Administrator session</h2>
+                  <p id="uc6-authStatus" aria-live="polite">Firebase Auth와 FetchDoc 관리자 세션을 준비하고 있습니다.</p>
                 </div>
               </div>
-              <div class="uc6-pdf-placeholder" id="uc6-pdfPlaceholder">
-                <div class="uc6-pdf-mock-toolbar">
-                  <span></span><span></span><span></span>
-                </div>
-                <div class="uc6-pdf-mock-page">
-                  <div class="uc6-pdf-mock-line w-72"></div>
-                  <div class="uc6-pdf-mock-line w-56"></div>
-                  <div class="uc6-pdf-mock-block"></div>
-                  <div class="uc6-pdf-mock-line w-84"></div>
-                  <div class="uc6-pdf-mock-line w-48"></div>
-                </div>
-                <div class="uc6-placeholder-copy">
-                  <strong>Final PDF Preview 대기</strong>
-                  <p>02C 완료 후 public_pdf_url을 현재 페이지 안의 PDF viewer에 표시합니다. PPTX는 fallback 다운로드로 유지합니다.</p>
+              <div class="uc6-action-row">
+                <button class="btn btn-primary" id="uc6-signInBtn" type="button">Google 로그인</button>
+                <button class="btn btn-outline" id="uc6-refreshSessionBtn" type="button" disabled>세션 새로고침</button>
+                <button class="btn btn-danger" id="uc6-signOutBtn" type="button" disabled>로그아웃</button>
+              </div>
+            </section>
+
+            <section class="uc6-admin-panel" aria-labelledby="uc6-intakeTitle">
+              <div class="uc6-panel-heading">
+                <span class="uc6-section-index">2</span>
+                <div>
+                  <h2 id="uc6-intakeTitle">PPTX job intake</h2>
+                  <p>하나의 PPTX 파일을 업로드하면 public job이 생성되고 초기 분석이 한 번 제출됩니다.</p>
                 </div>
               </div>
-              <div class="uc6-download-actions">
-                <button class="btn btn-outline" id="uc6-pdfOpenBtn" disabled>↗ PDF 새 탭 열기</button>
-                <button class="btn btn-success" id="uc6-pdfDownloadBtn" disabled>📄 PDF 다운로드</button>
-                <button class="btn btn-warning" id="uc6-pptxDownloadBtn" disabled>📊 PPTX 다운로드</button>
+              <div class="uc6-form-grid">
+                <label class="uc6-field uc6-file-field" for="uc6-pptxFileInput">
+                  <span>PPTX 파일</span>
+                  <input id="uc6-pptxFileInput" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                  <small id="uc6-selectedFileName">선택된 파일 없음</small>
+                </label>
+                <div class="uc6-action-row">
+                  <button class="btn btn-primary" id="uc6-uploadBtn" type="button" disabled>업로드 및 분석 시작</button>
+                  <button class="btn btn-outline" id="uc6-clearBtn" type="button" disabled>초기화</button>
+                  <span class="uc6-inline-status" id="uc6-uploadIndicator" hidden>업로드 중...</span>
+                </div>
               </div>
-            </div>
+              <div class="uc6-kv-grid" aria-label="PPTX source summary">
+                <div class="uc6-kv-item"><span>public job ID</span><strong id="uc6-jobId">-</strong></div>
+                <div class="uc6-kv-item"><span>public state</span><strong id="uc6-jobState">-</strong></div>
+                <div class="uc6-kv-item"><span>file size</span><strong id="uc6-sourceSize">-</strong></div>
+                <div class="uc6-kv-item"><span>slide count</span><strong id="uc6-sourceSlides">-</strong></div>
+              </div>
+            </section>
+
+            <section class="uc6-admin-panel" aria-labelledby="uc6-analysisTitle">
+              <div class="uc6-panel-heading">
+                <span class="uc6-section-index">3</span>
+                <div>
+                  <h2 id="uc6-analysisTitle">Analysis status</h2>
+                  <p id="uc6-analysisMessage" aria-live="polite">PPTX 업로드 후 분석을 시작합니다.</p>
+                </div>
+                <span class="uc6-admin-chip is-neutral" id="uc6-pollingChip">Idle</span>
+              </div>
+              <div class="uc6-kv-grid">
+                <div class="uc6-kv-item"><span>analysis state</span><strong id="uc6-analysisState">작업 없음</strong></div>
+              </div>
+              <div class="uc6-action-row">
+                <button class="btn btn-warning" id="uc6-retryAnalysisBtn" type="button" disabled>실패 분석 재시도</button>
+                <button class="btn btn-outline" id="uc6-resumePollingBtn" type="button" disabled>상태 확인 재개</button>
+              </div>
+            </section>
+
+            <section class="uc6-admin-panel uc6-review-panel" aria-labelledby="uc6-reviewTitle">
+              <div class="uc6-panel-heading">
+                <span class="uc6-section-index">4</span>
+                <div>
+                  <h2 id="uc6-reviewTitle">Admin review</h2>
+                  <p id="uc6-reviewStatus" aria-live="polite">관리자 검토 정보 대기 중</p>
+                </div>
+              </div>
+              <div class="uc6-kv-grid" id="uc6-reviewSummaryGrid" aria-label="Admin review summary"></div>
+              <div class="uc6-review-columns">
+                <div>
+                  <h3>Review surface</h3>
+                  <ul class="uc6-bounded-list" id="uc6-reviewSurfaceList"></ul>
+                </div>
+                <div>
+                  <h3>Runtime readiness</h3>
+                  <ul class="uc6-bounded-list" id="uc6-runtimeReadinessList"></ul>
+                </div>
+                <div>
+                  <h3>Current decision</h3>
+                  <ul class="uc6-bounded-list" id="uc6-currentDecisionList"></ul>
+                </div>
+              </div>
+              <div class="uc6-kv-item uc6-package-hash"><span>review package</span><strong id="uc6-reviewPackageHash">-</strong></div>
+            </section>
+
+            <section class="uc6-admin-panel" aria-labelledby="uc6-decisionTitle">
+              <div class="uc6-panel-heading">
+                <span class="uc6-section-index">5</span>
+                <div>
+                  <h2 id="uc6-decisionTitle">Review decision</h2>
+                  <p id="uc6-decisionStatus" aria-live="polite">검토 준비 상태가 되면 결정 입력이 활성화됩니다.</p>
+                </div>
+              </div>
+              <div class="uc6-form-grid">
+                <label class="uc6-field" for="uc6-decisionChoice">
+                  <span>결정</span>
+                  <select id="uc6-decisionChoice" disabled>
+                    <option value="approve">approve</option>
+                    <option value="request_revision">request_revision</option>
+                    <option value="reject">reject</option>
+                  </select>
+                </label>
+                <label class="uc6-field" for="uc6-reviewNotes">
+                  <span>review notes</span>
+                  <textarea id="uc6-reviewNotes" rows="5" disabled placeholder="한 줄에 하나씩 입력"></textarea>
+                </label>
+                <label class="uc6-field" for="uc6-requestedRevisions">
+                  <span>requested revisions</span>
+                  <textarea id="uc6-requestedRevisions" rows="5" disabled placeholder="수정 요청이 있을 때만 한 줄에 하나씩 입력"></textarea>
+                </label>
+              </div>
+              <div class="uc6-action-row">
+                <button class="btn btn-success" id="uc6-submitDecisionBtn" type="button" disabled>검토 결정 제출</button>
+              </div>
+            </section>
+
+            <section class="uc6-admin-panel" aria-labelledby="uc6-diagnosticsTitle">
+              <div class="uc6-panel-heading">
+                <span class="uc6-section-index">6</span>
+                <div>
+                  <h2 id="uc6-diagnosticsTitle">Public-safe diagnostics</h2>
+                  <p id="uc6-diagnosticsStatus" aria-live="polite">Public-safe diagnostics only.</p>
+                </div>
+              </div>
+              <div class="uc6-kv-grid" id="uc6-diagnosticsList" aria-label="Public safe diagnostics"></div>
+            </section>
           </div>
         </div>
       </section>
