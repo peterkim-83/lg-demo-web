@@ -5118,8 +5118,16 @@ Customer: Thank you. Goodbye.`
   const UC6_DECISION_LABELS = {
     approve: '승인',
     request_revision: '수정 요청',
-    reject: '반려'
+    reject: '거절'
   };
+
+  const UC6_STAGE_STEPS = [
+    { key: 'intake', label: 'PPTX 등록' },
+    { key: 'analysis', label: '분석' },
+    { key: 'review', label: '결과 검토' },
+    { key: 'decision', label: '결정' },
+    { key: 'complete', label: '완료' }
+  ];
 
   const uc6State = {
     authStatus: 'initializing',
@@ -5136,6 +5144,15 @@ Customer: Thank you. Goodbye.`
     operationInFlight: false,
     analysisSubmittedForJobId: '',
     decisionSubmitted: false,
+    decisionMode: false,
+    decisionChoiceValue: 'approve',
+    reviewNotesDraft: '',
+    requestedRevisionsDraft: '',
+    stageMessage: '',
+    reviewMessage: '',
+    decisionMessage: '',
+    liveMessage: '',
+    lastRenderedStage: '',
     pollingTimer: null,
     pollingAbortController: null,
     operationAbortController: null,
@@ -5151,33 +5168,25 @@ Customer: Thank you. Goodbye.`
     signInBtn: document.getElementById('uc6-signInBtn'),
     signOutBtn: document.getElementById('uc6-signOutBtn'),
     refreshSessionBtn: document.getElementById('uc6-refreshSessionBtn'),
-    fileInput: document.getElementById('uc6-pptxFileInput'),
-    fileName: document.getElementById('uc6-selectedFileName'),
-    uploadBtn: document.getElementById('uc6-uploadBtn'),
-    uploadIndicator: document.getElementById('uc6-uploadIndicator'),
-    clearBtn: document.getElementById('uc6-clearBtn'),
-    sourceSize: document.getElementById('uc6-sourceSize'),
-    sourceSlides: document.getElementById('uc6-sourceSlides'),
-    jobId: document.getElementById('uc6-jobId'),
-    jobState: document.getElementById('uc6-jobState'),
-    analysisState: document.getElementById('uc6-analysisState'),
-    analysisMessage: document.getElementById('uc6-analysisMessage'),
-    pollingChip: document.getElementById('uc6-pollingChip'),
-    retryAnalysisBtn: document.getElementById('uc6-retryAnalysisBtn'),
-    resumePollingBtn: document.getElementById('uc6-resumePollingBtn'),
-    reviewStatus: document.getElementById('uc6-reviewStatus'),
-    reviewSummaryGrid: document.getElementById('uc6-reviewSummaryGrid'),
-    reviewSurfaceList: document.getElementById('uc6-reviewSurfaceList'),
-    runtimeReadinessList: document.getElementById('uc6-runtimeReadinessList'),
-    currentDecisionList: document.getElementById('uc6-currentDecisionList'),
-    reviewPackageHash: document.getElementById('uc6-reviewPackageHash'),
-    decisionChoice: document.getElementById('uc6-decisionChoice'),
-    reviewNotes: document.getElementById('uc6-reviewNotes'),
-    requestedRevisions: document.getElementById('uc6-requestedRevisions'),
-    submitDecisionBtn: document.getElementById('uc6-submitDecisionBtn'),
-    decisionStatus: document.getElementById('uc6-decisionStatus'),
-    diagnosticsList: document.getElementById('uc6-diagnosticsList'),
-    diagnosticsStatus: document.getElementById('uc6-diagnosticsStatus')
+    stepper: document.getElementById('uc6-stepper'),
+    activeStageRoot: document.getElementById('uc6-activeStageRoot'),
+    contextSummary: document.getElementById('uc6-contextSummary'),
+    liveStatus: document.getElementById('uc6-liveStatus'),
+    get fileInput() { return document.getElementById('uc6-pptxFileInput'); },
+    get fileName() { return document.getElementById('uc6-selectedFileName'); },
+    get uploadBtn() { return document.getElementById('uc6-uploadBtn'); },
+    get uploadIndicator() { return document.getElementById('uc6-uploadIndicator'); },
+    get clearBtn() { return document.getElementById('uc6-clearBtn'); },
+    get analysisMessage() { return document.getElementById('uc6-analysisMessage'); },
+    get pollingChip() { return document.getElementById('uc6-pollingChip'); },
+    get retryAnalysisBtn() { return document.getElementById('uc6-retryAnalysisBtn'); },
+    get resumePollingBtn() { return document.getElementById('uc6-resumePollingBtn'); },
+    get reviewStatus() { return document.getElementById('uc6-reviewStatus'); },
+    get decisionChoice() { return document.getElementById('uc6-decisionChoice'); },
+    get reviewNotes() { return document.getElementById('uc6-reviewNotes'); },
+    get requestedRevisions() { return document.getElementById('uc6-requestedRevisions'); },
+    get submitDecisionBtn() { return document.getElementById('uc6-submitDecisionBtn'); },
+    get decisionStatus() { return document.getElementById('uc6-decisionStatus'); }
   };
 
   function uc6Text(value, fallback = '-') {
@@ -5197,12 +5206,37 @@ Customer: Thank you. Goodbye.`
     el.className = `uc6-admin-chip is-${tone}`;
   }
 
+  function setUC6LiveMessage(message) {
+    uc6State.liveMessage = uc6Text(message, '');
+    setUc6Text(uc6Els.liveStatus, uc6State.liveMessage, '');
+  }
+
   function formatUc6Bytes(value) {
     const bytes = Number(value || 0);
-    if (!Number.isFinite(bytes) || bytes <= 0) return '-';
+    if (!Number.isFinite(bytes) || bytes <= 0) return '';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function mapUC6PublicStateToStage({ authorizationState, publicState, decisionMode } = {}) {
+    if (authorizationState !== 'authorized') return 'auth';
+    const state = publicState || null;
+    if (decisionMode === true && (state === 'review_ready' || state === 'review_ready_with_warnings' || state === 'review_blocked')) return 'decision';
+    if (!state || state === 'idle' || state === 'source_ready') return 'intake';
+    if (state === 'analysis_queued' || state === 'analysis_running') return 'analysis';
+    if (state === 'failed') return 'analysis_error';
+    if (state === 'review_ready' || state === 'review_ready_with_warnings' || state === 'review_blocked') return 'review';
+    if (state === 'approved' || state === 'revision_requested' || state === 'rejected') return 'complete';
+    return 'unavailable';
+  }
+
+  function getUC6PresentationStage() {
+    return mapUC6PublicStateToStage({
+      authorizationState: uc6State.authStatus,
+      publicState: uc6State.jobState || null,
+      decisionMode: uc6State.decisionMode
+    });
   }
 
   function boundedFilename(name) {
@@ -5235,6 +5269,7 @@ Customer: Thank you. Goodbye.`
     const copy = UC6_AUTH_COPY[status] || UC6_AUTH_COPY.temporarily_unavailable;
     setUc6Chip(uc6Els.authStateChip, copy[0], status === 'authorized' ? 'ready' : status === 'access_denied' ? 'danger' : status === 'temporarily_unavailable' ? 'warning' : 'neutral');
     setUc6Text(uc6Els.authStatus, message || copy[1]);
+    setUC6LiveMessage(message || copy[1]);
     renderUC6All();
   }
 
@@ -5246,6 +5281,34 @@ Customer: Thank you. Goodbye.`
     const val = document.createElement('strong');
     val.textContent = uc6Text(value);
     item.append(key, val);
+    return item;
+  }
+
+  function createUc6Node(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function createUC6ActionButton(id, label, className = 'btn btn-outline', disabled = false) {
+    const button = createUc6Node('button', className, label);
+    button.type = 'button';
+    button.id = id;
+    button.disabled = disabled;
+    return button;
+  }
+
+  function createUC6Field(labelText, control) {
+    const label = createUc6Node('label', 'uc6-field');
+    if (control.id) label.htmlFor = control.id;
+    label.append(createUc6Node('span', '', labelText), control);
+    return label;
+  }
+
+  function createUC6SummaryItem(label, value) {
+    const item = createUc6Node('div', 'uc6-kv-item');
+    item.append(createUc6Node('span', '', label), createUc6Node('strong', '', uc6Text(value, '')));
     return item;
   }
 
@@ -5274,6 +5337,21 @@ Customer: Thank you. Goodbye.`
       return;
     }
     el.replaceChildren(...lines.slice(0, 8).map(createUc6ListItem));
+  }
+
+  function hasUC6Value(value) {
+    return value !== undefined && value !== null && value !== '';
+  }
+
+  function appendUC6DetailSection(parent, title, lines) {
+    const filtered = Array.isArray(lines) ? lines.filter(hasUC6Value) : [];
+    if (!filtered.length) return;
+    const section = createUc6Node('section', 'uc6-detail-group');
+    section.append(createUc6Node('h3', '', title));
+    const list = createUc6Node('ul', 'uc6-bounded-list');
+    list.replaceChildren(...filtered.slice(0, 8).map(createUc6ListItem));
+    section.append(list);
+    parent.append(section);
   }
 
   function saveUC6LocalState() {
@@ -5329,6 +5407,13 @@ Customer: Thank you. Goodbye.`
     uc6State.operationInFlight = false;
     uc6State.analysisSubmittedForJobId = '';
     uc6State.decisionSubmitted = false;
+    uc6State.decisionMode = false;
+    uc6State.decisionChoiceValue = 'approve';
+    uc6State.reviewNotesDraft = '';
+    uc6State.requestedRevisionsDraft = '';
+    uc6State.stageMessage = '';
+    uc6State.reviewMessage = '';
+    uc6State.decisionMessage = '';
     uc6State.consecutivePollErrors = 0;
     uc6State.lastPollingTimestamp = 0;
     if (uc6Els.fileInput) uc6Els.fileInput.value = '';
@@ -5349,10 +5434,18 @@ Customer: Thank you. Goodbye.`
     return { ok: true, file };
   }
 
+  function getUC6SelectedFileValidation() {
+    const inputValidation = validateUc6PptxSelection(uc6Els.fileInput?.files);
+    if (inputValidation.ok) return inputValidation;
+    if (uc6State.selectedFile) return validateUc6PptxSelection([uc6State.selectedFile]);
+    return inputValidation;
+  }
+
   function handleUC6AuthorizationFailure(error) {
     const authState = classifyUc6AuthorizationFailure(error);
     if (!authState) return false;
     uc6State.session = null;
+    uc6State.decisionMode = false;
     stopUC6Polling();
     if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
     uc6State.pollingAbortController = null;
@@ -5495,14 +5588,17 @@ Customer: Thank you. Goodbye.`
 
   async function uploadUC6PptxJob() {
     if (!isUc6Authorized() || uc6State.operationInFlight) return;
-    const validation = validateUc6PptxSelection(uc6Els.fileInput?.files);
+    const validation = getUC6SelectedFileValidation();
     if (!validation.ok) {
-      setUc6Text(uc6Els.analysisMessage, validation.message);
+      uc6State.stageMessage = validation.message;
+      setUC6LiveMessage(validation.message);
+      renderUC6All();
       return;
     }
     resetUC6JobState(true);
     uc6State.selectedFile = validation.file;
     uc6State.operationInFlight = true;
+    uc6State.stageMessage = 'PPTX 등록과 초기 분석 제출을 진행하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
     try {
@@ -5518,6 +5614,7 @@ Customer: Thank you. Goodbye.`
             slide_count: created.source?.slide_count,
             filename: boundedFilename(created.source?.filename || validation.file.name)
           };
+          uc6State.stageMessage = 'PPTX 등록이 완료되었습니다. 초기 분석을 제출하고 있습니다.';
           saveUC6LocalState();
           renderUC6All();
         }
@@ -5525,12 +5622,15 @@ Customer: Thank you. Goodbye.`
       uc6State.analysisSubmittedForJobId = result.jobId;
       uc6State.jobState = result.analysisResponse?.state || uc6State.jobState || 'analysis_queued';
       uc6State.consecutivePollErrors = 0;
+      uc6State.stageMessage = '분석 요청이 접수되었습니다. 상태를 확인하고 있습니다.';
       saveUC6LocalState();
       renderUC6All();
       startUC6Polling();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
-      setUc6Text(uc6Els.analysisMessage, uc6MessageFromError(error));
+      uc6State.stageMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.stageMessage);
+      renderUC6All();
     } finally {
       uc6State.operationInFlight = false;
       renderUC6All();
@@ -5544,6 +5644,8 @@ Customer: Thank you. Goodbye.`
     uc6State.review = null;
     uc6State.decision = null;
     uc6State.decisionSubmitted = false;
+    uc6State.decisionMode = false;
+    uc6State.stageMessage = retryFailed ? '실패한 분석을 다시 요청하고 있습니다.' : '분석을 요청하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
     try {
@@ -5551,12 +5653,15 @@ Customer: Thank you. Goodbye.`
       uc6State.analysisSubmittedForJobId = uc6State.jobId;
       uc6State.jobState = submitted.state || uc6State.jobState || 'analysis_queued';
       uc6State.consecutivePollErrors = 0;
+      uc6State.stageMessage = '분석 요청이 접수되었습니다. 상태를 확인하고 있습니다.';
       saveUC6LocalState();
       renderUC6All();
       startUC6Polling();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
-      setUc6Text(uc6Els.analysisMessage, uc6MessageFromError(error));
+      uc6State.stageMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.stageMessage);
+      renderUC6All();
     } finally {
       uc6State.operationInFlight = false;
       renderUC6All();
@@ -5596,7 +5701,8 @@ Customer: Thank you. Goodbye.`
         uc6State.consecutivePollErrors += 1;
         if (uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS) {
           stopUC6Polling();
-          setUc6Text(uc6Els.analysisMessage, '상태 확인을 잠시 중단했습니다. 수동으로 다시 시작할 수 있습니다.');
+          uc6State.stageMessage = '상태 확인을 잠시 중단했습니다. 수동으로 다시 시작할 수 있습니다.';
+          setUC6LiveMessage(uc6State.stageMessage);
         } else {
           scheduleUC6Poll();
         }
@@ -5636,9 +5742,12 @@ Customer: Thank you. Goodbye.`
         review_package_sha256: review.review_package_sha256,
         control_plane_contract_version: review.control_plane_contract_version
       };
+      uc6State.reviewMessage = '검토 결과가 준비되었습니다.';
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
-      setUc6Text(uc6Els.reviewStatus, uc6MessageFromError(error));
+      uc6State.reviewMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.reviewMessage);
+      renderUC6All();
     }
   }
 
@@ -5647,13 +5756,14 @@ Customer: Thank you. Goodbye.`
     let reviewNotes;
     let requestedRevisions;
     try {
-      reviewNotes = splitDecisionTextLines(uc6Els.reviewNotes?.value || '');
-      requestedRevisions = splitDecisionTextLines(uc6Els.requestedRevisions?.value || '');
+      reviewNotes = splitDecisionTextLines(uc6Els.reviewNotes?.value || uc6State.reviewNotesDraft || '');
+      requestedRevisions = splitDecisionTextLines(uc6Els.requestedRevisions?.value || uc6State.requestedRevisionsDraft || '');
     } catch (error) {
-      setUc6Text(uc6Els.decisionStatus, error?.message === 'too_many_decision_entries' ? '입력 항목은 최대 20개까지 허용됩니다.' : '각 입력 항목은 1000자 이하로 작성하세요.');
+      uc6State.decisionMessage = error?.message === 'too_many_decision_entries' ? '입력 항목은 최대 20개까지 허용됩니다.' : '각 입력 항목은 1000자 이하로 작성하세요.';
+      renderUC6All();
       return;
     }
-    const decision = uc6Els.decisionChoice?.value || '';
+    const decision = uc6Els.decisionChoice?.value || uc6State.decisionChoiceValue || '';
     const validation = validateUc6DecisionCommand({
       state: uc6State.jobState,
       decision,
@@ -5661,10 +5771,12 @@ Customer: Thank you. Goodbye.`
       requested_revisions: requestedRevisions
     });
     if (!validation.ok) {
-      setUc6Text(uc6Els.decisionStatus, validation.message);
+      uc6State.decisionMessage = validation.message;
+      renderUC6All();
       return;
     }
     uc6State.operationInFlight = true;
+    uc6State.decisionMessage = '검토 결정을 제출하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
     try {
@@ -5683,12 +5795,15 @@ Customer: Thank you. Goodbye.`
       };
       uc6State.jobState = submitted.state || uc6State.jobState;
       uc6State.decisionSubmitted = true;
+      uc6State.decisionMode = false;
+      uc6State.decisionMessage = `${UC6_DECISION_LABELS[decision]} 결정이 기록되었습니다.`;
       saveUC6LocalState();
       await refreshUC6JobStatus({ fetchReview: true });
-      setUc6Text(uc6Els.decisionStatus, `${UC6_DECISION_LABELS[decision]} 결정이 기록되었습니다.`);
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
-      setUc6Text(uc6Els.decisionStatus, uc6MessageFromError(error));
+      uc6State.decisionMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.decisionMessage);
+      renderUC6All();
     } finally {
       uc6State.operationInFlight = false;
       renderUC6All();
@@ -5702,97 +5817,267 @@ Customer: Thank you. Goodbye.`
     if (uc6Els.refreshSessionBtn) uc6Els.refreshSessionBtn.disabled = !uc6State.firebaseUser || uc6State.authStatus === 'authorizing';
   }
 
-  function renderUC6Intake() {
-    const authorized = isUc6Authorized();
-    const selected = validateUc6PptxSelection(uc6Els.fileInput?.files || []);
-    const file = selected.ok ? selected.file : uc6State.selectedFile;
-    setUc6Text(uc6Els.fileName, file ? boundedFilename(file.name) : '선택된 파일 없음');
-    if (uc6Els.uploadBtn) uc6Els.uploadBtn.disabled = !authorized || uc6State.operationInFlight || !selected.ok;
-    if (uc6Els.clearBtn) uc6Els.clearBtn.disabled = uc6State.operationInFlight || (!uc6State.jobId && !file);
-    if (uc6Els.uploadIndicator) uc6Els.uploadIndicator.hidden = !uc6State.operationInFlight;
-    setUc6Text(uc6Els.sourceSize, formatUc6Bytes(uc6State.source?.size_bytes));
-    setUc6Text(uc6Els.sourceSlides, uc6State.source?.slide_count);
-    setUc6Text(uc6Els.jobId, uc6State.jobId);
-    setUc6Text(uc6Els.jobState, UC6_STATE_LABELS[uc6State.jobState] || uc6State.jobState);
+  function renderUC6Stepper(stage) {
+    if (!uc6Els.stepper) return;
+    uc6Els.stepper.hidden = !isUc6Authorized();
+    const stepStage = stage === 'analysis_error' ? 'analysis' : stage;
+    const currentIndex = Math.max(0, UC6_STAGE_STEPS.findIndex((step) => step.key === stepStage));
+    uc6Els.stepper.querySelectorAll('[data-uc6-step]').forEach((item, index) => {
+      const state = index < currentIndex ? 'completed' : index === currentIndex ? 'current' : 'upcoming';
+      item.dataset.state = state;
+      if (state === 'current') item.setAttribute('aria-current', 'step');
+      else item.removeAttribute('aria-current');
+    });
   }
 
-  function renderUC6Analysis() {
-    const mapped = mapUc6StateToView(uc6State.jobState);
-    setUc6Chip(uc6Els.pollingChip, mapped.pollable ? 'Polling' : 'Idle', mapped.pollable ? 'warning' : 'neutral');
-    setUc6Text(uc6Els.analysisState, UC6_STATE_LABELS[uc6State.jobState] || '작업 없음');
-    if (!uc6Els.analysisMessage?.textContent) {
-      const message = mapped.canRetry ? '분석 실패 상태입니다. 명시적으로 재시도할 수 있습니다.' : mapped.reviewReady ? '관리자 검토 정보가 준비되었습니다.' : mapped.pollable ? '분석 상태를 확인하고 있습니다.' : 'PPTX 업로드 후 분석을 시작합니다.';
-      setUc6Text(uc6Els.analysisMessage, message);
+  function renderUC6AuthStage(root) {
+    const card = createUc6Node('section', 'uc6-stage-card uc6-auth-stage');
+    card.append(createUc6Node('h2', '', '관리자 로그인 필요'));
+    const copy = UC6_AUTH_COPY[uc6State.authStatus] || UC6_AUTH_COPY.signed_out;
+    const message = uc6State.authStatus === 'access_denied'
+      ? copy[1]
+      : 'Google 로그인 후 FetchDoc 관리자 권한이 확인되면 문서 검토 흐름이 표시됩니다.';
+    card.append(createUc6Node('p', 'uc6-stage-copy', message));
+    if (uc6State.authStatus === 'access_denied') card.append(createUc6Node('p', 'uc6-inline-error', uc6State.liveMessage || copy[1]));
+    root.replaceChildren(card);
+  }
+
+  function renderUC6IntakeStage(root) {
+    const validation = getUC6SelectedFileValidation();
+    const file = validation.ok ? validation.file : uc6State.selectedFile;
+    const card = createUc6Node('section', 'uc6-stage-card');
+    card.append(createUc6Node('h2', '', uc6State.jobId ? 'PPTX 등록 상태' : 'PPTX 등록'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', uc6State.jobId ? 'PPTX가 등록되었습니다. 분석 제출 상태를 확인하세요.' : '분석할 PPTX 파일 하나를 선택하세요. 브라우저에서는 PPTX를 파싱하지 않습니다.'));
+    if (!uc6State.jobId) {
+      const input = document.createElement('input');
+      input.id = 'uc6-pptxFileInput';
+      input.type = 'file';
+      input.accept = '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      const field = createUC6Field('PPTX 파일', input);
+      field.classList.add('uc6-file-field');
+      const selected = createUc6Node('small', '', file ? boundedFilename(file.name) : '선택된 파일 없음');
+      selected.id = 'uc6-selectedFileName';
+      field.append(selected);
+      card.append(field, createUc6Node('p', 'uc6-help-text', '지원 형식: .pptx 파일 1개. 크기와 슬라이드 수는 서버가 확인합니다.'));
+    } else if (uc6State.source) {
+      const facts = createUc6Node('div', 'uc6-compact-facts');
+      if (uc6State.source.filename) facts.append(createUC6SummaryItem('파일명', uc6State.source.filename));
+      if (formatUc6Bytes(uc6State.source.size_bytes)) facts.append(createUC6SummaryItem('파일 크기', formatUc6Bytes(uc6State.source.size_bytes)));
+      if (hasUC6Value(uc6State.source.slide_count)) facts.append(createUC6SummaryItem('슬라이드', uc6State.source.slide_count));
+      if (facts.children.length) card.append(facts);
     }
-    if (uc6Els.retryAnalysisBtn) uc6Els.retryAnalysisBtn.disabled = !isUc6Authorized() || !mapped.canRetry || uc6State.operationInFlight;
-    if (uc6Els.resumePollingBtn) uc6Els.resumePollingBtn.disabled = !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight || uc6State.consecutivePollErrors < UC6_MAX_TRANSIENT_ERRORS;
+    const actions = createUc6Node('div', 'uc6-action-row');
+    if (!uc6State.jobId) actions.append(createUC6ActionButton('uc6-uploadBtn', '분석 시작', 'btn btn-primary', !validation.ok || uc6State.operationInFlight));
+    if (file || uc6State.jobId) actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
+    const indicator = createUc6Node('span', 'uc6-inline-status', '처리 중...');
+    indicator.id = 'uc6-uploadIndicator';
+    indicator.hidden = !uc6State.operationInFlight;
+    actions.append(indicator);
+    card.append(actions);
+    if (uc6State.stageMessage) card.append(createUc6Node('p', uc6State.stageMessage === UC6_GENERIC_PUBLIC_ERROR_MESSAGE ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.stageMessage));
+    root.replaceChildren(card);
   }
 
-  function renderUC6Review() {
+  function renderUC6AnalysisStage(root, failed = false) {
+    const card = createUc6Node('section', `uc6-stage-card${failed ? ' is-error' : ''}`);
+    card.append(createUc6Node('h2', '', failed ? '분석 실패' : '분석 진행 중'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', failed ? '분석이 실패했습니다. 필요한 경우 명시적으로 다시 분석할 수 있습니다.' : '서버 분석 상태를 주기적으로 확인하고 있습니다.'));
+    const facts = createUc6Node('div', 'uc6-compact-facts');
+    if (uc6State.source?.filename) facts.append(createUC6SummaryItem('파일명', uc6State.source.filename));
+    if (formatUc6Bytes(uc6State.source?.size_bytes)) facts.append(createUC6SummaryItem('파일 크기', formatUc6Bytes(uc6State.source.size_bytes)));
+    if (hasUC6Value(uc6State.source?.slide_count)) facts.append(createUC6SummaryItem('슬라이드', uc6State.source.slide_count));
+    facts.append(createUC6SummaryItem('상태', UC6_STATE_LABELS[uc6State.jobState] || '분석 상태 확인 중'));
+    if (uc6State.lastPollingTimestamp) facts.append(createUC6SummaryItem('최근 확인', new Date(uc6State.lastPollingTimestamp).toLocaleTimeString('ko-KR')));
+    card.append(facts);
+    const progress = createUc6Node('div', failed ? 'uc6-progress is-error' : 'uc6-progress');
+    progress.append(createUc6Node('span', '', failed ? '중단' : '진행'));
+    card.append(progress);
+    const chip = createUc6Node('span', failed ? 'uc6-admin-chip is-danger' : 'uc6-admin-chip is-warning', failed ? '재시도 가능' : '상태 확인 중');
+    chip.id = 'uc6-pollingChip';
+    card.append(chip);
+    const message = createUc6Node('p', failed ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.stageMessage || (failed ? '분석 실패 상태입니다. 명시적으로 재시도할 수 있습니다.' : '분석 상태를 확인하고 있습니다.'));
+    message.id = 'uc6-analysisMessage';
+    card.append(message);
+    const actions = createUc6Node('div', 'uc6-action-row');
+    if (failed) actions.append(createUC6ActionButton('uc6-retryAnalysisBtn', '다시 분석', 'btn btn-primary', !isUc6Authorized() || uc6State.operationInFlight));
+    actions.append(createUC6ActionButton('uc6-resumePollingBtn', '상태 새로고침', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+    if (failed) actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 시작', 'btn btn-outline', uc6State.operationInFlight));
+    card.append(actions);
+    root.replaceChildren(card);
+  }
+
+  function renderUC6ReviewStage(root) {
     const review = uc6State.review || {};
     const surface = review.public_review_surface || {};
-    setUc6Text(uc6Els.reviewStatus, review.state ? 'bounded admin review loaded' : '관리자 검토 정보 대기 중');
-    if (uc6Els.reviewSummaryGrid) {
-      uc6Els.reviewSummaryGrid.replaceChildren(
-        createUc6Item('global readiness', review.global_readiness_status),
-        createUc6Item('blockers', review.blocking_issue_count ?? 0),
-        createUc6Item('warnings', review.warning_count ?? 0),
-        createUc6Item('admin actions', surface.required_admin_action_count ?? surface.admin_action_count ?? '-'),
-        createUc6Item('next phase', surface.next_recommended_phase || '-'),
-        createUc6Item('state', UC6_STATE_LABELS[review.state] || review.state || '-')
-      );
-    }
-    renderUc6List(uc6Els.reviewSurfaceList, [
+    const card = createUc6Node('section', 'uc6-stage-card');
+    card.append(createUc6Node('h2', '', '결과 검토'));
+    const status = createUc6Node('p', 'uc6-stage-copy', uc6State.reviewMessage || '분석 결과의 준비 상태와 필요한 관리자 조치를 확인하세요.');
+    status.id = 'uc6-reviewStatus';
+    card.append(status);
+    const summary = createUc6Node('div', 'uc6-review-summary');
+    [
+      ['준비 상태', review.global_readiness_status],
+      ['차단 항목', review.blocking_issue_count],
+      ['경고', review.warning_count],
+      ['필요한 조치', surface.required_admin_action_count ?? surface.admin_action_count]
+    ].filter((item) => hasUC6Value(item[1])).forEach(([label, value]) => summary.append(createUC6SummaryItem(label, value)));
+    if (summary.children.length) card.append(summary);
+    const details = createUc6Node('div', 'uc6-review-details');
+    appendUC6DetailSection(details, '검토 요약', [
+      ...toUc6DisplayLines(surface.summary, ['status', 'message', 'summary']),
+      ...toUc6DisplayLines(surface.next_recommended_phase, ['phase', 'message', 'summary']),
+      ...toUc6DisplayLines(review.runtime_readiness_summary, ['status', 'ready', 'blocked', 'warning_count'])
+    ]);
+    appendUC6DetailSection(details, '차단·경고', [
       ...toUc6DisplayLines(surface.top_blockers || surface.blockers, ['code', 'message', 'severity']),
-      ...toUc6DisplayLines(surface.top_warnings || surface.warnings, ['code', 'message', 'severity']),
-      ...toUc6DisplayLines(surface.required_admin_actions, ['action', 'label', 'severity']),
+      ...toUc6DisplayLines(surface.top_warnings || surface.warnings, ['code', 'message', 'severity'])
+    ]);
+    appendUC6DetailSection(details, '관리자 조치', toUc6DisplayLines(surface.required_admin_actions, ['action', 'label', 'severity']));
+    const techLines = [
       ...toUc6DisplayLines(surface.topology_audit_summary, ['status', 'message', 'summary']),
       ...toUc6DisplayLines(surface.dependency_cascade_summary, ['status', 'message', 'summary']),
       ...toUc6DisplayLines(surface.version_lock_summary, ['status', 'message', 'summary'])
-    ], 'bounded review surface 대기 중');
-    renderUc6List(uc6Els.runtimeReadinessList, toUc6DisplayLines(review.runtime_readiness_summary, ['status', 'ready', 'blocked', 'warning_count']), 'runtime readiness summary 대기 중');
-    renderUc6List(uc6Els.currentDecisionList, toUc6DisplayLines(review.current_decision_summary, ['decision', 'state', 'created', 'status']), 'current decision summary 없음');
-    const hash = typeof review.review_package_sha256 === 'string' && review.review_package_sha256.length >= 12
-      ? `${review.review_package_sha256.slice(0, 12)}...`
-      : '-';
-    setUc6Text(uc6Els.reviewPackageHash, hash);
+    ];
+    if (techLines.length || review.review_package_sha256) {
+      const tech = createUc6Node('details', 'uc6-technical-details');
+      tech.append(createUc6Node('summary', '', '기술 정보'));
+      const list = createUc6Node('ul', 'uc6-bounded-list');
+      const hash = typeof review.review_package_sha256 === 'string' && review.review_package_sha256.length >= 12 ? `review package: ${review.review_package_sha256.slice(0, 12)}...` : '';
+      list.replaceChildren(...[...techLines, hash].filter(Boolean).slice(0, 8).map(createUc6ListItem));
+      tech.append(list);
+      details.append(tech);
+    }
+    if (details.children.length) card.append(details);
+    const actions = createUc6Node('div', 'uc6-action-row');
+    actions.append(createUC6ActionButton('uc6-enterDecisionBtn', '처리 방향 결정', 'btn btn-primary', !mapUc6StateToView(uc6State.jobState).canDecide || uc6State.operationInFlight));
+    card.append(actions);
+    root.replaceChildren(card);
   }
 
-  function renderUC6Decision() {
+  function renderUC6DecisionStage(root) {
     const mapped = mapUc6StateToView(uc6State.jobState);
     const disabled = !isUc6Authorized() || uc6State.operationInFlight || uc6State.decisionSubmitted || !mapped.canDecide;
-    if (uc6Els.decisionChoice) uc6Els.decisionChoice.disabled = disabled;
-    if (uc6Els.reviewNotes) uc6Els.reviewNotes.disabled = disabled;
-    if (uc6Els.requestedRevisions) uc6Els.requestedRevisions.disabled = disabled;
-    if (uc6Els.submitDecisionBtn) uc6Els.submitDecisionBtn.disabled = disabled;
-    if (uc6State.decision) {
-      setUc6Text(uc6Els.decisionStatus, `${UC6_DECISION_LABELS[uc6State.decision.decision] || uc6State.decision.decision} / ${UC6_STATE_LABELS[uc6State.decision.state] || uc6State.decision.state}`);
-    } else if (!mapped.canDecide) {
-      setUc6Text(uc6Els.decisionStatus, '검토 준비 상태가 되면 결정 입력이 활성화됩니다.');
+    const decision = uc6State.decisionChoiceValue || 'approve';
+    const card = createUc6Node('section', 'uc6-stage-card');
+    card.append(createUc6Node('h2', '', '처리 방향 결정'), createUc6Node('p', 'uc6-stage-copy', '검토 결과에 대한 최종 처리 방향을 선택하고 필요한 메모를 입력하세요.'));
+    const select = document.createElement('select');
+    select.id = 'uc6-decisionChoice';
+    select.disabled = disabled;
+    [['approve', '승인'], ['request_revision', '수정 요청'], ['reject', '거절']].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      option.selected = value === decision;
+      select.append(option);
+    });
+    card.append(createUC6Field('결정', select));
+    const notes = document.createElement('textarea');
+    notes.id = 'uc6-reviewNotes';
+    notes.rows = 4;
+    notes.disabled = disabled;
+    notes.value = uc6State.reviewNotesDraft;
+    notes.placeholder = decision === 'reject' ? '거절 사유를 한 줄에 하나씩 입력' : '필요한 검토 메모를 한 줄에 하나씩 입력';
+    card.append(createUC6Field(decision === 'reject' ? '검토 메모(필수)' : '검토 메모', notes));
+    if (decision === 'request_revision') {
+      const revisions = document.createElement('textarea');
+      revisions.id = 'uc6-requestedRevisions';
+      revisions.rows = 4;
+      revisions.disabled = disabled;
+      revisions.value = uc6State.requestedRevisionsDraft;
+      revisions.placeholder = '요청할 수정 사항을 한 줄에 하나씩 입력';
+      card.append(createUC6Field('수정 요청 사항', revisions));
     }
+    const status = createUc6Node('p', uc6State.decisionMessage ? 'uc6-stage-message' : 'uc6-help-text', uc6State.decisionMessage || '승인은 수정 요청 없이 제출됩니다. 수정 요청과 거절은 입력 조건을 확인합니다.');
+    status.id = 'uc6-decisionStatus';
+    card.append(status);
+    const actions = createUc6Node('div', 'uc6-action-row uc6-decision-actions');
+    actions.append(createUC6ActionButton('uc6-submitDecisionBtn', '결정 제출', 'btn btn-primary', disabled));
+    actions.append(createUC6ActionButton('uc6-backToReviewBtn', '검토로 돌아가기', 'btn btn-outline', uc6State.operationInFlight));
+    card.append(actions);
+    root.replaceChildren(card);
   }
 
-  function renderUC6Diagnostics() {
-    if (uc6Els.diagnosticsList) {
-      uc6Els.diagnosticsList.replaceChildren(
-        createUc6Item('browser-admin endpoints', Object.keys(UC6_BROWSER_ADMIN_ENDPOINTS).length),
-        createUc6Item('auth state', uc6State.authStatus),
-        createUc6Item('public job state', uc6State.jobState || '-'),
-        createUc6Item('poll errors', uc6State.consecutivePollErrors),
-        createUc6Item('contract', uc6State.session?.http_boundary_contract_version || uc6State.review?.control_plane_contract_version || '-')
-      );
+  function renderUC6CompleteStage(root) {
+    const card = createUc6Node('section', 'uc6-stage-card uc6-complete-stage');
+    const decisionLabel = UC6_DECISION_LABELS[uc6State.decision?.decision] || UC6_STATE_LABELS[uc6State.jobState] || '결정 완료';
+    card.append(createUc6Node('h2', '', '완료'), createUc6Node('p', 'uc6-stage-copy', `${decisionLabel} 상태로 관리자 검토가 마무리되었습니다.`));
+    const lines = toUc6DisplayLines(uc6State.review?.current_decision_summary, ['decision', 'state', 'created', 'status']);
+    if (lines.length) {
+      const list = createUc6Node('ul', 'uc6-bounded-list');
+      list.replaceChildren(...lines.map(createUc6ListItem));
+      card.append(list);
     }
-    setUc6Text(uc6Els.diagnosticsStatus, 'Public-safe diagnostics only. Tokens, identity values, raw responses, and internal paths are not rendered.');
+    const actions = createUc6Node('div', 'uc6-action-row');
+    actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 시작', 'btn btn-primary', uc6State.operationInFlight));
+    card.append(actions);
+    root.replaceChildren(card);
+  }
+
+  function renderUC6UnavailableStage(root) {
+    const card = createUc6Node('section', 'uc6-stage-card is-error');
+    card.append(createUc6Node('h2', '', '상태 확인 필요'), createUc6Node('p', 'uc6-stage-copy', '알 수 없는 공개 상태입니다. 상태를 새로고침하거나 새 문서를 시작하세요.'));
+    const actions = createUc6Node('div', 'uc6-action-row');
+    actions.append(createUC6ActionButton('uc6-resumePollingBtn', '상태 새로고침', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+    actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 시작', 'btn btn-outline', uc6State.operationInFlight));
+    card.append(actions);
+    root.replaceChildren(card);
+  }
+
+  function renderUC6ActiveStage(stage) {
+    const root = uc6Els.activeStageRoot;
+    if (!root) return;
+    const previous = uc6State.lastRenderedStage;
+    if (stage === 'auth') renderUC6AuthStage(root);
+    else if (stage === 'intake') renderUC6IntakeStage(root);
+    else if (stage === 'analysis') renderUC6AnalysisStage(root, false);
+    else if (stage === 'analysis_error') renderUC6AnalysisStage(root, true);
+    else if (stage === 'review') renderUC6ReviewStage(root);
+    else if (stage === 'decision') renderUC6DecisionStage(root);
+    else if (stage === 'complete') renderUC6CompleteStage(root);
+    else renderUC6UnavailableStage(root);
+    root.dataset.activeStage = stage;
+    if (previous && previous !== stage) {
+      queueMicrotask(() => {
+        const title = root.querySelector('h2');
+        if (title) title.tabIndex = -1;
+        (title || root).focus({ preventScroll: true });
+      });
+    }
+    uc6State.lastRenderedStage = stage;
+  }
+
+  function renderUC6ContextSummary() {
+    const aside = uc6Els.contextSummary;
+    if (!aside) return;
+    const rows = [];
+    if (uc6State.jobId) rows.push(['Job ID', uc6State.jobId]);
+    if (uc6State.source?.filename) rows.push(['파일명', uc6State.source.filename]);
+    if (hasUC6Value(uc6State.source?.slide_count)) rows.push(['슬라이드', uc6State.source.slide_count]);
+    if (uc6State.jobState) rows.push(['현재 상태', UC6_STATE_LABELS[uc6State.jobState] || uc6State.jobState]);
+    if (hasUC6Value(uc6State.review?.blocking_issue_count)) rows.push(['차단 항목', uc6State.review.blocking_issue_count]);
+    if (hasUC6Value(uc6State.review?.warning_count)) rows.push(['경고', uc6State.review.warning_count]);
+    if (!rows.length) {
+      aside.hidden = true;
+      aside.replaceChildren();
+      return;
+    }
+    aside.hidden = false;
+    const card = createUc6Node('section', 'uc6-summary-card');
+    card.append(createUc6Node('h2', '', '작업 요약'));
+    const list = createUc6Node('dl', 'uc6-summary-list');
+    rows.forEach(([label, value]) => list.append(createUc6Node('dt', '', label), createUc6Node('dd', '', uc6Text(value, ''))));
+    card.append(list);
+    aside.replaceChildren(card);
   }
 
   function renderUC6All() {
     if (!uc6Els.section) return;
+    const stage = getUC6PresentationStage();
     renderUC6Session();
-    renderUC6Intake();
-    renderUC6Analysis();
-    renderUC6Review();
-    renderUC6Decision();
-    renderUC6Diagnostics();
+    renderUC6Stepper(stage);
+    renderUC6ActiveStage(stage);
+    renderUC6ContextSummary();
+    if (uc6State.liveMessage) setUc6Text(uc6Els.liveStatus, uc6State.liveMessage, '');
   }
 
   function initUC6() {
@@ -5801,20 +6086,49 @@ Customer: Thank you. Goodbye.`
     uc6Els.signInBtn?.addEventListener('click', signInUC6);
     uc6Els.signOutBtn?.addEventListener('click', signOutUC6);
     uc6Els.refreshSessionBtn?.addEventListener('click', refreshUC6Session);
-    uc6Els.fileInput?.addEventListener('change', () => {
-      const validation = validateUc6PptxSelection(uc6Els.fileInput.files);
-      setUc6Text(uc6Els.analysisMessage, validation.ok ? '업로드 준비가 완료되었습니다.' : validation.message);
-      renderUC6All();
+    uc6Els.section.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target.closest('button') : null;
+      if (!target) return;
+      if (target.id === 'uc6-uploadBtn') uploadUC6PptxJob();
+      else if (target.id === 'uc6-clearBtn') resetUC6JobState(true);
+      else if (target.id === 'uc6-retryAnalysisBtn') submitUC6Analysis(true);
+      else if (target.id === 'uc6-resumePollingBtn') {
+        uc6State.consecutivePollErrors = 0;
+        startUC6Polling();
+        renderUC6All();
+      } else if (target.id === 'uc6-enterDecisionBtn') {
+        uc6State.decisionMode = true;
+        uc6State.decisionMessage = '';
+        renderUC6All();
+      } else if (target.id === 'uc6-backToReviewBtn') {
+        uc6State.decisionMode = false;
+        renderUC6All();
+      } else if (target.id === 'uc6-submitDecisionBtn') {
+        submitUC6Decision();
+      }
     });
-    uc6Els.uploadBtn?.addEventListener('click', uploadUC6PptxJob);
-    uc6Els.clearBtn?.addEventListener('click', () => resetUC6JobState(true));
-    uc6Els.retryAnalysisBtn?.addEventListener('click', () => submitUC6Analysis(true));
-    uc6Els.resumePollingBtn?.addEventListener('click', () => {
-      uc6State.consecutivePollErrors = 0;
-      startUC6Polling();
-      renderUC6All();
+    uc6Els.section.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.id === 'uc6-pptxFileInput') {
+        const validation = validateUc6PptxSelection(target.files);
+        uc6State.selectedFile = validation.ok ? validation.file : null;
+        uc6State.stageMessage = validation.ok ? '업로드 준비가 완료되었습니다.' : validation.message;
+        setUC6LiveMessage(uc6State.stageMessage);
+        renderUC6All();
+      } else if (target.id === 'uc6-decisionChoice') {
+        uc6State.decisionChoiceValue = target.value;
+        if (target.value !== 'request_revision') uc6State.requestedRevisionsDraft = '';
+        uc6State.decisionMessage = '';
+        renderUC6All();
+      }
     });
-    uc6Els.submitDecisionBtn?.addEventListener('click', submitUC6Decision);
+    uc6Els.section.addEventListener('input', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.id === 'uc6-reviewNotes') uc6State.reviewNotesDraft = target.value;
+      if (target.id === 'uc6-requestedRevisions') uc6State.requestedRevisionsDraft = target.value;
+    });
     window.addEventListener('beforeunload', () => {
       stopUC6Polling();
       abortUC6Operations();
