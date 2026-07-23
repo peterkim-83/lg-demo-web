@@ -419,145 +419,42 @@
 
       <section class="view-section" id="view-uc6">
         <div class="uc6-admin-shell">
-          <header class="uc6-admin-hero">
-            <div>
-              <span class="uc6-admin-eyebrow">FetchDoc Browser Admin</span>
+          <header class="uc6-compact-header" id="uc6-compactHeader">
+            <div class="uc6-title-block">
+              <span class="uc6-eyebrow">FetchDoc</span>
               <h1>문서 템플릿 관리자 검토</h1>
-              <p>Firebase 로그인 후 FetchDoc 관리자 세션을 확인하고, PPTX 분석 결과를 bounded control-plane API로 검토합니다.</p>
+              <p>PPTX를 등록하고 분석 결과를 검토한 뒤 처리 방향을 결정합니다.</p>
             </div>
-            <span class="uc6-admin-chip is-neutral" id="uc6-authStateChip">초기화 중</span>
-          </header>
-
-          <div class="uc6-admin-grid">
-            <section class="uc6-admin-panel uc6-session-panel" aria-labelledby="uc6-sessionTitle">
-              <div class="uc6-panel-heading">
-                <span class="uc6-section-index">1</span>
-                <div>
-                  <h2 id="uc6-sessionTitle">Administrator session</h2>
-                  <p id="uc6-authStatus" aria-live="polite">Firebase Auth와 FetchDoc 관리자 세션을 준비하고 있습니다.</p>
-                </div>
+            <section class="uc6-auth-strip" id="uc6-authRegion" aria-labelledby="uc6-authTitle">
+              <h2 id="uc6-authTitle">관리자 세션</h2>
+              <div class="uc6-auth-copy">
+                <span class="uc6-admin-chip is-neutral" id="uc6-authStateChip">초기화 중</span>
+                <p id="uc6-authStatus">Firebase Auth와 FetchDoc 관리자 세션을 준비하고 있습니다.</p>
               </div>
-              <div class="uc6-action-row">
+              <div class="uc6-auth-actions">
                 <button class="btn btn-primary" id="uc6-signInBtn" type="button">Google 로그인</button>
                 <button class="btn btn-outline" id="uc6-refreshSessionBtn" type="button" disabled>세션 새로고침</button>
-                <button class="btn btn-danger" id="uc6-signOutBtn" type="button" disabled>로그아웃</button>
+                <button class="btn btn-outline" id="uc6-signOutBtn" type="button" disabled>로그아웃</button>
               </div>
             </section>
+          </header>
 
-            <section class="uc6-admin-panel" aria-labelledby="uc6-intakeTitle">
-              <div class="uc6-panel-heading">
-                <span class="uc6-section-index">2</span>
-                <div>
-                  <h2 id="uc6-intakeTitle">PPTX job intake</h2>
-                  <p>하나의 PPTX 파일을 업로드하면 public job이 생성되고 초기 분석이 한 번 제출됩니다.</p>
-                </div>
-              </div>
-              <div class="uc6-form-grid">
-                <label class="uc6-field uc6-file-field" for="uc6-pptxFileInput">
-                  <span>PPTX 파일</span>
-                  <input id="uc6-pptxFileInput" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
-                  <small id="uc6-selectedFileName">선택된 파일 없음</small>
-                </label>
-                <div class="uc6-action-row">
-                  <button class="btn btn-primary" id="uc6-uploadBtn" type="button" disabled>업로드 및 분석 시작</button>
-                  <button class="btn btn-outline" id="uc6-clearBtn" type="button" disabled>초기화</button>
-                  <span class="uc6-inline-status" id="uc6-uploadIndicator" hidden>업로드 중...</span>
-                </div>
-              </div>
-              <div class="uc6-kv-grid" aria-label="PPTX source summary">
-                <div class="uc6-kv-item"><span>public job ID</span><strong id="uc6-jobId">-</strong></div>
-                <div class="uc6-kv-item"><span>public state</span><strong id="uc6-jobState">-</strong></div>
-                <div class="uc6-kv-item"><span>file size</span><strong id="uc6-sourceSize">-</strong></div>
-                <div class="uc6-kv-item"><span>slide count</span><strong id="uc6-sourceSlides">-</strong></div>
-              </div>
-            </section>
+          <nav class="uc6-stepper" id="uc6-stepper" aria-label="UC6 진행 단계" hidden>
+            <ol>
+              <li data-uc6-step="intake"><span>1</span><strong>PPTX 등록</strong></li>
+              <li data-uc6-step="analysis"><span>2</span><strong>분석</strong></li>
+              <li data-uc6-step="review"><span>3</span><strong>결과 검토</strong></li>
+              <li data-uc6-step="decision"><span>4</span><strong>결정</strong></li>
+              <li data-uc6-step="complete"><span>5</span><strong>완료</strong></li>
+            </ol>
+          </nav>
 
-            <section class="uc6-admin-panel" aria-labelledby="uc6-analysisTitle">
-              <div class="uc6-panel-heading">
-                <span class="uc6-section-index">3</span>
-                <div>
-                  <h2 id="uc6-analysisTitle">Analysis status</h2>
-                  <p id="uc6-analysisMessage" aria-live="polite">PPTX 업로드 후 분석을 시작합니다.</p>
-                </div>
-                <span class="uc6-admin-chip is-neutral" id="uc6-pollingChip">Idle</span>
-              </div>
-              <div class="uc6-kv-grid">
-                <div class="uc6-kv-item"><span>analysis state</span><strong id="uc6-analysisState">작업 없음</strong></div>
-              </div>
-              <div class="uc6-action-row">
-                <button class="btn btn-warning" id="uc6-retryAnalysisBtn" type="button" disabled>실패 분석 재시도</button>
-                <button class="btn btn-outline" id="uc6-resumePollingBtn" type="button" disabled>상태 확인 재개</button>
-              </div>
-            </section>
-
-            <section class="uc6-admin-panel uc6-review-panel" aria-labelledby="uc6-reviewTitle">
-              <div class="uc6-panel-heading">
-                <span class="uc6-section-index">4</span>
-                <div>
-                  <h2 id="uc6-reviewTitle">Admin review</h2>
-                  <p id="uc6-reviewStatus" aria-live="polite">관리자 검토 정보 대기 중</p>
-                </div>
-              </div>
-              <div class="uc6-kv-grid" id="uc6-reviewSummaryGrid" aria-label="Admin review summary"></div>
-              <div class="uc6-review-columns">
-                <div>
-                  <h3>Review surface</h3>
-                  <ul class="uc6-bounded-list" id="uc6-reviewSurfaceList"></ul>
-                </div>
-                <div>
-                  <h3>Runtime readiness</h3>
-                  <ul class="uc6-bounded-list" id="uc6-runtimeReadinessList"></ul>
-                </div>
-                <div>
-                  <h3>Current decision</h3>
-                  <ul class="uc6-bounded-list" id="uc6-currentDecisionList"></ul>
-                </div>
-              </div>
-              <div class="uc6-kv-item uc6-package-hash"><span>review package</span><strong id="uc6-reviewPackageHash">-</strong></div>
-            </section>
-
-            <section class="uc6-admin-panel" aria-labelledby="uc6-decisionTitle">
-              <div class="uc6-panel-heading">
-                <span class="uc6-section-index">5</span>
-                <div>
-                  <h2 id="uc6-decisionTitle">Review decision</h2>
-                  <p id="uc6-decisionStatus" aria-live="polite">검토 준비 상태가 되면 결정 입력이 활성화됩니다.</p>
-                </div>
-              </div>
-              <div class="uc6-form-grid">
-                <label class="uc6-field" for="uc6-decisionChoice">
-                  <span>결정</span>
-                  <select id="uc6-decisionChoice" disabled>
-                    <option value="approve">approve</option>
-                    <option value="request_revision">request_revision</option>
-                    <option value="reject">reject</option>
-                  </select>
-                </label>
-                <label class="uc6-field" for="uc6-reviewNotes">
-                  <span>review notes</span>
-                  <textarea id="uc6-reviewNotes" rows="5" disabled placeholder="한 줄에 하나씩 입력"></textarea>
-                </label>
-                <label class="uc6-field" for="uc6-requestedRevisions">
-                  <span>requested revisions</span>
-                  <textarea id="uc6-requestedRevisions" rows="5" disabled placeholder="수정 요청이 있을 때만 한 줄에 하나씩 입력"></textarea>
-                </label>
-              </div>
-              <div class="uc6-action-row">
-                <button class="btn btn-success" id="uc6-submitDecisionBtn" type="button" disabled>검토 결정 제출</button>
-              </div>
-            </section>
-
-            <section class="uc6-admin-panel" aria-labelledby="uc6-diagnosticsTitle">
-              <div class="uc6-panel-heading">
-                <span class="uc6-section-index">6</span>
-                <div>
-                  <h2 id="uc6-diagnosticsTitle">Public-safe diagnostics</h2>
-                  <p id="uc6-diagnosticsStatus" aria-live="polite">Public-safe diagnostics only.</p>
-                </div>
-              </div>
-              <div class="uc6-kv-grid" id="uc6-diagnosticsList" aria-label="Public safe diagnostics"></div>
-            </section>
+          <div class="uc6-stage-layout">
+            <div class="uc6-active-stage" id="uc6-activeStageRoot" tabindex="-1" role="region" aria-label="현재 UC6 단계"></div>
+            <aside class="uc6-context-summary" id="uc6-contextSummary" aria-label="문서 작업 요약" hidden></aside>
           </div>
+
+          <p class="uc6-live-status" id="uc6-liveStatus" aria-live="polite" aria-atomic="true">Firebase Auth와 FetchDoc 관리자 세션을 준비하고 있습니다.</p>
         </div>
       </section>
     </main>

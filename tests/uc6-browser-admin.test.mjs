@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 import {
   UC6_GENERIC_PUBLIC_ERROR_MESSAGE,
@@ -48,6 +49,26 @@ function extractFunctionBody(source, name) {
     if (depth === 0) return source.slice(open + 1, i);
   }
   throw new Error(`${name} body unterminated`);
+}
+
+function extractFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `${name} missing`);
+  const bodyStart = source.indexOf(') {', start);
+  assert.notEqual(bodyStart, -1, `${name} body opener missing`);
+  const open = bodyStart + 2;
+  assert.notEqual(open, -1, `${name} body missing`);
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    if (source[i] === '}') depth -= 1;
+    if (depth === 0) return source.slice(start, i + 1);
+  }
+  throw new Error(`${name} body unterminated`);
+}
+
+function readSource(relativePath) {
+  return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 }
 
 test('API base validation accepts only production HTTPS and explicit loopback HTTP', () => {
@@ -442,4 +463,128 @@ test('app controller source guards lock repaired upload, retry, review, and auth
   assert.equal(decisionBody.includes('handleUC6AuthorizationFailure(error)'), true);
   assert.equal(uploadBody.includes('handleUC6AuthorizationFailure(error)'), true);
   assert.equal(authHandlerBody.includes('classifyUc6AuthorizationFailure(error)'), true);
+});
+
+test('UC6 redesigned HTML keeps compact auth controls and one dynamic stage shell', () => {
+  const html = readSource('../public/index.html');
+  const uc6Start = html.indexOf('id="view-uc6"');
+  const uc6 = html.slice(uc6Start, html.indexOf('    </main>', uc6Start));
+  assert.notEqual(uc6.length, 0);
+  assert.equal((html.match(/id="uc6-signInBtn"/g) || []).length, 1);
+  assert.equal((html.match(/id="uc6-signOutBtn"/g) || []).length, 1);
+  assert.equal((html.match(/id="uc6-refreshSessionBtn"/g) || []).length, 1);
+  assert.equal(uc6.includes('Administrator session'), false);
+  assert.equal(uc6.includes('PPTX job intake'), false);
+  assert.equal(uc6.includes('Analysis status'), false);
+  assert.equal(uc6.includes('Admin review'), false);
+  assert.equal(uc6.includes('Public-safe diagnostics'), false);
+  assert.equal((uc6.match(/data-uc6-step=/g) || []).length, 5);
+  for (const label of ['PPTX 등록', '분석', '결과 검토', '결정', '완료']) {
+    assert.equal(uc6.includes(label), true);
+  }
+  assert.equal((html.match(/id="uc6-activeStageRoot"/g) || []).length, 1);
+  assert.equal((html.match(/id="uc6-contextSummary"/g) || []).length, 1);
+  assert.equal((html.match(/aria-live=/g) || []).length, 1);
+  for (const obsoleteId of ['uc6-reviewSummaryGrid', 'uc6-diagnosticsList', 'uc6-sourceSize', 'uc6-sourceSlides', 'uc6-jobState']) {
+    assert.equal(uc6.includes(obsoleteId), false);
+  }
+  for (const heading of ['Global readiness', 'Blockers', 'Warnings', 'Admin actions', 'Review decision']) {
+    assert.equal(uc6.includes(heading), false);
+  }
+});
+
+test('UC6 presentation stage mapper is deterministic and presentation-only', () => {
+  const source = readSource('../public/app.js');
+  const mapper = new Function(`return (${extractFunctionSource(source, 'mapUC6PublicStateToStage')});`)();
+  assert.equal(mapper({ authorizationState: 'signed_out', publicState: null }), 'auth');
+  assert.equal(mapper({ authorizationState: 'access_denied', publicState: 'review_ready' }), 'auth');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: null }), 'intake');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'idle' }), 'intake');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'source_ready' }), 'intake');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'analysis_queued' }), 'analysis');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'analysis_running' }), 'analysis');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'failed' }), 'analysis_error');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_ready' }), 'review');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_ready_with_warnings' }), 'review');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_blocked' }), 'review');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_ready', decisionMode: true }), 'decision');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'approved' }), 'complete');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'revision_requested' }), 'complete');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'rejected' }), 'complete');
+  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'mystery' }), 'unavailable');
+});
+
+test('UC6 dynamic renderer avoids hidden focusable stage panels and empty placeholders', () => {
+  const source = readSource('../public/app.js');
+  const html = readSource('../public/index.html');
+  const intakeBody = extractFunctionBody(source, 'renderUC6IntakeStage');
+  const analysisBody = extractFunctionBody(source, 'renderUC6AnalysisStage');
+  const reviewBody = extractFunctionBody(source, 'renderUC6ReviewStage');
+  const decisionBody = extractFunctionBody(source, 'renderUC6DecisionStage');
+  const completeBody = extractFunctionBody(source, 'renderUC6CompleteStage');
+  const activeBody = extractFunctionBody(source, 'renderUC6ActiveStage');
+  assert.equal(activeBody.includes('root.replaceChildren'), false);
+  assert.equal(source.includes('replaceChildren(card)'), true);
+  assert.equal(html.includes('id="uc6-pptxFileInput"'), false);
+  assert.equal(html.includes('id="uc6-retryAnalysisBtn"'), false);
+  assert.equal(intakeBody.includes('Job ID'), false);
+  assert.equal(intakeBody.includes('파일 크기'), true);
+  assert.equal(intakeBody.includes('슬라이드'), true);
+  assert.equal(analysisBody.includes('uc6-retryAnalysisBtn'), true);
+  assert.equal(analysisBody.includes('if (failed)'), true);
+  assert.equal(reviewBody.includes('filter((item) => hasUC6Value(item[1]))'), true);
+  assert.equal(decisionBody.includes("decision === 'request_revision'"), true);
+  assert.equal(decisionBody.includes("decision === 'reject'"), true);
+  assert.equal(completeBody.includes('PDF'), false);
+  assert.equal(completeBody.includes('download'), false);
+  assert.equal(completeBody.includes('다운로드'), false);
+});
+
+test('authentication, token processing, endpoints, and frozen API client stay unchanged', () => {
+  const app = readSource('../public/app.js');
+  const html = readSource('../public/index.html');
+  assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
+  assert.equal(app.includes('signInWithPopup'), true);
+  assert.equal(app.includes('signInWithRedirect'), true);
+  assert.equal(app.includes('browserSessionPersistence'), true);
+  assert.equal(app.includes('getIdToken(true)'), true);
+  assert.equal(app.includes('validateUc6SessionContract(session)'), true);
+  for (const endpoint of [
+    '/fetchdoc/browser-admin/session',
+    '/fetchdoc/browser-admin/uc6/jobs',
+    '/analysis',
+    '/review',
+    '/review-decision'
+  ]) {
+    assert.equal(readSource('../public/uc6-browser-admin.mjs').includes(endpoint), true);
+  }
+  for (const id of ['view-uc1', 'view-uc2', 'view-uc3', 'view-uc4', 'view-uc5']) {
+    assert.equal(html.includes(`id="${id}"`), true);
+    assert.equal(html.includes(`data-target="${id}"`), true);
+  }
+  for (const constant of ['UC1_WEBHOOK', 'UC2_WEBHOOK', 'UC3_START_CALL', 'UC4_WEBHOOK', 'UC5_W00_WEBHOOK', 'UC5_W03_WEBHOOK']) {
+    assert.equal(app.includes(constant), true);
+  }
+  const baseline = execFileSync('git', ['rev-parse', '76d1d5c33601a8e93c91a055f70822631d2d0090:public/uc6-browser-admin.mjs'], { encoding: 'utf8' }).trim();
+  const head = execFileSync('git', ['rev-parse', 'HEAD:public/uc6-browser-admin.mjs'], { encoding: 'utf8' }).trim();
+  assert.equal(head, baseline);
+  execFileSync('git', ['diff', '--quiet', '76d1d5c33601a8e93c91a055f70822631d2d0090', '--', 'public/uc6-browser-admin.mjs']);
+});
+
+test('new UC6 CSS selectors stay scoped under view-uc6', () => {
+  const css = readSource('../public/style.css');
+  const marker = css.indexOf('UC6 - FetchDoc Dynamic Stage UI');
+  assert.notEqual(marker, -1);
+  const uc6Css = css.slice(marker);
+  const selectorBlocks = [...uc6Css.matchAll(/(^|})\\s*([^@{}][^{}]*)\\{/g)].map((match) => match[2].trim());
+  for (const selector of selectorBlocks) {
+    for (const part of selector.split(',')) {
+      const trimmed = part.trim();
+      if (!trimmed || trimmed === 'from' || trimmed === 'to') continue;
+      assert.equal(trimmed.startsWith('#view-uc6'), true, `unscoped selector: ${trimmed}`);
+    }
+  }
+  assert.equal(uc6Css.includes('@media (max-width: 1024px)'), true);
+  assert.equal(uc6Css.includes('@media (max-width: 800px)'), true);
+  assert.equal(uc6Css.includes(':focus-visible'), true);
 });
