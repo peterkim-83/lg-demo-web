@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 
 import {
+  UC6_BROWSER_ADMIN_ENDPOINTS,
   UC6_GENERIC_PUBLIC_ERROR_MESSAGE,
   createUc6BrowserAdminApi,
   classifyUc6AuthorizationFailure,
   mapUc6StateToView,
   normalizeUc6ApiBaseUrl,
   normalizeUc6JobId,
+  projectUc6FinalDeliveryCapabilities,
   parseUc6PublicError,
   projectUc6PersistedState,
   runUc6CreateJobAndSubmitInitialAnalysis,
@@ -37,10 +38,51 @@ function makeBlobFile(name = 'source.pptx') {
   return blob;
 }
 
+function validFinalDeliveryPayload(overrides = {}) {
+  const payload = {
+    job_id: JOB_ID,
+    artifacts: [
+      {
+        alias: 'final_render_output_pdf',
+        media_type: 'application/pdf',
+        ready: true,
+        suggested_filename: 'final.pdf',
+        capabilities: {
+          download: { available: true, href: '/fetchdoc/browser-admin/uc6/jobs/fd_uc6_admin_test_12345/artifacts/pdf?sig=ok' },
+          view: { available: true, href: '/fetchdoc/browser-admin/uc6/jobs/fd_uc6_admin_test_12345/artifacts/pdf/view?sig=ok' }
+        }
+      },
+      {
+        alias: 'final_render_output_pptx',
+        media_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ready: true,
+        suggested_filename: 'final.pptx',
+        capabilities: {
+          download: { available: true, href: '/fetchdoc/browser-admin/uc6/jobs/fd_uc6_admin_test_12345/artifacts/pptx?sig=ok' },
+          view: { available: false, href: null }
+        }
+      }
+    ]
+  };
+  return Object.assign(payload, overrides);
+}
+
+function allNotReadyFinalDeliveryPayload() {
+  const payload = validFinalDeliveryPayload();
+  for (const artifact of payload.artifacts) {
+    artifact.ready = false;
+    artifact.capabilities.download = { available: false, href: null };
+    artifact.capabilities.view = { available: false, href: null };
+  }
+  return payload;
+}
+
 function extractFunctionBody(source, name) {
   const start = source.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `${name} missing`);
-  const open = source.indexOf('{', start);
+  const bodyStart = source.indexOf(') {', start);
+  assert.notEqual(bodyStart, -1, `${name} body opener missing`);
+  const open = bodyStart + 2;
   assert.notEqual(open, -1, `${name} body missing`);
   let depth = 0;
   for (let i = open; i < source.length; i += 1) {
@@ -168,6 +210,59 @@ test('401 forced refresh retries once; 403 and network POST failures are not rep
   assert.equal(callsNetwork.length, 1);
 });
 
+test('final-delivery endpoint uses exact GET route and unchanged authorization boundary', async () => {
+  const calls = [];
+  const forces = [];
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async (forceRefresh) => {
+      forces.push(forceRefresh);
+      return forceRefresh ? 'fresh-token' : 'initial-token';
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(200, validFinalDeliveryPayload());
+    }
+  });
+
+  const payload = await api.getFinalDeliveryCapabilities(JOB_ID);
+  assert.equal(payload.job_id, JOB_ID);
+  assert.equal(UC6_BROWSER_ADMIN_ENDPOINTS.finalDeliveryCapabilities(JOB_ID), `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/final-delivery-capabilities`);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/final-delivery-capabilities`);
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.cache, 'no-store');
+  assert.equal(calls[0].init.credentials, 'omit');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer initial-token');
+  assert.equal(calls[0].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
+  assert.equal(forces.length, 1);
+  assert.deepEqual(forces, [false]);
+});
+
+test('final-delivery GET applies one forced token refresh on HTTP 401', async () => {
+  const calls = [];
+  const forces = [];
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async (forceRefresh) => {
+      forces.push(forceRefresh);
+      return forceRefresh ? 'fresh-token' : 'stale-token';
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return calls.length === 1
+        ? response(401, { detail: { code: 'browser_admin_token_expired' } })
+        : response(200, validFinalDeliveryPayload());
+    }
+  });
+
+  await api.getFinalDeliveryCapabilities(JOB_ID);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(forces, [false, true]);
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer stale-token');
+  assert.equal(calls[1].init.headers.Authorization, 'Bearer fresh-token');
+});
+
 test('routes, methods, multipart boundary, and bounded JSON bodies are exact', async () => {
   const calls = [];
   const api = createUc6BrowserAdminApi({
@@ -184,6 +279,7 @@ test('routes, methods, multipart boundary, and bounded JSON bodies are exact', a
   await api.submitAnalysis(JOB_ID, { retryFailed: false });
   await api.getJob(JOB_ID);
   await api.getReview(JOB_ID);
+  await api.getFinalDeliveryCapabilities(JOB_ID);
   await api.submitDecision(JOB_ID, { state: 'review_ready', decision: 'request_revision', review_notes: ['note'], requested_revisions: [] });
 
   assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/session`);
@@ -197,8 +293,10 @@ test('routes, methods, multipart boundary, and bounded JSON bodies are exact', a
   assert.equal(calls[3].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}`);
   assert.equal(calls[3].init.method, 'GET');
   assert.equal(calls[4].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/review`);
-  assert.equal(calls[5].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/review-decision`);
-  assert.deepEqual(JSON.parse(calls[5].init.body), { decision: 'request_revision', review_notes: ['note'], requested_revisions: [] });
+  assert.equal(calls[5].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/final-delivery-capabilities`);
+  assert.equal(calls[5].init.method, 'GET');
+  assert.equal(calls[6].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/review-decision`);
+  assert.deepEqual(JSON.parse(calls[6].init.body), { decision: 'request_revision', review_notes: ['note'], requested_revisions: [] });
   assert.throws(() => normalizeUc6JobId('bad/../id'), /invalid_job_id/);
   for (const call of calls) {
     const serialized = typeof call.init.body === 'string' ? call.init.body : '';
@@ -368,6 +466,10 @@ test('persistence projection keeps only public allowlisted fields', () => {
     email: 'a@example.com',
     source: { sha256: 'sha' },
     review: { public_review_surface: {} },
+    finalDelivery: validFinalDeliveryPayload(),
+    final_delivery: { href: '/signed?sig=secret' },
+    capability_href: '/signed?sig=secret',
+    raw_capability_response: { artifacts: [] },
     task_id: 'task',
     queue_payload: { x: true }
   });
@@ -377,6 +479,53 @@ test('persistence projection keeps only public allowlisted fields', () => {
     last_polling_timestamp: 123,
     selected_panel: 'review'
   });
+});
+
+test('final-delivery projection accepts ready and all-not-ready contracts', () => {
+  const ready = projectUc6FinalDeliveryCapabilities(validFinalDeliveryPayload(), { expectedJobId: JOB_ID, apiBaseUrl: API_BASE });
+  assert.equal(ready.readyCount, 2);
+  assert.equal(ready.totalCount, 2);
+  assert.equal(ready.artifacts[0].alias, 'final_render_output_pdf');
+  assert.equal(ready.artifacts[0].label, 'PDF');
+  assert.equal(ready.artifacts[0].actions.view.available, true);
+  assert.equal(ready.artifacts[0].actions.view.href.startsWith(API_BASE), true);
+  assert.equal(ready.artifacts[0].actions.download.href.startsWith(API_BASE), true);
+  assert.equal(ready.artifacts[1].label, 'PowerPoint');
+  assert.equal(ready.artifacts[1].actions.download.available, true);
+  assert.equal(ready.artifacts[1].actions.download.href.startsWith(API_BASE), true);
+  assert.equal(ready.artifacts[1].actions.view.available, false);
+  assert.equal(ready.artifacts[1].actions.view.href, null);
+
+  const waiting = projectUc6FinalDeliveryCapabilities(allNotReadyFinalDeliveryPayload(), { expectedJobId: JOB_ID, apiBaseUrl: API_BASE });
+  assert.equal(waiting.readyCount, 0);
+  assert.equal(waiting.artifacts.every((artifact) => artifact.ready === false), true);
+  assert.equal(waiting.artifacts.every((artifact) => artifact.actions.download.href === null && artifact.actions.view.href === null), true);
+});
+
+test('final-delivery projection rejects malformed or unsafe contracts', () => {
+  const reject = (mutate) => {
+    const payload = validFinalDeliveryPayload();
+    mutate(payload);
+    assert.throws(() => projectUc6FinalDeliveryCapabilities(payload, { expectedJobId: JOB_ID, apiBaseUrl: API_BASE }), TypeError);
+  };
+
+  assert.throws(() => projectUc6FinalDeliveryCapabilities(null, { expectedJobId: JOB_ID, apiBaseUrl: API_BASE }), TypeError);
+  reject((payload) => { payload.job_id = 'fd_uc6_admin_other_12345'; });
+  reject((payload) => { payload.artifacts.reverse(); });
+  reject((payload) => { payload.artifacts.pop(); });
+  reject((payload) => { payload.artifacts[0].alias = 'unknown_alias'; });
+  reject((payload) => { payload.artifacts[0].media_type = 'application/octet-stream'; });
+  reject((payload) => { payload.artifacts[0].ready = 'true'; });
+  reject((payload) => { payload.artifacts[0].capabilities.download.available = 'true'; });
+  reject((payload) => { payload.artifacts[0].capabilities.download = { available: false, href: '/still-present' }; });
+  reject((payload) => { payload.artifacts[0].capabilities.download = { available: true, href: null }; });
+  reject((payload) => { payload.artifacts[0].capabilities.download.href = '//evil.example/path'; });
+  reject((payload) => { payload.artifacts[0].capabilities.download.href = 'https://evil.example/path'; });
+  reject((payload) => { payload.artifacts[0].ready = false; });
+  reject((payload) => { payload.artifacts[1].capabilities.view = { available: true, href: '/pptx/view' }; });
+  for (const filename of ['../final.pdf', 'nested/final.pdf', 'nested\\final.pdf', 'bad\u0000name.pdf', '']) {
+    reject((payload) => { payload.artifacts[0].suggested_filename = filename; });
+  }
 });
 
 test('mock browser control-plane flow stays bounded through revision request and semantic replay', async () => {
@@ -446,6 +595,10 @@ test('app controller source guards lock repaired upload, retry, review, and auth
   const uploadBody = extractFunctionBody(source, 'uploadUC6PptxJob');
   const initBody = extractFunctionBody(source, 'initUC6');
   const decisionBody = extractFunctionBody(source, 'submitUC6Decision');
+  const refreshBody = extractFunctionBody(source, 'refreshUC6JobStatus');
+  const finalDeliveryBody = extractFunctionBody(source, 'fetchUC6FinalDeliveryCapabilities');
+  const resetBody = extractFunctionBody(source, 'resetUC6JobState');
+  const persistBody = extractFunctionBody(source, 'saveUC6LocalState');
   const pollBody = extractFunctionBody(source, 'pollUC6JobStatus');
   const analysisBody = extractFunctionBody(source, 'submitUC6Analysis');
   const reviewBody = extractFunctionBody(source, 'fetchUC6Review');
@@ -456,6 +609,18 @@ test('app controller source guards lock repaired upload, retry, review, and auth
   assert.equal((uploadBody.match(/operationInFlight = true/g) || []).length, 1);
   assert.equal(initBody.includes('submitUC6Analysis(true)'), true);
   assert.equal((decisionBody.match(/refreshUC6JobStatus/g) || []).length, 1);
+  assert.equal(refreshBody.includes("uc6State.jobState === 'approved'"), true);
+  assert.equal(refreshBody.includes('fetchUC6FinalDeliveryCapabilities(options.signal)'), true);
+  assert.equal(refreshBody.includes('else clearUC6FinalDeliveryState()'), true);
+  assert.equal(finalDeliveryBody.includes("uc6State.jobState !== 'approved'"), true);
+  assert.equal(finalDeliveryBody.includes('uc6State.finalDeliveryRequestActive'), true);
+  assert.equal(finalDeliveryBody.includes('getFinalDeliveryCapabilities'), true);
+  assert.equal(finalDeliveryBody.includes('projectUc6FinalDeliveryCapabilities'), true);
+  assert.equal(finalDeliveryBody.includes('handleUC6AuthorizationFailure(error)'), true);
+  assert.equal(resetBody.includes('clearUC6FinalDeliveryState()'), true);
+  assert.equal(persistBody.includes('finalDelivery'), false);
+  assert.equal(persistBody.includes('capabilit'), false);
+  assert.equal(initBody.includes('uc6-refreshFinalDeliveryBtn'), true);
   assert.equal(decisionBody.includes('await fetchUC6Review(controller.signal)'), false);
   assert.equal(pollBody.includes('handleUC6AuthorizationFailure(error)'), true);
   assert.equal(analysisBody.includes('handleUC6AuthorizationFailure(error)'), true);
@@ -522,6 +687,8 @@ test('UC6 dynamic renderer avoids hidden focusable stage panels and empty placeh
   const reviewBody = extractFunctionBody(source, 'renderUC6ReviewStage');
   const decisionBody = extractFunctionBody(source, 'renderUC6DecisionStage');
   const completeBody = extractFunctionBody(source, 'renderUC6CompleteStage');
+  const finalDeliverySection = extractFunctionBody(source, 'renderUC6FinalDeliverySection');
+  const artifactCard = extractFunctionBody(source, 'renderUC6ArtifactCard');
   const activeBody = extractFunctionBody(source, 'renderUC6ActiveStage');
   assert.equal(activeBody.includes('root.replaceChildren'), false);
   assert.equal(source.includes('replaceChildren(card)'), true);
@@ -535,14 +702,27 @@ test('UC6 dynamic renderer avoids hidden focusable stage panels and empty placeh
   assert.equal(reviewBody.includes('filter((item) => hasUC6Value(item[1]))'), true);
   assert.equal(decisionBody.includes("decision === 'request_revision'"), true);
   assert.equal(decisionBody.includes("decision === 'reject'"), true);
-  assert.equal(completeBody.includes('PDF'), false);
-  assert.equal(completeBody.includes('download'), false);
-  assert.equal(completeBody.includes('다운로드'), false);
+  assert.equal(completeBody.includes("uc6State.jobState === 'approved'"), true);
+  assert.equal(completeBody.includes('renderUC6FinalDeliverySection()'), true);
+  assert.equal(finalDeliverySection.includes('최종 산출물'), true);
+  assert.equal(finalDeliverySection.includes('PDF'), true);
+  assert.equal(finalDeliverySection.includes('PowerPoint'), true);
+  assert.equal(finalDeliverySection.includes('uc6-refreshFinalDeliveryBtn'), true);
+  assert.equal(artifactCard.includes('PDF 보기'), true);
+  assert.equal(artifactCard.includes('PDF 다운로드'), true);
+  assert.equal(artifactCard.includes('PPTX 다운로드'), true);
+  assert.equal(artifactCard.includes('PPTX 보기'), false);
+  assert.equal(artifactCard.includes('생성 대기 중'), true);
+  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('생성 버튼'), false);
+  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('generate'), false);
+  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('capabilities'), false);
+  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('/data/'), false);
 });
 
-test('authentication, token processing, endpoints, and frozen API client stay unchanged', () => {
+test('authentication, token processing, endpoints, route constants, and webhooks stay bounded', () => {
   const app = readSource('../public/app.js');
   const html = readSource('../public/index.html');
+  const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
   assert.equal(app.includes('signInWithPopup'), true);
   assert.equal(app.includes('signInWithRedirect'), true);
@@ -554,10 +734,16 @@ test('authentication, token processing, endpoints, and frozen API client stay un
     '/fetchdoc/browser-admin/uc6/jobs',
     '/analysis',
     '/review',
-    '/review-decision'
+    '/review-decision',
+    '/final-delivery-capabilities'
   ]) {
-    assert.equal(readSource('../public/uc6-browser-admin.mjs').includes(endpoint), true);
+    assert.equal(admin.includes(endpoint), true);
   }
+  assert.equal(admin.includes("X-Internal-Token"), false);
+  assert.equal(admin.includes("cache: 'no-store'"), true);
+  assert.equal(admin.includes("credentials: 'omit'"), true);
+  assert.equal(admin.includes('getIdToken(forceRefresh === true)'), true);
+  assert.equal(admin.includes('if (response?.status === 401)'), true);
   for (const id of ['view-uc1', 'view-uc2', 'view-uc3', 'view-uc4', 'view-uc5']) {
     assert.equal(html.includes(`id="${id}"`), true);
     assert.equal(html.includes(`data-target="${id}"`), true);
@@ -565,10 +751,6 @@ test('authentication, token processing, endpoints, and frozen API client stay un
   for (const constant of ['UC1_WEBHOOK', 'UC2_WEBHOOK', 'UC3_START_CALL', 'UC4_WEBHOOK', 'UC5_W00_WEBHOOK', 'UC5_W03_WEBHOOK']) {
     assert.equal(app.includes(constant), true);
   }
-  const baseline = execFileSync('git', ['rev-parse', '76d1d5c33601a8e93c91a055f70822631d2d0090:public/uc6-browser-admin.mjs'], { encoding: 'utf8' }).trim();
-  const head = execFileSync('git', ['rev-parse', 'HEAD:public/uc6-browser-admin.mjs'], { encoding: 'utf8' }).trim();
-  assert.equal(head, baseline);
-  execFileSync('git', ['diff', '--quiet', '76d1d5c33601a8e93c91a055f70822631d2d0090', '--', 'public/uc6-browser-admin.mjs']);
 });
 
 test('new UC6 CSS selectors stay scoped under view-uc6', () => {

@@ -6,7 +6,8 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   analysis: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/analysis`,
   job: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}`,
   review: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review`,
-  reviewDecision: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-decision`
+  reviewDecision: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-decision`,
+  finalDeliveryCapabilities: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/final-delivery-capabilities`
 });
 
 export const UC6_GENERIC_PUBLIC_ERROR_MESSAGE = '요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요.';
@@ -30,6 +31,7 @@ export const UC6_PUBLIC_ERROR_MESSAGES = Object.freeze({
   browser_admin_uc6_decision_conflict: '이미 다른 검토 결정이 기록되었습니다.',
   browser_admin_uc6_analysis_failed: '분석 작업이 실패했습니다. 재시도할 수 있습니다.',
   browser_admin_uc6_queue_unavailable: '분석 대기열을 일시적으로 사용할 수 없습니다.',
+  browser_admin_uc6_final_delivery_not_approved: '승인 완료 후 최종 산출물 상태를 확인할 수 있습니다.',
   browser_admin_uc6_service_unavailable: 'FetchDoc 서비스를 일시적으로 사용할 수 없습니다.'
 });
 
@@ -170,6 +172,85 @@ export function projectUc6PersistedState(value) {
   return projected;
 }
 
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+function invalidFinalDeliveryContract() {
+  throw new TypeError('invalid_uc6_final_delivery_capabilities');
+}
+
+function projectUc6CapabilityAction(action, { artifactReady, baseUrl }) {
+  if (!isPlainObject(action) || typeof action.available !== 'boolean') invalidFinalDeliveryContract();
+  if (action.available === false) {
+    if (action.href !== null) invalidFinalDeliveryContract();
+    return { available: false, href: null };
+  }
+  if (artifactReady !== true) invalidFinalDeliveryContract();
+  if (typeof action.href !== 'string' || action.href.trim() !== action.href || action.href === '') invalidFinalDeliveryContract();
+  if (!action.href.startsWith('/') || action.href.startsWith('//')) invalidFinalDeliveryContract();
+  let resolved;
+  try {
+    resolved = new URL(action.href, baseUrl);
+  } catch (_) {
+    invalidFinalDeliveryContract();
+  }
+  const normalizedBase = new URL(baseUrl);
+  if (resolved.origin !== normalizedBase.origin) invalidFinalDeliveryContract();
+  if (resolved.username || resolved.password || resolved.hash) invalidFinalDeliveryContract();
+  return { available: true, href: resolved.toString() };
+}
+
+function projectUc6SuggestedFilename(value) {
+  if (typeof value !== 'string') invalidFinalDeliveryContract();
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 128) invalidFinalDeliveryContract();
+  if (/[\\/\u0000-\u001f\u007f]/.test(trimmed) || trimmed.includes('..')) invalidFinalDeliveryContract();
+  return trimmed;
+}
+
+export function projectUc6FinalDeliveryCapabilities(payload, options = {}) {
+  if (!isPlainObject(payload)) invalidFinalDeliveryContract();
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  const baseUrl = normalizeUc6ApiBaseUrl(options.apiBaseUrl || UC6_PRODUCTION_API_BASE, { allowLoopbackHttp: options.allowLoopbackHttp === true });
+  if (payload.job_id !== expectedJobId) invalidFinalDeliveryContract();
+  if (!Array.isArray(payload.artifacts) || payload.artifacts.length !== 2) invalidFinalDeliveryContract();
+
+  const expectedArtifacts = [
+    { alias: 'final_render_output_pdf', label: 'PDF', mediaType: 'application/pdf' },
+    { alias: 'final_render_output_pptx', label: 'PowerPoint', mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }
+  ];
+
+  const artifacts = payload.artifacts.map((artifact, index) => {
+    const expected = expectedArtifacts[index];
+    if (!isPlainObject(artifact)) invalidFinalDeliveryContract();
+    if (artifact.alias !== expected.alias || artifact.media_type !== expected.mediaType) invalidFinalDeliveryContract();
+    if (typeof artifact.ready !== 'boolean') invalidFinalDeliveryContract();
+    if (!isPlainObject(artifact.capabilities) || !isPlainObject(artifact.capabilities.download) || !isPlainObject(artifact.capabilities.view)) invalidFinalDeliveryContract();
+
+    const download = projectUc6CapabilityAction(artifact.capabilities.download, { artifactReady: artifact.ready, baseUrl });
+    const view = projectUc6CapabilityAction(artifact.capabilities.view, { artifactReady: artifact.ready, baseUrl });
+    if (expected.alias === 'final_render_output_pptx' && (view.available !== false || view.href !== null)) invalidFinalDeliveryContract();
+
+    return {
+      alias: expected.alias,
+      label: expected.label,
+      ready: artifact.ready,
+      suggestedFilename: projectUc6SuggestedFilename(artifact.suggested_filename),
+      actions: {
+        download,
+        view
+      }
+    };
+  });
+
+  return {
+    artifacts,
+    readyCount: artifacts.filter((artifact) => artifact.ready).length,
+    totalCount: artifacts.length
+  };
+}
+
 export function classifyUc6AuthorizationFailure(error) {
   const status = Number(error?.status || 0);
   const code = typeof error?.code === 'string' ? error.code : '';
@@ -288,6 +369,9 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
     },
     getReview(jobId, options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.review(jobId), { method: 'GET', signal: options.signal });
+    },
+    getFinalDeliveryCapabilities(jobId, options = {}) {
+      return request(UC6_BROWSER_ADMIN_ENDPOINTS.finalDeliveryCapabilities(jobId), { method: 'GET', signal: options.signal });
     },
     submitDecision(jobId, command, options = {}) {
       const validation = validateUc6DecisionCommand(command);
