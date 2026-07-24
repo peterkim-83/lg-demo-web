@@ -6,6 +6,7 @@ import {
   createUc6BrowserAdminApi,
   mapUc6StateToView,
   normalizeUc6JobId,
+  projectUc6FinalDeliveryCapabilities,
   projectUc6PersistedState,
   runUc6CreateJobAndSubmitInitialAnalysis,
   splitDecisionTextLines,
@@ -5151,11 +5152,16 @@ Customer: Thank you. Goodbye.`
     stageMessage: '',
     reviewMessage: '',
     decisionMessage: '',
+    finalDelivery: null,
+    finalDeliveryStatus: 'idle',
+    finalDeliveryMessage: '',
+    finalDeliveryRequestActive: false,
     liveMessage: '',
     lastRenderedStage: '',
     pollingTimer: null,
     pollingAbortController: null,
     operationAbortController: null,
+    finalDeliveryAbortController: null,
     statusRequestActive: false,
     consecutivePollErrors: 0,
     lastPollingTimestamp: 0
@@ -5382,12 +5388,22 @@ Customer: Thank you. Goodbye.`
     try { localStorage.removeItem(UC6_STORAGE_KEY); } catch (_) {}
   }
 
+  function clearUC6FinalDeliveryState() {
+    uc6State.finalDelivery = null;
+    uc6State.finalDeliveryStatus = 'idle';
+    uc6State.finalDeliveryMessage = '';
+    uc6State.finalDeliveryRequestActive = false;
+  }
+
   function abortUC6Operations() {
     if (uc6State.operationAbortController) uc6State.operationAbortController.abort();
     if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
+    if (uc6State.finalDeliveryAbortController) uc6State.finalDeliveryAbortController.abort();
     uc6State.operationAbortController = null;
     uc6State.pollingAbortController = null;
+    uc6State.finalDeliveryAbortController = null;
     uc6State.statusRequestActive = false;
+    uc6State.finalDeliveryRequestActive = false;
   }
 
   function stopUC6Polling() {
@@ -5414,6 +5430,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = '';
     uc6State.reviewMessage = '';
     uc6State.decisionMessage = '';
+    clearUC6FinalDeliveryState();
     uc6State.consecutivePollErrors = 0;
     uc6State.lastPollingTimestamp = 0;
     if (uc6Els.fileInput) uc6Els.fileInput.value = '';
@@ -5446,6 +5463,7 @@ Customer: Thank you. Goodbye.`
     if (!authState) return false;
     uc6State.session = null;
     uc6State.decisionMode = false;
+    clearUC6FinalDeliveryState();
     stopUC6Polling();
     if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
     uc6State.pollingAbortController = null;
@@ -5721,7 +5739,49 @@ Customer: Thank you. Goodbye.`
     saveUC6LocalState();
     const mapped = mapUc6StateToView(uc6State.jobState);
     if (options.fetchReview && mapped.reviewReady) await fetchUC6Review(options.signal);
+    if (uc6State.jobState === 'approved') await fetchUC6FinalDeliveryCapabilities(options.signal);
+    else clearUC6FinalDeliveryState();
     renderUC6All();
+  }
+
+  async function fetchUC6FinalDeliveryCapabilities(signal) {
+    if (!isUc6Authorized() || !uc6State.jobId || uc6State.jobState !== 'approved' || uc6State.finalDeliveryRequestActive) return;
+    uc6State.finalDelivery = null;
+    uc6State.finalDeliveryStatus = 'loading';
+    uc6State.finalDeliveryMessage = '최종 산출물 상태를 확인하고 있습니다.';
+    uc6State.finalDeliveryRequestActive = true;
+    setUC6LiveMessage(uc6State.finalDeliveryMessage);
+    renderUC6All();
+    const requestJobId = uc6State.jobId;
+    try {
+      const payload = await uc6State.api.getFinalDeliveryCapabilities(requestJobId, { signal });
+      const projected = projectUc6FinalDeliveryCapabilities(payload, {
+        expectedJobId: requestJobId,
+        apiBaseUrl: CONFIG.UC6_BROWSER_ADMIN_API_BASE
+      });
+      if (uc6State.jobId !== requestJobId || uc6State.jobState !== 'approved') return;
+      uc6State.finalDelivery = projected;
+      uc6State.finalDeliveryStatus = 'ready';
+      if (projected.readyCount === projected.totalCount) {
+        uc6State.finalDeliveryMessage = '최종 산출물 2개가 준비되었습니다.';
+      } else if (projected.readyCount > 0) {
+        uc6State.finalDeliveryMessage = `최종 산출물 ${projected.readyCount}/2개가 준비되었습니다.`;
+      } else {
+        uc6State.finalDeliveryMessage = '최종 산출물이 아직 준비되지 않았습니다. 생성 단계가 완료되면 상태를 다시 확인할 수 있습니다.';
+      }
+      setUC6LiveMessage(uc6State.finalDeliveryMessage);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      clearUC6FinalDeliveryState();
+      uc6State.finalDeliveryStatus = 'error';
+      if (handleUC6AuthorizationFailure(error)) return;
+      uc6State.finalDeliveryMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.finalDeliveryMessage);
+    } finally {
+      uc6State.finalDeliveryRequestActive = false;
+      uc6State.finalDeliveryAbortController = null;
+      renderUC6All();
+    }
   }
 
   async function fetchUC6Review(signal) {
@@ -6007,10 +6067,71 @@ Customer: Thank you. Goodbye.`
       list.replaceChildren(...lines.map(createUc6ListItem));
       card.append(list);
     }
+    if (uc6State.jobState === 'approved') card.append(renderUC6FinalDeliverySection());
     const actions = createUc6Node('div', 'uc6-action-row');
     actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 시작', 'btn btn-primary', uc6State.operationInFlight));
     card.append(actions);
     root.replaceChildren(card);
+  }
+
+  function createUC6ArtifactAction(href, label, filename, options = {}) {
+    const anchor = createUc6Node('a', 'btn btn-outline', label);
+    anchor.href = href;
+    if (options.openInNewTab) {
+      anchor.target = '_blank';
+      anchor.rel = 'noopener noreferrer';
+    } else if (filename) {
+      anchor.download = filename;
+    }
+    return anchor;
+  }
+
+  function renderUC6ArtifactCard(artifact) {
+    const card = createUc6Node('article', 'uc6-artifact-card');
+    const head = createUc6Node('div', 'uc6-artifact-head');
+    head.append(createUc6Node('h4', '', artifact.label));
+    const stateLabel = uc6State.finalDeliveryStatus === 'loading' && !uc6State.finalDelivery
+      ? '상태 확인 중'
+      : uc6State.finalDeliveryStatus === 'error'
+        ? '상태 확인 실패'
+        : artifact.ready
+          ? '준비 완료'
+          : '생성 대기 중';
+    const state = createUc6Node('span', `uc6-artifact-state ${artifact.ready ? 'is-ready' : uc6State.finalDeliveryStatus === 'error' ? 'is-error' : 'is-waiting'}`, stateLabel);
+    head.append(state);
+    card.append(head);
+    if (artifact.suggestedFilename) card.append(createUc6Node('p', 'uc6-artifact-filename', artifact.suggestedFilename));
+    const actions = createUc6Node('div', 'uc6-artifact-actions');
+    if (artifact.alias === 'final_render_output_pdf' && artifact.actions.view.available && artifact.actions.view.href) {
+      actions.append(createUC6ArtifactAction(artifact.actions.view.href, 'PDF 보기', artifact.suggestedFilename, { openInNewTab: true }));
+    }
+    if (artifact.alias === 'final_render_output_pdf' && artifact.actions.download.available && artifact.actions.download.href) {
+      actions.append(createUC6ArtifactAction(artifact.actions.download.href, 'PDF 다운로드', artifact.suggestedFilename));
+    }
+    if (artifact.alias === 'final_render_output_pptx' && artifact.actions.download.available && artifact.actions.download.href) {
+      actions.append(createUC6ArtifactAction(artifact.actions.download.href, 'PPTX 다운로드', artifact.suggestedFilename));
+    }
+    if (actions.children.length) card.append(actions);
+    return card;
+  }
+
+  function renderUC6FinalDeliverySection() {
+    const section = createUc6Node('section', 'uc6-final-delivery');
+    section.append(createUc6Node('h3', '', '최종 산출물'));
+    const statusClass = uc6State.finalDeliveryStatus === 'error' ? 'uc6-inline-error' : 'uc6-stage-message';
+    section.append(createUc6Node('p', statusClass, uc6State.finalDeliveryMessage || '최종 산출물 상태를 확인하고 있습니다.'));
+    const fallbackArtifacts = [
+      { alias: 'final_render_output_pdf', label: 'PDF', ready: false, suggestedFilename: '', actions: { view: { available: false, href: null }, download: { available: false, href: null } } },
+      { alias: 'final_render_output_pptx', label: 'PowerPoint', ready: false, suggestedFilename: '', actions: { view: { available: false, href: null }, download: { available: false, href: null } } }
+    ];
+    const grid = createUc6Node('div', 'uc6-artifact-grid');
+    const artifacts = uc6State.finalDelivery?.artifacts || fallbackArtifacts;
+    grid.replaceChildren(...artifacts.map(renderUC6ArtifactCard));
+    section.append(grid);
+    const actions = createUc6Node('div', 'uc6-action-row');
+    actions.append(createUC6ActionButton('uc6-refreshFinalDeliveryBtn', '산출물 상태 새로고침', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.finalDeliveryRequestActive));
+    section.append(actions);
+    return section;
   }
 
   function renderUC6UnavailableStage(root) {
@@ -6056,6 +6177,7 @@ Customer: Thank you. Goodbye.`
     if (uc6State.jobState) rows.push(['현재 상태', UC6_STATE_LABELS[uc6State.jobState] || uc6State.jobState]);
     if (hasUC6Value(uc6State.review?.blocking_issue_count)) rows.push(['차단 항목', uc6State.review.blocking_issue_count]);
     if (hasUC6Value(uc6State.review?.warning_count)) rows.push(['경고', uc6State.review.warning_count]);
+    if (uc6State.jobState === 'approved' && uc6State.finalDelivery) rows.push(['최종 산출물', `${uc6State.finalDelivery.readyCount}/${uc6State.finalDelivery.totalCount} 준비`]);
     if (!rows.length) {
       aside.hidden = true;
       aside.replaceChildren();
@@ -6105,6 +6227,10 @@ Customer: Thank you. Goodbye.`
         renderUC6All();
       } else if (target.id === 'uc6-submitDecisionBtn') {
         submitUC6Decision();
+      } else if (target.id === 'uc6-refreshFinalDeliveryBtn') {
+        if (uc6State.finalDeliveryAbortController) uc6State.finalDeliveryAbortController.abort();
+        uc6State.finalDeliveryAbortController = new AbortController();
+        fetchUC6FinalDeliveryCapabilities(uc6State.finalDeliveryAbortController.signal);
       }
     });
     uc6Els.section.addEventListener('change', (event) => {
