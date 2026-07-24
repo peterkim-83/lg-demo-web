@@ -176,6 +176,126 @@ function isPlainObject(value) {
   return !!value && typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 
+const UC6_MAX_REVIEW_ISSUE_PREVIEW_ITEMS = 5;
+const UC6_MAX_REVIEW_ISSUE_SCAN_ITEMS = 25;
+
+function isUc6UnsafePublicScalar(value) {
+  return /\/(?:data|app)\//i.test(value)
+    || /file:\/\//i.test(value)
+    || /[A-Za-z]:[\\/]/.test(value)
+    || value.startsWith('\\\\')
+    || value.startsWith('//')
+    || /\bBearer\s+\S+/i.test(value)
+    || /x-internal-token/i.test(value)
+    || /internal_secret_token/i.test(value)
+    || /internal secret token/i.test(value)
+    || /traceback/i.test(value)
+    || /https?:\/\//i.test(value)
+    || (/^[{[]/.test(value) && /[\]}]$/.test(value));
+}
+
+function normalizeUc6IssueScalar(value, maxLength) {
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return '';
+  if (typeof value === 'number' && !Number.isFinite(value)) return '';
+  const cleaned = String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+  if (isUc6UnsafePublicScalar(cleaned)) return '';
+  return cleaned.length > maxLength ? `${cleaned.slice(0, Math.max(0, maxLength - 3))}...` : cleaned;
+}
+
+function normalizeUc6IssueCount(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+function formatUc6ReasonTitle(value) {
+  const code = normalizeUc6IssueScalar(value, 160);
+  if (!code) return '';
+  const spaced = code.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const readable = /^[A-Z0-9\s]+$/.test(spaced) ? spaced.toLowerCase() : spaced;
+  return readable ? `${readable.charAt(0).toUpperCase()}${readable.slice(1)}` : '';
+}
+
+function firstUc6IssueScalar(source, fields, maxLength) {
+  if (!isPlainObject(source)) return '';
+  for (const field of fields) {
+    const value = normalizeUc6IssueScalar(source[field], maxLength);
+    if (value) return value;
+  }
+  return '';
+}
+
+function collectUc6IssueContextComponents(item, options = {}) {
+  const components = [];
+  const add = (label, value) => {
+    const normalized = normalizeUc6IssueScalar(value, 80);
+    if (normalized && components.length < 2) components.push(`${label} ${normalized}`);
+  };
+  if (Array.isArray(item.affected_segment_ids)) {
+    const segments = item.affected_segment_ids.map((value) => normalizeUc6IssueScalar(value, 40)).filter(Boolean).slice(0, 5);
+    if (segments.length) return { label: '영향 구간', value: segments.join(', ') };
+  }
+  const scalarTargetRef = normalizeUc6IssueScalar(item.target_ref, 200);
+  if (scalarTargetRef) return { label: options.kind === 'blocker' ? '영향 대상' : '대상', value: scalarTargetRef };
+  const target = isPlainObject(item.target_ref) ? item.target_ref : item;
+  add('슬라이드', target.slide_id ?? target.slide_index);
+  add('세그먼트', target.segment_id);
+  add('슬롯', target.slot_id);
+  add('그룹', target.group_id);
+  add('아티팩트', target.source_artifact ?? target.artifact_alias);
+  add('대상', target.target ?? target.ref ?? target.id ?? target.name);
+  if (components.length) return { label: options.kind === 'blocker' ? '영향 대상' : '대상', value: normalizeUc6IssueScalar(components.join(' / '), 200) };
+  const severity = options.kind === 'blocker' ? normalizeUc6IssueScalar(item.severity, 80) : '';
+  return severity ? { label: '심각도', value: severity } : { label: '', value: '' };
+}
+
+function projectUc6ReviewIssueItem(raw, kind) {
+  if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+    const title = normalizeUc6IssueScalar(raw, 160);
+    return title ? { kind, title } : null;
+  }
+  if (!isPlainObject(raw)) return null;
+  const reasonCode = firstUc6IssueScalar(raw, ['reason_code', 'code'], 128);
+  const technicalId = firstUc6IssueScalar(raw, kind === 'blocker' ? ['blocker_id'] : ['warning_id'], 128);
+  const directTitle = firstUc6IssueScalar(raw, ['message', 'label', 'summary', 'reason'], 160);
+  const title = directTitle || formatUc6ReasonTitle(reasonCode) || formatUc6ReasonTitle(technicalId);
+  if (!title) return null;
+  const context = collectUc6IssueContextComponents(raw, { kind });
+  return {
+    kind,
+    title,
+    ...(reasonCode ? { reasonCode } : {}),
+    ...(context.label && context.value ? { contextLabel: context.label, contextValue: normalizeUc6IssueScalar(context.value, 200) } : {}),
+    ...(technicalId ? { technicalId } : {})
+  };
+}
+
+function projectUc6ReviewIssueGroup(items, totalCount, kind) {
+  const sourceItems = Array.isArray(items) ? items : [];
+  const projectedItems = [];
+  for (const item of sourceItems.slice(0, UC6_MAX_REVIEW_ISSUE_SCAN_ITEMS)) {
+    const projected = projectUc6ReviewIssueItem(item, kind);
+    if (projected) projectedItems.push(projected);
+    if (projectedItems.length >= UC6_MAX_REVIEW_ISSUE_PREVIEW_ITEMS) break;
+  }
+  const safeTotal = Math.max(normalizeUc6IssueCount(totalCount), projectedItems.length);
+  return {
+    totalCount: safeTotal,
+    previewCount: projectedItems.length,
+    omittedCount: Math.max(safeTotal - projectedItems.length, 0),
+    items: projectedItems
+  };
+}
+
+export function projectUc6ReviewIssuePresentation(review) {
+  const input = isPlainObject(review) ? review : {};
+  const surface = isPlainObject(input.public_review_surface) ? input.public_review_surface : {};
+  return {
+    blockers: projectUc6ReviewIssueGroup(surface.top_blockers || surface.blockers, input.blocking_issue_count, 'blocker'),
+    warnings: projectUc6ReviewIssueGroup(surface.top_warnings || surface.warnings, input.warning_count, 'warning')
+  };
+}
+
 function invalidFinalDeliveryContract() {
   throw new TypeError('invalid_uc6_final_delivery_capabilities');
 }

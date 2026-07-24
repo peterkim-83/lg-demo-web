@@ -13,6 +13,7 @@ import {
   projectUc6FinalDeliveryCapabilities,
   parseUc6PublicError,
   projectUc6PersistedState,
+  projectUc6ReviewIssuePresentation,
   runUc6CreateJobAndSubmitInitialAnalysis,
   splitDecisionTextLines,
   validateUc6DecisionCommand
@@ -481,6 +482,188 @@ test('persistence projection keeps only public allowlisted fields', () => {
   });
 });
 
+function assertNoObjectLeak(value) {
+  const strings = [];
+  const visit = (item) => {
+    if (typeof item === 'string') strings.push(item);
+    else if (Array.isArray(item)) item.forEach(visit);
+    else if (item && typeof item === 'object') Object.values(item).forEach(visit);
+  };
+  visit(value);
+  const display = strings.join('\n');
+  assert.equal(display.includes('[object Object]'), false);
+  assert.equal(display.includes('{"'), false);
+  assert.equal(display.includes('Bearer'), false);
+  assert.equal(display.includes('/data/'), false);
+  assert.equal(display.includes('/app/'), false);
+  assert.equal(display.includes('file://'), false);
+  assert.equal(/[A-Za-z]:[\\/]/.test(display), false);
+  assert.equal(/(^|\n)(\\\\|\/\/)/.test(display), false);
+  assert.equal(display.includes('x-internal-token'), false);
+  assert.equal(display.includes('internal_secret_token'), false);
+  assert.equal(display.includes('traceback'), false);
+  assert.equal(display.includes('http://'), false);
+  assert.equal(display.includes('https://'), false);
+}
+
+test('review issue projection presents production-shaped warning preview safely', () => {
+  const review = {
+    warning_count: 231,
+    blocking_issue_count: 0,
+    public_review_surface: {
+      top_warnings: Array.from({ length: 5 }, (_, index) => ({
+        warning_id: index === 0 ? 'warning__missing_segment_mapping__slide_1' : `warning__reason_${index + 1}__slide_${index + 1}`,
+        reason_code: index === 0 ? 'missing_segment_mapping' : `warning_reason_${index + 1}`,
+        target_ref: `slide_${index + 1}`,
+        ignored_payload: { secret: 'Bearer token' }
+      }))
+    }
+  };
+  const projected = projectUc6ReviewIssuePresentation(review);
+  assert.equal(projected.warnings.totalCount, 231);
+  assert.equal(projected.warnings.previewCount, 5);
+  assert.equal(projected.warnings.omittedCount, 226);
+  assert.equal(projected.blockers.totalCount, 0);
+  assert.equal(projected.warnings.items[0].title, 'Missing segment mapping');
+  assert.equal(projected.warnings.items[0].technicalId, 'warning__missing_segment_mapping__slide_1');
+  assert.equal(projected.warnings.items[0].reasonCode, 'missing_segment_mapping');
+  assert.equal(projected.warnings.items[0].contextLabel, '대상');
+  assert.equal(projected.warnings.items[0].contextValue, 'slide_1');
+  assertNoObjectLeak(projected);
+});
+
+test('review issue projection presents production-shaped blockers prominently and bounded', () => {
+  const projected = projectUc6ReviewIssuePresentation({
+    blocking_issue_count: 2,
+    warning_count: 0,
+    public_review_surface: {
+      top_blockers: [
+        {
+          blocker_id: 'block-1',
+          reason_code: 'missing_required_asset',
+          severity: 'high',
+          affected_segment_ids: ['seg-a', 'seg-b', { ignored: true }]
+        },
+        {
+          blocker_id: 'block-2',
+          reason_code: 'render_blocked',
+          affected_segment_ids: ['seg-c']
+        }
+      ]
+    }
+  });
+  assert.equal(projected.blockers.totalCount, 2);
+  assert.equal(projected.blockers.previewCount, 2);
+  assert.equal(projected.blockers.omittedCount, 0);
+  assert.equal(projected.blockers.items[0].kind, 'blocker');
+  assert.equal(projected.blockers.items[0].title, 'Missing required asset');
+  assert.equal(projected.blockers.items[0].contextLabel, '영향 구간');
+  assert.equal(projected.blockers.items[0].contextValue, 'seg-a, seg-b');
+  assert.equal(projected.blockers.items[0].technicalId, 'block-1');
+  assertNoObjectLeak(projected);
+});
+
+test('review issue projection truncates previews, supports scalar fixtures, and normalizes counts', () => {
+  const projected = projectUc6ReviewIssuePresentation({
+    blocking_issue_count: -4,
+    warning_count: 8,
+    public_review_surface: {
+      top_blockers: ['legacy blocker'],
+      top_warnings: Array.from({ length: 9 }, (_, index) => `warning ${index + 1}`)
+    }
+  });
+  assert.equal(projected.blockers.totalCount, 1);
+  assert.equal(projected.blockers.previewCount, 1);
+  assert.equal(projected.blockers.omittedCount, 0);
+  assert.equal(projected.blockers.items[0].title, 'legacy blocker');
+  assert.equal(projected.warnings.totalCount, 8);
+  assert.equal(projected.warnings.previewCount, 5);
+  assert.equal(projected.warnings.omittedCount, 3);
+  assert.deepEqual(projected.warnings.items.map((item) => item.title), ['warning 1', 'warning 2', 'warning 3', 'warning 4', 'warning 5']);
+});
+
+test('review issue projection ignores malformed nested objects and bounds unsafe text', () => {
+  const longReason = `reason_${'x'.repeat(220)}`;
+  const projected = projectUc6ReviewIssuePresentation({
+    blocking_issue_count: 1,
+    warning_count: 3,
+    public_review_surface: {
+      top_blockers: [{ message: { nested: true }, reason_code: { nested: true }, blocker_id: { nested: true } }],
+      top_warnings: [
+        { summary: 'Readable\u0000 warning\n title', reason_code: longReason, warning_id: `warn-${'y'.repeat(200)}`, target_ref: { name: 'Deck target', ignored: { object: true } } },
+        { message: { nested: true }, target_ref: { slide_id: { nested: true } } },
+        { label: true, code: false, target_ref: 'not-object' }
+      ]
+    }
+  });
+  assert.equal(projected.blockers.previewCount, 0);
+  assert.equal(projected.blockers.totalCount, 1);
+  assert.equal(projected.blockers.omittedCount, 1);
+  assert.equal(projected.warnings.totalCount, 3);
+  assert.equal(projected.warnings.previewCount, 2);
+  assert.equal(projected.warnings.omittedCount, 1);
+  assert.equal(projected.warnings.items[0].title, 'Readable warning title');
+  assert.equal(projected.warnings.items[0].reasonCode.length <= 128, true);
+  assert.equal(projected.warnings.items[0].technicalId.length <= 128, true);
+  assert.equal(projected.warnings.items[0].contextValue, '대상 Deck target');
+  assert.equal(projected.warnings.items[1].title, 'true');
+  assert.equal(projected.warnings.items[1].reasonCode, 'false');
+  assertNoObjectLeak(projected);
+});
+
+test('review issue projection omits unsafe scalar display values', () => {
+  const projected = projectUc6ReviewIssuePresentation({
+    blocking_issue_count: 3,
+    warning_count: 10,
+    public_review_surface: {
+      top_blockers: [
+        '/data/fetchdoc/jobs/private',
+        'Bearer abc123',
+        'C:\\secret\\file.pptx',
+        '\\\\server\\share\\file.pptx',
+        { message: '/app/private/path', reason_code: 'safe_blocker_reason', blocker_id: 'block-safe-1' }
+      ],
+      top_warnings: [
+        'file://private/file.pptx',
+        'x-internal-token: secret',
+        'internal_secret_token value',
+        'traceback line 1',
+        'https://private.example/path',
+        '{"raw":"json"}',
+        { message: '/data/fetchdoc/jobs/private', reason_code: 'safe_warning_reason', warning_id: 'warn-safe-1', target_ref: '/data/fetchdoc/jobs/private' },
+        { label: 'Safe warning title', code: 'safe_code', warning_id: 'warn-safe-2', source_artifact: 'C:/secret/file.pptx' },
+        { reason_code: 'missing_segment_mapping', warning_id: 'warn-safe-3', target_ref: 'slide_7' }
+      ]
+    }
+  });
+  assert.equal(projected.blockers.previewCount, 1);
+  assert.equal(projected.blockers.items[0].title, 'Safe blocker reason');
+  assert.equal(projected.warnings.previewCount, 3);
+  assert.equal(projected.warnings.items[0].title, 'Safe warning reason');
+  assert.equal(projected.warnings.items[0].contextValue, undefined);
+  assert.equal(projected.warnings.items[1].title, 'Safe warning title');
+  assert.equal(projected.warnings.items[1].contextValue, undefined);
+  assert.equal(projected.warnings.items[2].contextValue, 'slide_7');
+  assertNoObjectLeak(projected);
+});
+
+test('review issue projection scans a bounded source window to collect five safe previews', () => {
+  const projected = projectUc6ReviewIssuePresentation({
+    warning_count: 12,
+    public_review_surface: {
+      top_warnings: [
+        '/data/fetchdoc/jobs/private',
+        'Bearer abc123',
+        ...Array.from({ length: 7 }, (_, index) => ({ reason_code: `safe_reason_${index + 1}`, warning_id: `warn-${index + 1}`, target_ref: `slide_${index + 1}` }))
+      ]
+    }
+  });
+  assert.equal(projected.warnings.previewCount, 5);
+  assert.equal(projected.warnings.omittedCount, 7);
+  assert.deepEqual(projected.warnings.items.map((item) => item.contextValue), ['slide_1', 'slide_2', 'slide_3', 'slide_4', 'slide_5']);
+  assertNoObjectLeak(projected);
+});
+
 test('final-delivery projection accepts ready and all-not-ready contracts', () => {
   const ready = projectUc6FinalDeliveryCapabilities(validFinalDeliveryPayload(), { expectedJobId: JOB_ID, apiBaseUrl: API_BASE });
   assert.equal(ready.readyCount, 2);
@@ -602,6 +785,10 @@ test('app controller source guards lock repaired upload, retry, review, and auth
   const pollBody = extractFunctionBody(source, 'pollUC6JobStatus');
   const analysisBody = extractFunctionBody(source, 'submitUC6Analysis');
   const reviewBody = extractFunctionBody(source, 'fetchUC6Review');
+  const renderReviewBody = extractFunctionBody(source, 'renderUC6ReviewStage');
+  const issueOverviewBody = extractFunctionBody(source, 'renderUC6IssueOverview');
+  const issueGroupBody = extractFunctionBody(source, 'renderUC6IssueGroup');
+  const issueRowBody = extractFunctionBody(source, 'renderUC6IssueRow');
   const authHandlerBody = extractFunctionBody(source, 'handleUC6AuthorizationFailure');
 
   assert.equal(uploadBody.includes('submitUC6Analysis(false)'), false);
@@ -617,6 +804,22 @@ test('app controller source guards lock repaired upload, retry, review, and auth
   assert.equal(finalDeliveryBody.includes('getFinalDeliveryCapabilities'), true);
   assert.equal(finalDeliveryBody.includes('projectUc6FinalDeliveryCapabilities'), true);
   assert.equal(finalDeliveryBody.includes('handleUC6AuthorizationFailure(error)'), true);
+  assert.equal(source.includes('projectUc6ReviewIssuePresentation,'), true);
+  assert.equal(renderReviewBody.includes('projectUc6ReviewIssuePresentation(review)'), true);
+  assert.equal(renderReviewBody.includes('toUc6DisplayLines(surface.top_warnings'), false);
+  assert.equal(renderReviewBody.includes('toUc6DisplayLines(surface.top_blockers'), false);
+  assert.equal(renderReviewBody.includes("appendUC6DetailSection(details, '차단·경고'"), false);
+  assert.equal(issueOverviewBody.includes('warnings.totalCount > 0'), true);
+  assert.equal(issueOverviewBody.includes('warnings.totalCount <= 3'), true);
+  assert.equal(issueOverviewBody.includes('아래에는 대표'), true);
+  assert.equal(issueOverviewBody.includes('renderUC6IssueGroup'), true);
+  assert.equal(issueGroupBody.indexOf("createUc6Node('p', 'uc6-issue-summary', copy)") < issueGroupBody.indexOf("createUc6Node('details'"), true);
+  assert.equal(issueGroupBody.includes("createUc6Node('section', `uc6-issue-group"), true);
+  assert.equal(issueGroupBody.includes("createUc6Node('details'"), true);
+  assert.equal(issueGroupBody.includes("createUc6Node('summary'"), true);
+  assert.equal(issueGroupBody.includes('group.items.slice(0, 5)'), true);
+  assert.equal(issueGroupBody.includes('대표 항목 세부 정보를 안전하게 표시할 수 없습니다.'), true);
+  assert.equal(issueRowBody.includes('createUc6Node'), true);
   assert.equal(resetBody.includes('clearUC6FinalDeliveryState()'), true);
   assert.equal(persistBody.includes('finalDelivery'), false);
   assert.equal(persistBody.includes('capabilit'), false);
@@ -724,6 +927,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
+  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r7e-warning-presentation-2026-07-24-v2"), true);
   assert.equal(app.includes('signInWithPopup'), true);
   assert.equal(app.includes('signInWithRedirect'), true);
   assert.equal(app.includes('browserSessionPersistence'), true);
@@ -769,4 +973,16 @@ test('new UC6 CSS selectors stay scoped under view-uc6', () => {
   assert.equal(uc6Css.includes('@media (max-width: 1024px)'), true);
   assert.equal(uc6Css.includes('@media (max-width: 800px)'), true);
   assert.equal(uc6Css.includes(':focus-visible'), true);
+  for (const selector of [
+    '#view-uc6 .uc6-issue-overview',
+    '#view-uc6 .uc6-issue-group',
+    '#view-uc6 .uc6-issue-disclosure',
+    '#view-uc6 .uc6-issue-list',
+    '#view-uc6 .uc6-issue-row',
+    '#view-uc6 .uc6-issue-title',
+    '#view-uc6 .uc6-issue-context',
+    '#view-uc6 .uc6-issue-meta'
+  ]) {
+    assert.equal(uc6Css.includes(selector), true);
+  }
 });
