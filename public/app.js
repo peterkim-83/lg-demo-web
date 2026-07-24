@@ -8,6 +8,7 @@ import {
   normalizeUc6JobId,
   projectUc6FinalDeliveryCapabilities,
   projectUc6PersistedState,
+  projectUc6ReviewIssuePresentation,
   runUc6CreateJobAndSubmitInitialAnalysis,
   splitDecisionTextLines,
   validateUc6DecisionCommand
@@ -37,7 +38,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-browser-admin-control-plane-2026-07-23-v1';
+const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r7e-warning-presentation-2026-07-24-v2';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5969,6 +5970,7 @@ Customer: Thank you. Goodbye.`
   function renderUC6ReviewStage(root) {
     const review = uc6State.review || {};
     const surface = review.public_review_surface || {};
+    const issueProjection = projectUc6ReviewIssuePresentation(review);
     const card = createUc6Node('section', 'uc6-stage-card');
     card.append(createUc6Node('h2', '', '결과 검토'));
     const status = createUc6Node('p', 'uc6-stage-copy', uc6State.reviewMessage || '분석 결과의 준비 상태와 필요한 관리자 조치를 확인하세요.');
@@ -5982,15 +5984,13 @@ Customer: Thank you. Goodbye.`
       ['필요한 조치', surface.required_admin_action_count ?? surface.admin_action_count]
     ].filter((item) => hasUC6Value(item[1])).forEach(([label, value]) => summary.append(createUC6SummaryItem(label, value)));
     if (summary.children.length) card.append(summary);
+    const issueOverview = renderUC6IssueOverview(issueProjection);
+    if (issueOverview) card.append(issueOverview);
     const details = createUc6Node('div', 'uc6-review-details');
     appendUC6DetailSection(details, '검토 요약', [
       ...toUc6DisplayLines(surface.summary, ['status', 'message', 'summary']),
       ...toUc6DisplayLines(surface.next_recommended_phase, ['phase', 'message', 'summary']),
       ...toUc6DisplayLines(review.runtime_readiness_summary, ['status', 'ready', 'blocked', 'warning_count'])
-    ]);
-    appendUC6DetailSection(details, '차단·경고', [
-      ...toUc6DisplayLines(surface.top_blockers || surface.blockers, ['code', 'message', 'severity']),
-      ...toUc6DisplayLines(surface.top_warnings || surface.warnings, ['code', 'message', 'severity'])
     ]);
     appendUC6DetailSection(details, '관리자 조치', toUc6DisplayLines(surface.required_admin_actions, ['action', 'label', 'severity']));
     const techLines = [
@@ -6012,6 +6012,77 @@ Customer: Thank you. Goodbye.`
     actions.append(createUC6ActionButton('uc6-enterDecisionBtn', '처리 방향 결정', 'btn btn-primary', !mapUc6StateToView(uc6State.jobState).canDecide || uc6State.operationInFlight));
     card.append(actions);
     root.replaceChildren(card);
+  }
+
+  function renderUC6IssueOverview(projection) {
+    const blockers = projection?.blockers || {};
+    const warnings = projection?.warnings || {};
+    if (!blockers.totalCount && !warnings.totalCount) return null;
+    const section = createUc6Node('section', 'uc6-issue-overview');
+    if (blockers.totalCount > 0) {
+      section.append(renderUC6IssueGroup({
+        kind: 'blocker',
+        group: blockers,
+        open: true,
+        copy: blockers.previewCount === 0
+          ? `차단 항목 ${blockers.totalCount}건이 확인되었지만 대표 세부 정보를 안전하게 표시할 수 없습니다.`
+          : blockers.omittedCount > 0
+          ? `차단 항목 ${blockers.totalCount}건 중 대표 ${blockers.previewCount}건을 표시합니다.`
+          : `차단 항목 ${blockers.totalCount}건이 확인되었습니다.`,
+        summary: blockers.omittedCount > 0 ? `대표 차단 항목 ${blockers.previewCount}건 보기` : `차단 항목 ${blockers.previewCount}건 보기`
+      }));
+    }
+    if (warnings.totalCount > 0) {
+      section.append(renderUC6IssueGroup({
+        kind: 'warning',
+        group: warnings,
+        open: warnings.totalCount <= 3,
+        copy: warnings.previewCount === 0
+          ? `경고 ${warnings.totalCount}건이 확인되었지만 대표 세부 정보를 안전하게 표시할 수 없습니다.`
+          : warnings.omittedCount > 0
+          ? `경고 ${warnings.totalCount}건이 확인되었습니다. 아래에는 대표 ${warnings.previewCount}건만 표시합니다.`
+          : `경고 ${warnings.totalCount}건이 확인되었습니다.`,
+        summary: warnings.omittedCount > 0 ? `대표 경고 ${warnings.previewCount}건 보기` : `경고 ${warnings.previewCount}건 보기`
+      }));
+    }
+    return section;
+  }
+
+  function renderUC6IssueGroup({ kind, group, open, copy, summary }) {
+    const section = createUc6Node('section', `uc6-issue-group is-${kind}`);
+    section.append(createUc6Node('p', 'uc6-issue-summary', copy));
+    if (!Array.isArray(group.items) || !group.items.length) {
+      section.append(createUc6Node('p', 'uc6-help-text', '대표 항목 세부 정보를 안전하게 표시할 수 없습니다.'));
+      return section;
+    }
+    const details = createUc6Node('details', `uc6-issue-disclosure is-${kind}`);
+    details.open = open === true;
+    details.append(createUc6Node('summary', '', summary));
+    const list = createUc6Node('ul', 'uc6-issue-list');
+    list.replaceChildren(...group.items.slice(0, 5).map(renderUC6IssueRow));
+    details.append(list);
+    section.append(details);
+    return section;
+  }
+
+  function renderUC6IssueRow(item) {
+    const row = createUc6Node('li', 'uc6-issue-row');
+    row.append(createUc6Node('strong', 'uc6-issue-title', item.title));
+    if (item.contextLabel && item.contextValue) {
+      row.append(createUc6Node('span', 'uc6-issue-context', `${item.contextLabel}: ${item.contextValue}`));
+    }
+    const metaParts = [];
+    if (item.reasonCode) metaParts.push(['reason', item.reasonCode]);
+    if (item.technicalId) metaParts.push(['id', item.technicalId]);
+    if (metaParts.length) {
+      const meta = createUc6Node('span', 'uc6-issue-meta');
+      metaParts.forEach(([label, value], index) => {
+        if (index > 0) meta.append(document.createTextNode(' · '));
+        meta.append(createUc6Node('span', '', `${label}: `), createUc6Node('code', '', value));
+      });
+      row.append(meta);
+    }
+    return row;
   }
 
   function renderUC6DecisionStage(root) {

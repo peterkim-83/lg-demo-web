@@ -6340,6 +6340,94 @@ body:has(#view-uc5.active) #main-content {
     gap: 12px;
 }
 
+#view-uc6 .uc6-issue-overview {
+    display: grid;
+    gap: 10px;
+}
+
+#view-uc6 .uc6-issue-group {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #f9fafb;
+}
+
+#view-uc6 .uc6-issue-group.is-blocker {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+#view-uc6 .uc6-issue-group.is-warning {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+#view-uc6 .uc6-issue-disclosure {
+    min-width: 0;
+}
+
+#view-uc6 .uc6-issue-disclosure summary {
+    cursor: pointer;
+    color: #374151;
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+
+#view-uc6 .uc6-issue-disclosure summary:focus-visible {
+    outline: 3px solid #38bdf8;
+    outline-offset: 2px;
+}
+
+#view-uc6 .uc6-issue-summary {
+    margin: 0;
+    color: #4b5563;
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+#view-uc6 .uc6-issue-list {
+    display: grid;
+    gap: 8px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+#view-uc6 .uc6-issue-row {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+#view-uc6 .uc6-issue-title {
+    color: #111827;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+#view-uc6 .uc6-issue-context,
+#view-uc6 .uc6-issue-meta {
+    color: #6b7280;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+#view-uc6 .uc6-issue-meta code {
+    color: #4b5563;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
 #view-uc6 .uc6-detail-group,
 #view-uc6 .uc6-technical-details {
     padding: 12px;
