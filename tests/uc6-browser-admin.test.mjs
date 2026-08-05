@@ -10,13 +10,17 @@ import {
   mapUc6StateToView,
   normalizeUc6ApiBaseUrl,
   normalizeUc6JobId,
+  projectUc6DummyDatabagPackageOptions,
+  projectUc6DummyDatabagRenderJobStatus,
+  projectUc6DummyDatabagRenderSubmission,
   projectUc6FinalDeliveryCapabilities,
   parseUc6PublicError,
   projectUc6PersistedState,
   projectUc6ReviewIssuePresentation,
   runUc6CreateJobAndSubmitInitialAnalysis,
   splitDecisionTextLines,
-  validateUc6DecisionCommand
+  validateUc6DecisionCommand,
+  validateUc6DummyDatabagRenderCommand
 } from '../public/uc6-browser-admin.mjs';
 
 const API_BASE = 'https://api.peter-n8n.duckdns.org/';
@@ -506,6 +510,31 @@ function assertNoObjectLeak(value) {
   assert.equal(display.includes('https://'), false);
 }
 
+test('A8-E persistence requires paired package identity and a bounded timestamp', () => {
+  assert.deepEqual(projectUc6PersistedState({
+    job_id: JOB_ID,
+    flow_lane: 'dummy_render',
+    selected_package_id: 'pkg1',
+    last_polling_timestamp: -1
+  }), {
+    job_id: JOB_ID,
+    flow_lane: 'dummy_render'
+  });
+  assert.deepEqual(projectUc6PersistedState({
+    job_id: JOB_ID,
+    flow_lane: 'dummy_render',
+    selected_package_id: 'pkg1',
+    selected_package_version: 'v1',
+    last_polling_timestamp: 123
+  }), {
+    job_id: JOB_ID,
+    last_polling_timestamp: 123,
+    flow_lane: 'dummy_render',
+    selected_package_id: 'pkg1',
+    selected_package_version: 'v1'
+  });
+});
+
 test('review issue projection presents production-shaped warning preview safely', () => {
   const review = {
     warning_count: 231,
@@ -792,7 +821,7 @@ test('app controller source guards lock repaired upload, retry, review, and auth
   const authHandlerBody = extractFunctionBody(source, 'handleUC6AuthorizationFailure');
 
   assert.equal(uploadBody.includes('submitUC6Analysis(false)'), false);
-  assert.equal(uploadBody.includes('runUc6CreateJobAndSubmitInitialAnalysis'), true);
+  assert.equal(uploadBody.includes('loadUC6PackageOptions'), true);
   assert.equal((uploadBody.match(/operationInFlight = true/g) || []).length, 1);
   assert.equal(initBody.includes('submitUC6Analysis(true)'), true);
   assert.equal((decisionBody.match(/refreshUC6JobStatus/g) || []).length, 1);
@@ -927,7 +956,10 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r7e-warning-presentation-2026-07-24-v2"), true);
+  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8e-dummy-render-integration-2026-08-05-v1"), true);
+  assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
+  assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
+  assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
   assert.equal(app.includes('signInWithPopup'), true);
   assert.equal(app.includes('signInWithRedirect'), true);
   assert.equal(app.includes('browserSessionPersistence'), true);
@@ -981,8 +1013,290 @@ test('new UC6 CSS selectors stay scoped under view-uc6', () => {
     '#view-uc6 .uc6-issue-row',
     '#view-uc6 .uc6-issue-title',
     '#view-uc6 .uc6-issue-context',
-    '#view-uc6 .uc6-issue-meta'
+    '#view-uc6 .uc6-issue-meta',
+    '#view-uc6 .uc6-package-grid',
+    '#view-uc6 .uc6-package-card',
+    '#view-uc6 .uc6-render-evidence',
+    '#view-uc6 .uc6-hash-display'
   ]) {
     assert.equal(uc6Css.includes(selector), true);
   }
+});
+
+test('A8-E Section 11: Direct Contract Smoke Test', () => {
+  const submissionPayload = {
+    schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_submission_v1',
+    job_id: JOB_ID,
+    task_type: 'fetchdoc_browser_admin_uc6_render_dummy_databag_package',
+    task_id: 2471,
+    queue_status: 'pending',
+    created: true,
+    state: 'render_queued',
+    bound_package: {
+      package_id: 'ax_customer_retention',
+      package_version: 'v1',
+      title: 'Customer Retention',
+      description: 'Customer retention scenario'
+    },
+    control_plane_contract_version: 'uc6_e2e4c2c_v1',
+    public_safety: 'PASS'
+  };
+
+  const queuedEnvelope = {
+    job_id: JOB_ID,
+    state: 'render_queued',
+    source: {
+      sha256: 'a'.repeat(64),
+      size_bytes: 10240,
+      slide_count: 10,
+      filename: 'source.pptx'
+    },
+    control_plane_contract_version: 'uc6_e2e4c2c_v1'
+  };
+
+  const completedEnvelope = {
+    job_id: JOB_ID,
+    state: 'render_completed',
+    source: {
+      sha256: 'a'.repeat(64),
+      size_bytes: 10240,
+      slide_count: 10,
+      filename: 'source.pptx'
+    },
+    render: {
+      schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_result_v1',
+      job_id: JOB_ID,
+      state: 'render_completed',
+      render_state: 'render_completed',
+      review_state: 'review_pending',
+      publication_state: 'unpublished',
+      promotion_eligible: true,
+      bound_package: {
+        package_id: 'ax_customer_retention',
+        package_version: 'v1',
+        title: 'Customer Retention',
+        description: 'Customer retention scenario'
+      },
+      final_artifacts: {
+        pptx: {
+          alias: 'final_render_output_pptx',
+          sha256: 'b'.repeat(64),
+          size_bytes: 20480
+        },
+        pdf: {
+          alias: 'final_render_output_pdf',
+          sha256: 'c'.repeat(64),
+          size_bytes: 15360
+        }
+      },
+      control_plane_contract_version: 'uc6_e2e4c2c_v1',
+      public_safety: 'PASS'
+    },
+    control_plane_contract_version: 'uc6_e2e4c2c_v1'
+  };
+
+  const projSub = projectUc6DummyDatabagRenderSubmission(submissionPayload, { expectedJobId: JOB_ID });
+  const projQueued = projectUc6DummyDatabagRenderJobStatus(queuedEnvelope, { expectedJobId: JOB_ID });
+  const projCompleted = projectUc6DummyDatabagRenderJobStatus(completedEnvelope, { expectedJobId: JOB_ID });
+
+  assert.equal(projSub.task_id, 2471);
+  assert.equal(projQueued.state, 'render_queued');
+  assert.equal(projCompleted.state, 'render_completed');
+  assert.equal(projCompleted.schema_version, completedEnvelope.render.schema_version);
+  assert.equal(projCompleted.source.filename, 'source.pptx');
+  assert.equal(projCompleted.promotion_eligible, true);
+  assert.equal(projCompleted.public_safety, 'PASS');
+  assert.equal(projCompleted.final_artifacts.pptx.alias, 'final_render_output_pptx');
+  assert.equal(projCompleted.final_artifacts.pdf.alias, 'final_render_output_pdf');
+
+  console.log('Contract Smoke Test: PASS');
+});
+
+test('A8-E Section 9: Detailed contract projection and validation tests', async () => {
+  const validSub = {
+    schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_submission_v1',
+    job_id: JOB_ID,
+    task_type: 'fetchdoc_browser_admin_uc6_render_dummy_databag_package',
+    task_id: 2471,
+    queue_status: 'pending',
+    created: true,
+    state: 'render_queued',
+    bound_package: { package_id: 'pkg1', package_version: 'v1', title: 'Title', description: 'Desc' },
+    control_plane_contract_version: 'uc6_e2e4c2c_v1',
+    public_safety: 'PASS'
+  };
+  assert.equal(projectUc6DummyDatabagRenderSubmission(validSub, { expectedJobId: JOB_ID }).task_id, 2471);
+  assert.throws(() => projectUc6DummyDatabagRenderSubmission({ ...validSub, task_id: '2471' }, { expectedJobId: JOB_ID }), /invalid_render_submission_task_id/);
+  assert.throws(() => projectUc6DummyDatabagRenderSubmission({ ...validSub, task_id: -5 }, { expectedJobId: JOB_ID }), /invalid_render_submission_task_id/);
+
+  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, queue_status: 'pending', state: 'render_queued' }, { expectedJobId: JOB_ID }).state, 'render_queued');
+  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, queue_status: 'processing', state: 'render_running' }, { expectedJobId: JOB_ID }).state, 'render_running');
+  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, created: false, queue_status: 'done', state: 'render_completed' }, { expectedJobId: JOB_ID }).state, 'render_completed');
+  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, created: false, queue_status: 'failed', state: 'failed' }, { expectedJobId: JOB_ID }).state, 'failed');
+
+  assert.throws(() => projectUc6DummyDatabagRenderSubmission({ ...validSub, queue_status: 'pending', state: 'render_running' }, { expectedJobId: JOB_ID }), /invalid_render_submission_queue_state_mismatch/);
+
+  const replaySub = { ...validSub, created: false, queue_status: 'done', state: 'render_completed' };
+  assert.equal(projectUc6DummyDatabagRenderSubmission(replaySub, { expectedJobId: JOB_ID }).created, false);
+
+  const baseSource = { sha256: 'a'.repeat(64), size_bytes: 100, slide_count: 5, filename: 'doc.pptx' };
+  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'source_ready', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'source_ready');
+  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'render_queued', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'render_queued');
+  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'render_running', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'render_running');
+  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'failed', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'failed');
+
+  const completedEnv = {
+    job_id: JOB_ID,
+    state: 'render_completed',
+    source: baseSource,
+    render: {
+      schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_result_v1',
+      job_id: JOB_ID,
+      state: 'render_completed',
+      render_state: 'render_completed',
+      review_state: 'review_pending',
+      publication_state: 'unpublished',
+      promotion_eligible: true,
+      bound_package: { package_id: 'pkg1', package_version: 'v1', title: 'T', description: 'D' },
+      final_artifacts: {
+        pptx: { alias: 'final_render_output_pptx', sha256: 'b'.repeat(64), size_bytes: 200 },
+        pdf: { alias: 'final_render_output_pdf', sha256: 'c'.repeat(64), size_bytes: 150 }
+      },
+      control_plane_contract_version: 'uc6_e2e4c2c_v1',
+      public_safety: 'PASS'
+    },
+    control_plane_contract_version: 'uc6_e2e4c2c_v1'
+  };
+  assert.equal(projectUc6DummyDatabagRenderJobStatus(completedEnv, { expectedJobId: JOB_ID }).state, 'render_completed');
+  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
+    job_id: JOB_ID,
+    state: 'render_completed',
+    public_safety: 'PASS',
+    control_plane_contract_version: 'uc6_e2e4c2c_v1'
+  }, { expectedJobId: JOB_ID }), /invalid_render_job_status_source/);
+
+  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
+    ...completedEnv,
+    render: { ...completedEnv.render, job_id: 'fd_uc6_admin_other_12345' }
+  }, { expectedJobId: JOB_ID }), /nested_render_job_id_mismatch/);
+
+  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
+    ...completedEnv,
+    render: { ...completedEnv.render, public_safety: undefined }
+  }, { expectedJobId: JOB_ID }), /invalid_nested_render_public_safety/);
+
+  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
+    ...completedEnv,
+    render: { ...completedEnv.render, schema_version: 'wrong' }
+  }, { expectedJobId: JOB_ID }), /invalid_nested_render_schema/);
+
+  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
+    ...completedEnv,
+    render: {
+      ...completedEnv.render,
+      final_artifacts: {
+        pptx: { alias: 'wrong_alias', sha256: 'b'.repeat(64), size_bytes: 200 },
+        pdf: { alias: 'final_render_output_pdf', sha256: 'c'.repeat(64), size_bytes: 150 }
+      }
+    }
+  }, { expectedJobId: JOB_ID }), /invalid_nested_render_pptx_alias/);
+
+  const validPkgOpt = {
+    schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_package_options_v1',
+    job_id: JOB_ID,
+    source_pptx_sha256: 'a'.repeat(64),
+    compatibility_state: 'compatible',
+    template_profile: { profile_id: 'p1', profile_version: 'v1', generation_unit_count: 1, fillable_slot_count: 2 },
+    package_count: 1,
+    packages: [{
+      schema_version: 'uc6_a8c_dummy_databag_package_public_projection_v1',
+      package_id: 'pkg1',
+      package_version: 'v1',
+      title: 'Title',
+      description: 'Desc',
+      template_family_id: 'tf1',
+      source_pptx_sha256: 'a'.repeat(64),
+      supported_canonical_source_group_count: 1,
+      status: 'active',
+      canonical_sha256: 'b'.repeat(64)
+    }],
+    selection_state: 'unbound',
+    bound_package: null,
+    public_safety: 'PASS'
+  };
+  assert.equal(projectUc6DummyDatabagPackageOptions(validPkgOpt, { expectedJobId: JOB_ID }).package_count, 1);
+  assert.throws(() => projectUc6DummyDatabagPackageOptions({
+    ...validPkgOpt,
+    packages: [{ ...validPkgOpt.packages[0], status: 'deprecated' }]
+  }, { expectedJobId: JOB_ID }), /invalid_package_status/);
+
+  assert.throws(() => projectUc6DummyDatabagPackageOptions({
+    ...validPkgOpt,
+    packages: [{ ...validPkgOpt.packages[0], source_pptx_sha256: 'f'.repeat(64) }]
+  }, { expectedJobId: JOB_ID }), /package_source_sha_mismatch/);
+
+  assert.throws(() => projectUc6DummyDatabagPackageOptions({
+    ...validPkgOpt,
+    selection_state: 'unbound',
+    bound_package: { package_id: 'pkg1', package_version: 'v1', title: 'Title', description: 'Desc' }
+  }, { expectedJobId: JOB_ID }), /unbound_selection_state_must_have_null_bound_package/);
+
+  assert.throws(() => projectUc6DummyDatabagPackageOptions({
+    ...validPkgOpt,
+    selection_state: 'bound',
+    bound_package: null
+  }, { expectedJobId: JOB_ID }), /invalid_bound_package_selection_state/);
+
+  assert.throws(() => projectUc6DummyDatabagPackageOptions({
+    ...validPkgOpt,
+    package_count: 2,
+    packages: [validPkgOpt.packages[0], validPkgOpt.packages[0]]
+  }, { expectedJobId: JOB_ID }), /duplicate_package_identity/);
+  assert.throws(() => projectUc6DummyDatabagPackageOptions({
+    ...validPkgOpt,
+    source_pptx_sha256: ''
+  }, { expectedJobId: JOB_ID }), /invalid_package_options_source_sha/);
+
+  const projectedCompleted = projectUc6DummyDatabagRenderJobStatus(completedEnv, { expectedJobId: JOB_ID });
+  assert.equal(projectedCompleted.schema_version, completedEnv.render.schema_version);
+  assert.deepEqual(projectedCompleted.source, baseSource);
+  assert.equal(projectedCompleted.promotion_eligible, true);
+  assert.equal(projectedCompleted.public_safety, 'PASS');
+
+  const commandOptions = projectUc6DummyDatabagPackageOptions(validPkgOpt, { expectedJobId: JOB_ID });
+  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: false }, commandOptions).ok, true);
+  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: 'false' }, commandOptions).ok, false);
+  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: false, extra: true }, commandOptions).ok, false);
+  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: true }, commandOptions).code, 'retry_requires_bound_package');
+});
+
+test('A8-E Section 9: Source code assertions for single function declarations and active-stage rendering', () => {
+  const appSource = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+
+  for (const fnName of ['renderUC6UnavailableStage', 'renderUC6ActiveStage', 'renderUC6ContextSummary', 'renderUC6All']) {
+    const matches = appSource.match(new RegExp(`function ${fnName}\\b`, 'g')) || [];
+    assert.equal(matches.length, 1, `Function ${fnName} should be declared exactly once, found ${matches.length}`);
+  }
+
+  const activeStageFn = appSource.slice(appSource.indexOf('function renderUC6ActiveStage'));
+  const activeStageBody = activeStageFn.slice(0, activeStageFn.indexOf('function renderUC6ContextSummary'));
+
+  for (const stage of ['auth', 'intake', 'package', 'render', 'render_unknown', 'render_error', 'result', 'analysis', 'analysis_error', 'review', 'decision', 'complete']) {
+    assert.equal(activeStageBody.includes(`stage === '${stage}'`), true, `Active stage renderer must support stage: ${stage}`);
+  }
+
+  const intakeBody = extractFunctionBody(appSource, 'renderUC6IntakeStage');
+  const packageBody = extractFunctionBody(appSource, 'renderUC6PackageStage');
+  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
+  assert.equal(intakeBody.includes('분석 시작'), false);
+  assert.equal(intakeBody.includes('PPTX 등록'), true);
+  assert.equal(packageBody.includes('saveUC6LocalState()'), true);
+  assert.equal(packageBody.includes("uc6State.jobState === 'source_ready'"), true);
+  assert.equal(packageBody.includes('패키지 다시 불러오기'), true);
+  assert.equal(resultBody.includes("renderStatus.review_state !== 'review_pending'"), true);
+  assert.equal(resultBody.includes('boundPkg.title'), true);
+  assert.equal(appSource.includes("flowLane: 'dummy_render'"), true);
+  assert.equal(appSource.includes("renderSubmissionActive"), false);
+  assert.equal(appSource.includes("renderMessage"), false);
+  assert.equal(appSource.includes("renderTaskId"), false);
 });
