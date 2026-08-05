@@ -956,7 +956,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8e-dummy-render-integration-2026-08-05-v1"), true);
+  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8e-dummy-render-resume-repair-2026-08-05-v2"), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -1299,4 +1299,21 @@ test('A8-E Section 9: Source code assertions for single function declarations an
   assert.equal(appSource.includes("renderSubmissionActive"), false);
   assert.equal(appSource.includes("renderMessage"), false);
   assert.equal(appSource.includes("renderTaskId"), false);
+
+  const resumeBody = extractFunctionBody(appSource, 'resumeUC6PersistedJob');
+  assert.equal(resumeBody.includes('await refreshUC6JobStatus({'), true);
+  assert.equal(resumeBody.includes("fetchReview: uc6State.flowLane !== 'dummy_render'"), true);
+  assert.equal(resumeBody.includes("const shouldPoll = uc6State.flowLane === 'dummy_render'"), true);
+
+  const refreshBody = extractFunctionBody(appSource, 'refreshUC6JobStatus');
+  assert.equal(refreshBody.includes('const authoritativeDummyRenderLane = rawJob'), true);
+  assert.equal(refreshBody.includes("rawJob.state === 'render_queued'"), true);
+  assert.equal(refreshBody.includes("rawJob.state === 'render_running'"), true);
+  assert.equal(refreshBody.includes("rawJob.state === 'render_completed'"), true);
+  assert.equal(refreshBody.includes("uc6State.flowLane = 'dummy_render'"), true);
+  assert.equal(
+    refreshBody.indexOf('const authoritativeDummyRenderLane = rawJob')
+      < refreshBody.indexOf("if (uc6State.flowLane === 'dummy_render')"),
+    true
+  );
 });

@@ -42,7 +42,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8e-dummy-render-integration-2026-08-05-v1';
+const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8e-dummy-render-resume-repair-2026-08-05-v2';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5631,15 +5631,15 @@ Customer: Thank you. Goodbye.`
       if (persisted.selected_package_id) uc6State.selectedPackageId = persisted.selected_package_id;
       if (persisted.selected_package_version) uc6State.selectedPackageVersion = persisted.selected_package_version;
 
-      if (uc6State.flowLane === 'dummy_render') {
-        await refreshUC6JobStatus();
-        const mapped = mapUc6StateToView(uc6State.jobState);
-        if (mapped.renderPollable) startUC6Polling();
-      } else {
-        await refreshUC6JobStatus({ fetchReview: true });
-        const mapped = mapUc6StateToView(uc6State.jobState);
-        if (mapped.pollable) startUC6Polling();
-      }
+      await refreshUC6JobStatus({
+        fetchReview: uc6State.flowLane !== 'dummy_render'
+      });
+
+      const mapped = mapUc6StateToView(uc6State.jobState);
+      const shouldPoll = uc6State.flowLane === 'dummy_render'
+        ? mapped.renderPollable
+        : mapped.pollable;
+      if (shouldPoll) startUC6Polling();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
       clearUC6LocalState();
@@ -5871,6 +5871,23 @@ Customer: Thank you. Goodbye.`
   async function refreshUC6JobStatus(options = {}) {
     if (!isUc6Authorized() || !uc6State.jobId) return;
     const rawJob = await uc6State.api.getJob(uc6State.jobId, { signal: options.signal });
+
+    const authoritativeDummyRenderLane = rawJob
+      && typeof rawJob === 'object'
+      && (
+        rawJob.state === 'render_queued'
+        || rawJob.state === 'render_running'
+        || rawJob.state === 'render_completed'
+        || (rawJob.render && typeof rawJob.render === 'object')
+      );
+
+    if (authoritativeDummyRenderLane && uc6State.flowLane !== 'dummy_render') {
+      uc6State.flowLane = 'dummy_render';
+      uc6State.review = null;
+      uc6State.decision = null;
+      uc6State.decisionMode = false;
+      clearUC6FinalDeliveryState();
+    }
 
     if (uc6State.flowLane === 'dummy_render') {
       const projected = projectUc6DummyDatabagRenderJobStatus(rawJob, { expectedJobId: uc6State.jobId });
