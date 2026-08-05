@@ -6602,6 +6602,105 @@ body:has(#view-uc5.active) #main-content {
     outline-offset: 2px;
 }
 
+#view-uc6 .uc6-package-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+#view-uc6 .uc6-package-card {
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#view-uc6 .uc6-package-card:hover {
+    border-color: var(--primary);
+}
+
+#view-uc6 .uc6-package-card.is-selected {
+    border-color: var(--primary);
+    background: #f0f5ff;
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+}
+
+#view-uc6 .uc6-package-card.is-bound {
+    cursor: default;
+    opacity: 0.85;
+}
+
+#view-uc6 .uc6-package-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+#view-uc6 .uc6-package-title-label {
+    flex: 1;
+    min-width: 0;
+    cursor: inherit;
+}
+
+#view-uc6 .uc6-package-title {
+    color: #111827;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+#view-uc6 .uc6-package-desc {
+    margin: 0;
+    color: var(--text-sub);
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
+#view-uc6 .uc6-package-meta {
+    display: flex;
+    gap: 12px;
+    color: #6b7280;
+    font-size: 0.78rem;
+}
+
+#view-uc6 .uc6-render-evidence {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #f9fafb;
+}
+
+#view-uc6 .uc6-render-evidence h3 {
+    margin: 0 0 4px;
+    color: #111827;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+#view-uc6 .uc6-artifact-evidence-item {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+}
+
+#view-uc6 .uc6-hash-display {
+    margin: 0;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: #374151;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 1024px) {
     #view-uc6 .uc6-compact-header,
     #view-uc6 .uc6-stage-layout {
