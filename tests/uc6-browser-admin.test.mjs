@@ -1735,6 +1735,20 @@ test('A8-H app source keeps Asset render-only lane separate from upload review p
   assert.equal(style.includes('#view-uc6 .uc6-flow-lane-switch'), true);
 });
 
+
+test('A8-H delivery capability readiness does not require hashes absent from the frozen capability contract', () => {
+  const app = readSource('../public/app.js');
+  const start = app.indexOf('async function loadUC6A8HDeliveryState(');
+  const end = app.indexOf('function restartUC6AssetRenderSelection(', start + 1);
+  assert.notEqual(start, -1, 'loadUC6A8HDeliveryState missing');
+  assert.notEqual(end, -1, 'loadUC6A8HDeliveryState end marker missing');
+  const delivery = app.slice(start, end);
+  assert.equal(delivery.includes('if (!pdf?.ready || !pptx?.ready)'), true);
+  assert.equal(delivery.includes('pdf.sha256'), false);
+  assert.equal(delivery.includes('pptx.sha256'), false);
+  assert.equal(delivery.includes('render_only_artifact_capability_mismatch'), true);
+});
+
 test('A8-H runtime branches keep status polling, context summary, and retry semantics isolated', () => {
   const app = readSource('../public/app.js');
   const sliceFunction = (name, nextName) => {
