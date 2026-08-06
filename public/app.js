@@ -7,6 +7,10 @@ import {
   mapUc6StateToView,
   normalizeUc6JobId,
   projectUc6DummyDatabagPackageOptions,
+  projectUc6ReusableAssetCatalog,
+  projectUc6ReusableAssetPackageOptions,
+  projectUc6ReusableAssetRenderJobStatus,
+  projectUc6ReusableAssetRenderSubmission,
   projectUc6DummyDatabagRenderJobStatus,
   projectUc6DummyDatabagRenderSubmission,
   projectUc6FinalDeliveryCapabilities,
@@ -44,7 +48,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-06-v3';
+const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8h-approved-asset-render-only-2026-08-06-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5105,7 +5109,7 @@ Customer: Thank you. Goodbye.`
     signed_out: ['로그인 필요', 'Google 계정으로 로그인한 뒤 FetchDoc 관리자 권한을 확인하세요.'],
     authenticating: ['로그인 진행 중', 'Firebase sign-in 흐름을 처리하고 있습니다.'],
     authorizing: ['권한 확인 중', 'FetchDoc browser-admin 세션 권한을 확인하고 있습니다.'],
-    authorized: ['관리자 승인 완료', 'PPTX 업로드와 데이터 패키지 기반 문서 생성을 진행할 수 있습니다.'],
+    authorized: ['관리자 승인 완료', '새 PPTX 등록 또는 게시된 reusable Asset 기반 문서 생성을 진행할 수 있습니다.'],
     access_denied: ['접근 거부', 'FetchDoc 관리자 권한이 확인되지 않았습니다.'],
     temporarily_unavailable: ['일시적 사용 불가', '관리자 세션 확인을 잠시 후 다시 시도하세요.']
   };
@@ -5148,6 +5152,13 @@ Customer: Thank you. Goodbye.`
     { key: 'publication', label: '승인·게시' }
   ];
 
+  const UC6_A8H_STAGE_STEPS = [
+    { key: 'asset', label: 'Asset 선택' },
+    { key: 'package', label: '데이터 선택' },
+    { key: 'render', label: '문서 생성' },
+    { key: 'result', label: '결과·다운로드' }
+  ];
+
   const uc6State = {
     authStatus: 'initializing',
     firebaseClient: null,
@@ -5157,6 +5168,11 @@ Customer: Thank you. Goodbye.`
     jobId: '',
     jobState: '',
     flowLane: 'dummy_render',
+    reusableAssetCatalog: null,
+    reusableAssetCatalogStatus: 'idle',
+    selectedAssetId: '',
+    assetPackageOptions: null,
+    assetSubmissionAmbiguous: false,
     packageOptions: null,
     selectedPackageId: '',
     selectedPackageVersion: '',
@@ -5264,7 +5280,7 @@ Customer: Thank you. Goodbye.`
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
-  function mapUC6PublicStateToStage({ authorizationState, publicState, decisionMode, flowLane, publicationState } = {}) {
+  function mapUC6PublicStateToStage({ authorizationState, publicState, decisionMode, flowLane, publicationState, selectedAssetId } = {}) {
     if (authorizationState !== 'authorized') return 'auth';
     const state = publicState || null;
     if (flowLane === 'dummy_render') {
@@ -5275,6 +5291,13 @@ Customer: Thank you. Goodbye.`
       if (state === 'failed') return 'render_error';
       if (state === 'render_completed') return publicationState === 'published' ? 'publication' : 'result';
       return 'unavailable';
+    }
+    if (flowLane === 'asset_render') {
+      if (state === 'render_queued' || state === 'render_running') return 'render';
+      if (state === 'render_unknown') return 'render_unknown';
+      if (state === 'failed') return 'render_error';
+      if (state === 'render_completed') return 'result';
+      return selectedAssetId ? 'package' : 'asset';
     }
     if (decisionMode === true && (state === 'review_ready' || state === 'review_ready_with_warnings' || state === 'review_blocked')) return 'decision';
     if (!state || state === 'idle' || state === 'source_ready') return 'intake';
@@ -5291,7 +5314,8 @@ Customer: Thank you. Goodbye.`
       publicState: uc6State.jobState || null,
       decisionMode: uc6State.decisionMode,
       flowLane: uc6State.flowLane,
-      publicationState: uc6State.publication?.publication_state || null
+      publicationState: uc6State.publication?.publication_state || null,
+      selectedAssetId: uc6State.selectedAssetId
     });
   }
 
@@ -5418,6 +5442,7 @@ Customer: Thank you. Goodbye.`
         last_polling_timestamp: uc6State.lastPollingTimestamp,
         selected_panel: 'review',
         flow_lane: uc6State.flowLane,
+        selected_asset_id: uc6State.selectedAssetId,
         selected_package_id: uc6State.selectedPackageId,
         selected_package_version: uc6State.selectedPackageVersion,
         publication_decision_identity: uc6State.publicationDecisionIdentity
@@ -5515,6 +5540,11 @@ Customer: Thank you. Goodbye.`
     uc6State.jobId = '';
     uc6State.jobState = '';
     uc6State.flowLane = 'dummy_render';
+    uc6State.reusableAssetCatalog = null;
+    uc6State.reusableAssetCatalogStatus = 'idle';
+    uc6State.selectedAssetId = '';
+    uc6State.assetPackageOptions = null;
+    uc6State.assetSubmissionAmbiguous = false;
     uc6State.packageOptions = null;
     uc6State.selectedPackageId = '';
     uc6State.selectedPackageVersion = '';
@@ -5689,20 +5719,22 @@ Customer: Thank you. Goodbye.`
 
   async function resumeUC6PersistedJob() {
     const persisted = loadUC6LocalState();
-    if (!persisted.job_id) return;
     try {
-      uc6State.jobId = normalizeUc6JobId(persisted.job_id);
-      uc6State.flowLane = persisted.flow_lane || 'legacy_analysis';
+      uc6State.flowLane = persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render');
+      if (persisted.selected_asset_id) uc6State.selectedAssetId = persisted.selected_asset_id;
       if (persisted.selected_package_id) uc6State.selectedPackageId = persisted.selected_package_id;
       if (persisted.selected_package_version) uc6State.selectedPackageVersion = persisted.selected_package_version;
       if (persisted.publication_decision_identity) uc6State.publicationDecisionIdentity = persisted.publication_decision_identity;
 
-      await refreshUC6JobStatus({
-        fetchReview: uc6State.flowLane !== 'dummy_render'
-      });
+      if (!persisted.job_id) {
+        if (uc6State.flowLane === 'asset_render') await loadUC6ReusableAssetCatalog();
+        return;
+      }
+      uc6State.jobId = normalizeUc6JobId(persisted.job_id);
+      await refreshUC6JobStatus({ fetchReview: uc6State.flowLane === 'legacy_analysis' });
 
       const mapped = mapUc6StateToView(uc6State.jobState);
-      const shouldPoll = uc6State.flowLane === 'dummy_render'
+      const shouldPoll = (uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
         ? mapped.renderPollable
         : mapped.pollable;
       if (shouldPoll) startUC6Polling();
@@ -5756,6 +5788,192 @@ Customer: Thank you. Goodbye.`
       uc6State.operationInFlight = false;
       renderUC6All();
     }
+  }
+
+  function switchUC6FlowLane(lane) {
+    if (!isUc6Authorized() || uc6State.operationInFlight || uc6State.jobId) return;
+    if (lane !== 'dummy_render' && lane !== 'asset_render') return;
+    uc6State.flowLane = lane;
+    uc6State.stageMessage = '';
+    uc6State.assetSubmissionAmbiguous = false;
+    if (lane === 'asset_render') {
+      uc6State.selectedFile = null;
+      loadUC6ReusableAssetCatalog().catch(() => {});
+    }
+    saveUC6LocalState();
+    renderUC6All();
+  }
+
+  async function loadUC6ReusableAssetCatalog(signal) {
+    if (!isUc6Authorized() || uc6State.flowLane !== 'asset_render') return;
+    uc6State.reusableAssetCatalogStatus = 'loading';
+    uc6State.stageMessage = '게시된 reusable Asset 목록을 확인하고 있습니다.';
+    renderUC6All();
+    try {
+      const raw = await uc6State.api.getReusableAssets({ signal });
+      const catalog = projectUc6ReusableAssetCatalog(raw);
+      uc6State.reusableAssetCatalog = catalog;
+      uc6State.reusableAssetCatalogStatus = 'ready';
+      const selected = catalog.assets.find((asset) => asset.asset_id === uc6State.selectedAssetId);
+      if (!selected) {
+        uc6State.selectedAssetId = '';
+        uc6State.selectedPackageId = '';
+        uc6State.selectedPackageVersion = '';
+        uc6State.assetPackageOptions = null;
+      }
+      uc6State.stageMessage = catalog.asset_count
+        ? '게시된 reusable Asset을 선택하세요.'
+        : '현재 사용할 수 있는 게시 Asset이 없습니다.';
+      saveUC6LocalState();
+      renderUC6All();
+      if (selected) await loadUC6ReusableAssetPackages(signal);
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      if (error?.name === 'AbortError') return;
+      uc6State.reusableAssetCatalogStatus = 'error';
+      uc6State.stageMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.stageMessage);
+      renderUC6All();
+    }
+  }
+
+  async function selectUC6ReusableAsset(assetId) {
+    if (!isUc6Authorized() || uc6State.operationInFlight || uc6State.jobId) return;
+    const asset = uc6State.reusableAssetCatalog?.assets?.find((row) => row.asset_id === assetId);
+    if (!asset) return;
+    uc6State.selectedAssetId = asset.asset_id;
+    uc6State.selectedPackageId = '';
+    uc6State.selectedPackageVersion = '';
+    uc6State.assetPackageOptions = null;
+    uc6State.stageMessage = '선택한 Asset과 호환되는 데이터 패키지를 확인하고 있습니다.';
+    saveUC6LocalState();
+    renderUC6All();
+    await loadUC6ReusableAssetPackages();
+  }
+
+  async function loadUC6ReusableAssetPackages(signal) {
+    if (!isUc6Authorized() || uc6State.flowLane !== 'asset_render' || !uc6State.selectedAssetId) return;
+    try {
+      const raw = await uc6State.api.getReusableAssetPackages(uc6State.selectedAssetId, { signal });
+      const options = projectUc6ReusableAssetPackageOptions(raw, { expectedAssetId: uc6State.selectedAssetId });
+      uc6State.assetPackageOptions = options;
+      const matched = options.packages.find((pkg) => pkg.package_id === uc6State.selectedPackageId && pkg.package_version === uc6State.selectedPackageVersion);
+      if (!matched) {
+        uc6State.selectedPackageId = '';
+        uc6State.selectedPackageVersion = '';
+      }
+      uc6State.stageMessage = options.package_count
+        ? '새 문서에 적용할 데이터 시나리오를 선택하세요.'
+        : '선택한 Asset과 호환되는 데이터 패키지가 없습니다.';
+      saveUC6LocalState();
+      renderUC6All();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      if (error?.name === 'AbortError') return;
+      uc6State.assetPackageOptions = null;
+      uc6State.stageMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.stageMessage);
+      renderUC6All();
+    }
+  }
+
+  async function submitUC6ReusableAssetRender() {
+    if (!isUc6Authorized() || uc6State.operationInFlight || uc6State.jobId || !uc6State.selectedAssetId) return;
+    if (!uc6State.selectedPackageId || !uc6State.selectedPackageVersion) {
+      uc6State.stageMessage = '데이터 패키지를 선택하세요.';
+      renderUC6All();
+      return;
+    }
+    uc6State.operationInFlight = true;
+    uc6State.assetSubmissionAmbiguous = false;
+    uc6State.stageMessage = '게시된 Asset과 선택한 데이터로 새 문서 생성을 요청하고 있습니다.';
+    renderUC6All();
+    const controller = createUC6OperationController();
+    try {
+      const raw = await uc6State.api.submitReusableAssetRender(
+        uc6State.selectedAssetId,
+        { package_id: uc6State.selectedPackageId, package_version: uc6State.selectedPackageVersion },
+        { packageOptions: uc6State.assetPackageOptions, signal: controller.signal }
+      );
+      const submitted = projectUc6ReusableAssetRenderSubmission(raw, { expectedAssetId: uc6State.selectedAssetId });
+      uc6State.jobId = submitted.job_id;
+      uc6State.jobState = submitted.state;
+      uc6State.source = {
+        sha256: submitted.asset.source_pptx_sha256,
+        slide_count: submitted.asset.slide_count
+      };
+      uc6State.renderStatus = null;
+      uc6State.selectedPackageId = submitted.bound_package.package_id;
+      uc6State.selectedPackageVersion = submitted.bound_package.package_version;
+      uc6State.stageMessage = '생성 요청이 접수되었습니다. 서버 상태를 확인하고 있습니다.';
+      uc6State.consecutivePollErrors = 0;
+      saveUC6LocalState();
+      renderUC6All();
+      if (submitted.state === 'render_queued' || submitted.state === 'render_running') startUC6Polling();
+      else await refreshUC6JobStatus();
+    } catch (error) {
+      if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
+        uc6State.assetSubmissionAmbiguous = true;
+        uc6State.jobState = 'render_unknown';
+        uc6State.stageMessage = '생성 요청의 접수 여부를 확인할 수 없습니다. 자동 재전송하지 않습니다.';
+        setUC6LiveMessage(uc6State.stageMessage);
+        saveUC6LocalState();
+        renderUC6All();
+        return;
+      }
+      if (handleUC6AuthorizationFailure(error)) return;
+      uc6State.stageMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.stageMessage);
+      renderUC6All();
+    } finally {
+      uc6State.operationInFlight = false;
+      renderUC6All();
+    }
+  }
+
+  async function loadUC6A8HDeliveryState(signal) {
+    if (!isUc6Authorized() || uc6State.flowLane !== 'asset_render' || !uc6State.jobId || uc6State.jobState !== 'render_completed' || !uc6State.renderStatus) return;
+    uc6State.reviewArtifactsStatus = 'loading';
+    uc6State.reviewArtifactsMessage = '다운로드 capability를 준비하고 있습니다.';
+    renderUC6All();
+    try {
+      const payload = await uc6State.api.getRenderArtifactCapabilities(uc6State.jobId, { signal });
+      const capabilities = projectUc6FinalDeliveryCapabilities(payload, {
+        expectedJobId: uc6State.jobId,
+        apiBaseUrl: CONFIG.UC6_BROWSER_ADMIN_API_BASE
+      });
+      const pdf = capabilities.artifacts.find((artifact) => artifact.alias === 'final_render_output_pdf');
+      const pptx = capabilities.artifacts.find((artifact) => artifact.alias === 'final_render_output_pptx');
+      if (!pdf?.ready || !pptx?.ready || pdf.sha256 !== uc6State.renderStatus.final_artifacts.pdf.sha256 || pptx.sha256 !== uc6State.renderStatus.final_artifacts.pptx.sha256) {
+        throw new TypeError('render_only_artifact_capability_mismatch');
+      }
+      uc6State.reviewArtifacts = capabilities;
+      uc6State.reviewArtifactsStatus = 'ready';
+      uc6State.reviewArtifactsMessage = 'PPTX와 PDF 다운로드가 준비되었습니다.';
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      if (error?.name === 'AbortError') return;
+      uc6State.reviewArtifacts = null;
+      uc6State.reviewArtifactsStatus = 'error';
+      uc6State.reviewArtifactsMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.reviewArtifactsMessage);
+    } finally {
+      renderUC6All();
+    }
+  }
+
+  function restartUC6AssetRenderSelection() {
+    stopUC6Polling();
+    abortUC6Operations();
+    uc6State.jobId = '';
+    uc6State.jobState = '';
+    uc6State.renderStatus = null;
+    uc6State.source = null;
+    uc6State.assetSubmissionAmbiguous = false;
+    clearUC6A8FReviewState({ keepDecisionIdentity: false });
+    uc6State.stageMessage = uc6State.selectedAssetId ? '데이터 패키지를 확인한 뒤 새 render-only job을 생성하세요.' : '게시된 reusable Asset을 선택하세요.';
+    saveUC6LocalState();
+    renderUC6All();
   }
 
   async function loadUC6PackageOptions(signal) {
@@ -5907,10 +6125,10 @@ Customer: Thank you. Goodbye.`
     if (uc6State.statusRequestActive || !uc6State.pollingAbortController) return;
     uc6State.statusRequestActive = true;
     try {
-      await refreshUC6JobStatus({ signal: uc6State.pollingAbortController.signal, fetchReview: uc6State.flowLane !== 'dummy_render' });
+      await refreshUC6JobStatus({ signal: uc6State.pollingAbortController.signal, fetchReview: uc6State.flowLane === 'legacy_analysis' });
       uc6State.consecutivePollErrors = 0;
       const mapped = mapUc6StateToView(uc6State.jobState);
-      const isPollable = uc6State.flowLane === 'dummy_render' ? mapped.renderPollable : mapped.pollable;
+      const isPollable = (uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render') ? mapped.renderPollable : mapped.pollable;
       if (isPollable) scheduleUC6Poll();
       else stopUC6Polling();
     } catch (error) {
@@ -5947,13 +6165,34 @@ Customer: Thank you. Goodbye.`
         || (rawJob.render && typeof rawJob.render === 'object')
       );
 
-    if (authoritativeDummyRenderLane && uc6State.flowLane !== 'dummy_render') {
+    if (authoritativeDummyRenderLane && uc6State.flowLane !== 'dummy_render' && uc6State.flowLane !== 'asset_render') {
       uc6State.flowLane = 'dummy_render';
       uc6State.review = null;
       uc6State.decision = null;
       uc6State.decisionMode = false;
       clearUC6FinalDeliveryState();
       clearUC6A8FReviewState({ keepDecisionIdentity: true });
+    }
+
+    if (uc6State.flowLane === 'asset_render') {
+      const projected = projectUc6ReusableAssetRenderJobStatus(rawJob, {
+        expectedJobId: uc6State.jobId,
+        expectedAssetId: uc6State.selectedAssetId
+      });
+      uc6State.jobState = projected.state;
+      uc6State.source = projected.source;
+      uc6State.lastPollingTimestamp = Date.now();
+      uc6State.renderStatus = projected.state === 'render_completed' ? projected : null;
+      if (projected.bound_package) {
+        uc6State.selectedPackageId = projected.bound_package.package_id;
+        uc6State.selectedPackageVersion = projected.bound_package.package_version;
+      }
+      saveUC6LocalState();
+      renderUC6All();
+      if (projected.state === 'render_completed' && uc6State.reviewArtifactsStatus !== 'ready') {
+        await loadUC6A8HDeliveryState(options.signal);
+      }
+      return;
     }
 
     if (uc6State.flowLane === 'dummy_render') {
@@ -6112,10 +6351,9 @@ Customer: Thank you. Goodbye.`
 
     try {
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const payload = await uc6State.api.getReviewArtifactCapabilities(
-          uc6State.jobId,
-          { signal: controller.signal }
-        );
+        const payload = uc6State.flowLane === 'asset_render'
+          ? await uc6State.api.getRenderArtifactCapabilities(uc6State.jobId, { signal: controller.signal })
+          : await uc6State.api.getReviewArtifactCapabilities(uc6State.jobId, { signal: controller.signal });
         const capabilities = projectUc6FinalDeliveryCapabilities(payload, {
           expectedJobId: uc6State.jobId,
           apiBaseUrl: CONFIG.UC6_BROWSER_ADMIN_API_BASE
@@ -6515,26 +6753,33 @@ Customer: Thank you. Goodbye.`
   function renderUC6Stepper(stage) {
     if (!uc6Els.stepper) return;
     uc6Els.stepper.hidden = !isUc6Authorized();
-    const isA8E = uc6State.flowLane === 'dummy_render';
-    const steps = isA8E ? UC6_A8E_STAGE_STEPS : UC6_STAGE_STEPS;
-    let stepStage = stage === 'analysis_error' ? 'analysis' : (stage === 'render_error' || stage === 'render_unknown') ? 'render' : stage;
+    const steps = uc6State.flowLane === 'asset_render'
+      ? UC6_A8H_STAGE_STEPS
+      : uc6State.flowLane === 'dummy_render' ? UC6_A8E_STAGE_STEPS : UC6_STAGE_STEPS;
+    const stepStage = stage === 'analysis_error' ? 'analysis' : (stage === 'render_error' || stage === 'render_unknown') ? 'render' : stage;
     const currentIndex = Math.max(0, steps.findIndex((step) => step.key === stepStage));
     const ol = uc6Els.stepper.querySelector('ol');
-    if (ol) {
-      const items = ol.querySelectorAll('li');
-      if (items.length === steps.length) {
-        items.forEach((item, index) => {
-          const stepDef = steps[index];
-          item.dataset.uc6Step = stepDef.key;
-          const strong = item.querySelector('strong');
-          if (strong) strong.textContent = stepDef.label;
-          const state = index < currentIndex ? 'completed' : index === currentIndex ? 'current' : 'upcoming';
-          item.dataset.state = state;
-          if (state === 'current') item.setAttribute('aria-current', 'step');
-          else item.removeAttribute('aria-current');
-        });
-      }
+    if (!ol) return;
+    if (ol.querySelectorAll('li').length !== steps.length) {
+      ol.replaceChildren(...steps.map((step, index) => {
+        const item = createUc6Node('li', '');
+        item.dataset.uc6Step = step.key;
+        item.append(createUc6Node('span', '', index + 1), createUc6Node('strong', '', step.label));
+        return item;
+      }));
     }
+    ol.querySelectorAll('li').forEach((item, index) => {
+      const stepDef = steps[index];
+      item.dataset.uc6Step = stepDef.key;
+      const span = item.querySelector('span');
+      const strong = item.querySelector('strong');
+      if (span) span.textContent = String(index + 1);
+      if (strong) strong.textContent = stepDef.label;
+      const state = index < currentIndex ? 'completed' : index === currentIndex ? 'current' : 'upcoming';
+      item.dataset.state = state;
+      if (state === 'current') item.setAttribute('aria-current', 'step');
+      else item.removeAttribute('aria-current');
+    });
   }
 
   function renderUC6AuthStage(root) {
@@ -6546,6 +6791,179 @@ Customer: Thank you. Goodbye.`
       : 'Google 로그인 후 FetchDoc 관리자 권한이 확인되면 문서 검토 흐름이 표시됩니다.';
     card.append(createUc6Node('p', 'uc6-stage-copy', message));
     if (uc6State.authStatus === 'access_denied') card.append(createUc6Node('p', 'uc6-inline-error', uc6State.liveMessage || copy[1]));
+    root.replaceChildren(card);
+  }
+
+  function createUC6FlowLaneSwitch() {
+    const switcher = createUc6Node('div', 'uc6-flow-lane-switch');
+    const upload = createUC6ActionButton('uc6-useUploadLaneBtn', '새 PPTX 등록', uc6State.flowLane === 'dummy_render' ? 'btn btn-primary' : 'btn btn-outline', uc6State.operationInFlight || Boolean(uc6State.jobId));
+    const asset = createUC6ActionButton('uc6-useAssetLaneBtn', '게시된 Asset 사용', uc6State.flowLane === 'asset_render' ? 'btn btn-primary' : 'btn btn-outline', uc6State.operationInFlight || Boolean(uc6State.jobId));
+    switcher.append(upload, asset);
+    return switcher;
+  }
+
+  function renderUC6AssetSelectionStage(root) {
+    const card = createUc6Node('section', 'uc6-stage-card uc6-a8h-stage');
+    card.append(createUc6Node('h2', '', '게시된 reusable Asset 선택'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', '이미 X-ray와 Advisory가 완료되어 게시된 원본 visual mold와 authoritative lineage를 선택합니다.'));
+    card.append(createUC6FlowLaneSwitch());
+    const catalog = uc6State.reusableAssetCatalog;
+    if (!catalog) {
+      card.append(createUc6Node('p', uc6State.reusableAssetCatalogStatus === 'error' ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.stageMessage || 'Asset 목록을 불러오는 중입니다.'));
+      const actions = createUc6Node('div', 'uc6-action-row');
+      actions.append(createUC6ActionButton('uc6-refreshAssetCatalogBtn', 'Asset 목록 새로고침', 'btn btn-outline', uc6State.operationInFlight));
+      card.append(actions);
+      root.replaceChildren(card);
+      return;
+    }
+    if (!catalog.asset_count) {
+      card.append(createUc6Node('p', 'uc6-inline-error', '현재 사용할 수 있는 게시 Asset이 없습니다.'));
+      root.replaceChildren(card);
+      return;
+    }
+    const grid = createUc6Node('div', 'uc6-a8h-asset-grid');
+    catalog.assets.forEach((asset) => {
+      const selected = asset.asset_id === uc6State.selectedAssetId;
+      const item = createUc6Node('article', `uc6-a8h-asset-card${selected ? ' is-selected' : ''}`);
+      item.dataset.uc6AssetId = asset.asset_id;
+      const heading = createUc6Node('div', 'uc6-a8h-asset-heading');
+      heading.append(createUc6Node('strong', '', `Published Asset · ${asset.slide_count} slides`));
+      heading.append(createUc6Node('span', 'uc6-admin-chip is-ready', 'approved_for_reuse'));
+      item.append(heading);
+      item.append(createUc6Node('code', 'uc6-a8h-asset-id', asset.asset_id));
+      const facts = createUc6Node('div', 'uc6-compact-facts');
+      facts.append(createUC6SummaryItem('Generation units', asset.generation_unit_count));
+      facts.append(createUC6SummaryItem('Slots', asset.slot_count));
+      facts.append(createUC6SummaryItem('호환 패키지', asset.compatible_dummy_databag_package_count));
+      item.append(facts);
+      const button = createUC6ActionButton('', selected ? '선택됨' : '이 Asset 선택', selected ? 'btn btn-primary' : 'btn btn-outline', uc6State.operationInFlight);
+      button.removeAttribute('id');
+      button.dataset.uc6SelectAsset = asset.asset_id;
+      item.append(button);
+      grid.append(item);
+    });
+    card.append(grid);
+    if (uc6State.stageMessage) card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage));
+    root.replaceChildren(card);
+  }
+
+  function renderUC6AssetPackageStage(root) {
+    const card = createUc6Node('section', 'uc6-stage-card uc6-a8h-stage');
+    card.append(createUc6Node('h2', '', 'Asset 데이터 시나리오 선택'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', '선택한 게시 Asset은 재분석하지 않습니다. 새 databag만 선택해 render-only job을 생성합니다.'));
+    const asset = uc6State.reusableAssetCatalog?.assets?.find((row) => row.asset_id === uc6State.selectedAssetId) || uc6State.assetPackageOptions?.asset;
+    if (asset) {
+      const banner = createUc6Node('div', 'uc6-a8h-selected-asset');
+      banner.append(createUc6Node('strong', '', '선택된 reusable Asset'));
+      banner.append(createUc6Node('code', 'uc6-a8h-asset-id', asset.asset_id));
+      banner.append(createUC6ActionButton('uc6-changeAssetBtn', 'Asset 변경', 'btn btn-outline', uc6State.operationInFlight));
+      card.append(banner);
+    }
+    const options = uc6State.assetPackageOptions;
+    if (!options) {
+      card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage || '호환 데이터 패키지를 불러오는 중입니다.'));
+      const actions = createUc6Node('div', 'uc6-action-row');
+      actions.append(createUC6ActionButton('uc6-refreshAssetPackagesBtn', '패키지 다시 불러오기', 'btn btn-outline', uc6State.operationInFlight));
+      card.append(actions);
+      root.replaceChildren(card);
+      return;
+    }
+    const grid = createUc6Node('div', 'uc6-package-grid');
+    options.packages.forEach((pkg) => {
+      const selected = uc6State.selectedPackageId === pkg.package_id && uc6State.selectedPackageVersion === pkg.package_version;
+      const packageCard = createUc6Node('article', `uc6-package-card${selected ? ' is-selected' : ''}`);
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'uc6-asset-package-radio';
+      radio.id = `uc6-a8h-pkg-${pkg.package_id}-${pkg.package_version}`;
+      radio.checked = selected;
+      radio.disabled = uc6State.operationInFlight;
+      const label = document.createElement('label');
+      label.htmlFor = radio.id;
+      label.append(createUc6Node('strong', 'uc6-package-title', pkg.title));
+      const header = createUc6Node('div', 'uc6-package-header');
+      header.append(radio, label, createUc6Node('span', 'uc6-admin-chip is-neutral', pkg.package_version));
+      packageCard.append(header, createUc6Node('p', 'uc6-package-desc', pkg.description));
+      const meta = createUc6Node('div', 'uc6-package-meta');
+      meta.append(createUc6Node('small', '', `Template family: ${pkg.template_family_id}`));
+      meta.append(createUc6Node('small', '', `Canonical source groups: ${pkg.supported_canonical_source_group_count}`));
+      packageCard.append(meta);
+      packageCard.addEventListener('click', (event) => {
+        if (uc6State.operationInFlight) return;
+        if (event.target.tagName !== 'INPUT') radio.checked = true;
+        uc6State.selectedPackageId = pkg.package_id;
+        uc6State.selectedPackageVersion = pkg.package_version;
+        saveUC6LocalState();
+        renderUC6All();
+      });
+      grid.append(packageCard);
+    });
+    card.append(grid);
+    const actions = createUc6Node('div', 'uc6-action-row');
+    const canSubmit = Boolean(uc6State.selectedPackageId && uc6State.selectedPackageVersion && !uc6State.operationInFlight);
+    actions.append(createUC6ActionButton('uc6-submitAssetRenderBtn', '새 PPTX/PDF 생성', 'btn btn-primary', !canSubmit));
+    actions.append(createUC6ActionButton('uc6-changeAssetBtn', 'Asset 변경', 'btn btn-outline', uc6State.operationInFlight));
+    card.append(actions);
+    if (uc6State.stageMessage) card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage));
+    root.replaceChildren(card);
+  }
+
+  function renderUC6AssetRenderResultStage(root) {
+    const status = uc6State.renderStatus;
+    if (!status || status.state !== 'render_completed' || status.review_state !== 'not_required' || status.publication_state !== 'not_applicable' || status.promotion_eligible !== false) {
+      renderUC6UnavailableStage(root);
+      return;
+    }
+    const card = createUc6Node('section', 'uc6-stage-card uc6-a8h-stage');
+    card.append(createUc6Node('h2', '', 'Render-only 문서 생성 완료'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', '게시 Asset은 변경되지 않았습니다. 생성 결과는 일반 delivery이며 재승인·재게시 대상이 아닙니다.'));
+    const summary = createUc6Node('div', 'uc6-compact-facts');
+    summary.append(createUC6SummaryItem('Asset', status.asset.asset_id));
+    summary.append(createUC6SummaryItem('데이터 패키지', status.bound_package.title));
+    summary.append(createUC6SummaryItem('검토', status.review_state));
+    summary.append(createUC6SummaryItem('게시', status.publication_state));
+    card.append(summary);
+    const pdfCapability = uc6State.reviewArtifacts?.artifacts?.find((artifact) => artifact.alias === 'final_render_output_pdf');
+    if (uc6State.reviewArtifactsStatus === 'ready' && pdfCapability?.actions?.view?.available) {
+      const shell = createUc6Node('div', 'uc6-a8f-viewer-shell');
+      const frame = document.createElement('iframe');
+      frame.className = 'uc6-a8f-pdf-frame';
+      frame.title = 'Render-only PDF 미리보기';
+      frame.loading = 'eager';
+      frame.referrerPolicy = 'no-referrer';
+      frame.src = `/pdf-embed.html?file=${encodeURIComponent(pdfCapability.actions.view.href)}`;
+      shell.append(frame);
+      card.append(shell);
+    } else {
+      card.append(createUc6Node('p', uc6State.reviewArtifactsStatus === 'error' ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.reviewArtifactsMessage || '산출물 다운로드를 준비하고 있습니다.'));
+    }
+    const strip = createUc6Node('div', 'uc6-a8f-artifact-strip');
+    for (const [key, label] of [['pdf', 'PDF'], ['pptx', 'PowerPoint']]) {
+      const artifact = status.final_artifacts[key];
+      const capability = uc6State.reviewArtifacts?.artifacts?.find((row) => row.alias === artifact.alias);
+      const row = createUc6Node('article', 'uc6-a8f-artifact-row');
+      const copy = createUc6Node('div', 'uc6-a8f-artifact-copy');
+      copy.append(createUc6Node('strong', '', label));
+      copy.append(createUc6Node('span', 'uc6-hash-display', `SHA-256: ${artifact.sha256}`));
+      copy.append(createUc6Node('small', '', `크기: ${formatUc6Bytes(artifact.size_bytes)}`));
+      row.append(copy);
+      if (capability?.actions?.download?.available) {
+        const button = createUC6ActionButton('', '다운로드', 'btn btn-outline', Boolean(uc6State.reviewArtifactDownloadActive));
+        button.removeAttribute('id');
+        button.dataset.uc6ArtifactDownload = artifact.alias;
+        row.append(button);
+      }
+      strip.append(row);
+    }
+    card.append(strip);
+    const downloadStatus = createUc6Node('p', 'uc6-stage-message', uc6State.reviewArtifactDownloadMessage || '');
+    downloadStatus.id = 'uc6-reviewArtifactDownloadStatus';
+    downloadStatus.hidden = !uc6State.reviewArtifactDownloadMessage;
+    card.append(downloadStatus);
+    const actions = createUc6Node('div', 'uc6-action-row');
+    actions.append(createUC6ActionButton('uc6-restartAssetRenderBtn', '같은 Asset으로 새 문서 생성', 'btn btn-primary', uc6State.operationInFlight));
+    actions.append(createUC6ActionButton('uc6-clearBtn', '처음으로', 'btn btn-outline', uc6State.operationInFlight));
+    card.append(actions);
     root.replaceChildren(card);
   }
 
@@ -6660,7 +7078,9 @@ Customer: Thank you. Goodbye.`
   function renderUC6RenderStage(root) {
     const card = createUc6Node('section', 'uc6-stage-card');
     card.append(createUc6Node('h2', '', '문서 생성 진행 중'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '선택한 데이터 패키지로 PPTX 및 PDF 산출물을 생성하고 있습니다.'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', uc6State.flowLane === 'asset_render'
+      ? '게시 Asset의 원본 visual mold와 authoritative lineage에 선택한 databag을 적용하고 있습니다.'
+      : '선택한 데이터 패키지로 PPTX 및 PDF 산출물을 생성하고 있습니다.'));
 
     const facts = createUc6Node('div', 'uc6-compact-facts');
     if (uc6State.source?.filename) facts.append(createUC6SummaryItem('파일명', uc6State.source.filename));
@@ -6696,7 +7116,11 @@ Customer: Thank you. Goodbye.`
     card.append(createUc6Node('p', 'uc6-inline-error', '네트워크 응답을 수신하지 못했습니다. 다시 생성을 요청하기 전에 반드시 작업 상태를 새로고침하여 서버 접수 여부를 확인하세요.'));
 
     const actions = createUc6Node('div', 'uc6-action-row');
-    actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '상태 새로고침', 'btn btn-primary', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+    if (uc6State.flowLane === 'asset_render' && !uc6State.jobId) {
+      actions.append(createUC6ActionButton('uc6-restartAssetRenderBtn', 'Asset 선택으로 돌아가기', 'btn btn-primary', uc6State.operationInFlight));
+    } else {
+      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '상태 새로고침', 'btn btn-primary', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+    }
     card.append(actions);
 
     root.replaceChildren(card);
@@ -6709,13 +7133,19 @@ Customer: Thank you. Goodbye.`
     card.append(createUc6Node('p', 'uc6-inline-error', uc6State.stageMessage || '생성 도중 오류가 발생했습니다. 재시도할 수 있습니다.'));
 
     const actions = createUc6Node('div', 'uc6-action-row');
-    const isBound = uc6State.packageOptions?.selection_state === 'bound' && !!uc6State.packageOptions?.bound_package;
-    if (isBound) {
-      actions.append(createUC6ActionButton('uc6-retryRenderBtn', '다시 생성', 'btn btn-primary', !isUc6Authorized() || uc6State.operationInFlight));
+    if (uc6State.flowLane === 'asset_render') {
+      const hasSelection = !!uc6State.selectedAssetId && !!uc6State.selectedPackageId && !!uc6State.selectedPackageVersion;
+      actions.append(createUC6ActionButton('uc6-retryRenderBtn', '같은 Asset으로 다시 생성', 'btn btn-primary', !isUc6Authorized() || !hasSelection || uc6State.operationInFlight));
+      actions.append(createUC6ActionButton('uc6-restartAssetRenderBtn', 'Asset 선택으로 돌아가기', 'btn btn-outline', uc6State.operationInFlight));
     } else {
-      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '패키지 바인딩 확인', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+      const isBound = uc6State.packageOptions?.selection_state === 'bound' && !!uc6State.packageOptions?.bound_package;
+      if (isBound) {
+        actions.append(createUC6ActionButton('uc6-retryRenderBtn', '다시 생성', 'btn btn-primary', !isUc6Authorized() || uc6State.operationInFlight));
+      } else {
+        actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '패키지 바인딩 확인', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+      }
+      actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
     }
-    actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
     card.append(actions);
 
     root.replaceChildren(card);
@@ -6817,6 +7247,10 @@ Customer: Thank you. Goodbye.`
   }
 
   function renderUC6ResultStage(root) {
+    if (uc6State.flowLane === 'asset_render') {
+      renderUC6AssetRenderResultStage(root);
+      return;
+    }
     const renderStatus = uc6State.renderStatus;
     if (
       !renderStatus
@@ -6910,8 +7344,12 @@ Customer: Thank you. Goodbye.`
     if (!root) return;
     const previous = uc6State.lastRenderedStage;
     if (stage === 'auth') renderUC6AuthStage(root);
+    else if (stage === 'asset') renderUC6AssetSelectionStage(root);
     else if (stage === 'intake') renderUC6IntakeStage(root);
-    else if (stage === 'package') renderUC6PackageStage(root);
+    else if (stage === 'package') {
+      if (uc6State.flowLane === 'asset_render') renderUC6AssetPackageStage(root);
+      else renderUC6PackageStage(root);
+    }
     else if (stage === 'render') renderUC6RenderStage(root);
     else if (stage === 'render_unknown') renderUC6RenderUnknownStage(root);
     else if (stage === 'render_error') renderUC6RenderErrorStage(root);
@@ -6941,7 +7379,16 @@ Customer: Thank you. Goodbye.`
     if (uc6State.source?.filename) rows.push(['파일명', uc6State.source.filename]);
     if (hasUC6Value(uc6State.source?.slide_count)) rows.push(['슬라이드', uc6State.source.slide_count]);
     if (uc6State.jobState) rows.push(['현재 상태', UC6_STATE_LABELS[uc6State.jobState] || uc6State.jobState]);
-    if (uc6State.flowLane === 'dummy_render') {
+    if (uc6State.flowLane === 'asset_render') {
+      if (uc6State.selectedAssetId) rows.push(['Reusable Asset', uc6State.selectedAssetId]);
+      const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.assetPackageOptions?.packages?.find((pkg) => pkg.package_id === uc6State.selectedPackageId && pkg.package_version === uc6State.selectedPackageVersion)?.title || '';
+      if (packageTitle) rows.push(['데이터 패키지', packageTitle]);
+      if (uc6State.selectedPackageId) rows.push(['선택 패키지', `${uc6State.selectedPackageId}:${uc6State.selectedPackageVersion}`]);
+      if (uc6State.renderStatus) {
+        rows.push(['검토 상태', uc6State.renderStatus.review_state]);
+        rows.push(['게시 상태', uc6State.renderStatus.publication_state]);
+      }
+    } else if (uc6State.flowLane === 'dummy_render') {
       const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.packageOptions?.bound_package?.title || '';
       if (packageTitle) rows.push(['데이터 패키지', packageTitle]);
       if (uc6State.selectedPackageId) rows.push(['선택 패키지', `${uc6State.selectedPackageId}:${uc6State.selectedPackageVersion}`]);
@@ -6979,11 +7426,16 @@ Customer: Thank you. Goodbye.`
   }
 
   function renderUC6IntakeStage(root) {
+    if (uc6State.flowLane === 'asset_render') {
+      renderUC6AssetSelectionStage(root);
+      return;
+    }
     const validation = getUC6SelectedFileValidation();
     const file = validation.ok ? validation.file : uc6State.selectedFile;
     const card = createUc6Node('section', 'uc6-stage-card');
     card.append(createUc6Node('h2', '', uc6State.jobId ? 'PPTX 등록 상태' : 'PPTX 등록'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', uc6State.jobId ? 'PPTX가 등록되었습니다. 적용할 데이터 패키지를 확인하세요.' : '문서를 생성할 PPTX 파일 하나를 선택하세요. 브라우저에서는 PPTX를 파싱하지 않습니다.'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', uc6State.jobId ? 'PPTX가 등록되었습니다. 적용할 데이터 패키지를 확인하세요.' : '새 PPTX를 등록하거나 이미 게시된 reusable Asset을 선택할 수 있습니다.'));
+    if (!uc6State.jobId) card.append(createUC6FlowLaneSwitch());
     if (!uc6State.jobId) {
       const input = document.createElement('input');
       input.id = 'uc6-pptxFileInput';
@@ -7293,9 +7745,24 @@ Customer: Thank you. Goodbye.`
       if (!target) return;
       const reviewArtifactAlias = target.dataset.uc6ArtifactDownload || '';
       if (reviewArtifactAlias) downloadUC6ReviewArtifact(reviewArtifactAlias);
+      else if (target.dataset.uc6SelectAsset) selectUC6ReusableAsset(target.dataset.uc6SelectAsset);
+      else if (target.id === 'uc6-useUploadLaneBtn') switchUC6FlowLane('dummy_render');
+      else if (target.id === 'uc6-useAssetLaneBtn') switchUC6FlowLane('asset_render');
+      else if (target.id === 'uc6-refreshAssetCatalogBtn') loadUC6ReusableAssetCatalog();
+      else if (target.id === 'uc6-refreshAssetPackagesBtn') loadUC6ReusableAssetPackages();
+      else if (target.id === 'uc6-changeAssetBtn') { uc6State.selectedAssetId = ''; uc6State.selectedPackageId = ''; uc6State.selectedPackageVersion = ''; uc6State.assetPackageOptions = null; saveUC6LocalState(); renderUC6All(); }
+      else if (target.id === 'uc6-submitAssetRenderBtn') submitUC6ReusableAssetRender();
+      else if (target.id === 'uc6-restartAssetRenderBtn') restartUC6AssetRenderSelection();
       else if (target.id === 'uc6-uploadBtn') uploadUC6PptxJob();
       else if (target.id === 'uc6-submitRenderBtn') submitUC6DummyRender(false);
-      else if (target.id === 'uc6-retryRenderBtn') submitUC6DummyRender(true);
+      else if (target.id === 'uc6-retryRenderBtn') {
+        if (uc6State.flowLane === 'asset_render') {
+          restartUC6AssetRenderSelection();
+          submitUC6ReusableAssetRender();
+        } else {
+          submitUC6DummyRender(true);
+        }
+      }
       else if (target.id === 'uc6-reconcileStatusBtn') refreshUC6JobStatus();
       else if (target.id === 'uc6-refreshReviewSurfaceBtn') {
         if (uc6State.reviewSurfaceAbortController) uc6State.reviewSurfaceAbortController.abort();

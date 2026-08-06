@@ -11,7 +11,11 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   reviewArtifactCapabilities: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-artifact-capabilities`,
   reusableAssetPublication: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/reusable-asset-publication`,
   dummyDatabagPackages: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/dummy-databag-packages`,
-  render: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/render`
+  render: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/render`,
+  reusableAssets: '/fetchdoc/browser-admin/uc6/reusable-assets',
+  reusableAssetPackages: (assetId) => `/fetchdoc/browser-admin/uc6/reusable-assets/${encodeURIComponent(normalizeUc6ReusableAssetId(assetId))}/dummy-databag-packages`,
+  reusableAssetRenders: (assetId) => `/fetchdoc/browser-admin/uc6/reusable-assets/${encodeURIComponent(normalizeUc6ReusableAssetId(assetId))}/renders`,
+  renderArtifactCapabilities: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/render-artifact-capabilities`
 });
 
 export const UC6_GENERIC_PUBLIC_ERROR_MESSAGE = '요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요.';
@@ -44,7 +48,9 @@ export const UC6_PUBLIC_ERROR_MESSAGES = Object.freeze({
   browser_admin_uc6_render_conflict: '이미 처리 중인 생성 작업이 있습니다.',
   browser_admin_uc6_render_not_ready: '생성 요청을 처리할 준비가 되지 않았습니다.',
   browser_admin_uc6_render_failed: '문서 생성 작업이 실패했습니다.',
-  browser_admin_uc6_render_invalid_task: '생성 작업 정보가 유효하지 않습니다.'
+  browser_admin_uc6_render_invalid_task: '생성 작업 정보가 유효하지 않습니다.',
+  browser_admin_uc6_reusable_asset_not_found: '게시된 재사용 Asset을 찾을 수 없습니다.',
+  browser_admin_uc6_reusable_asset_unavailable: '게시된 재사용 Asset을 일시적으로 사용할 수 없습니다.'
 });
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
@@ -57,8 +63,9 @@ const KNOWN_RENDER_STATES = new Set(['render_queued', 'render_running', 'render_
 const KNOWN_COMPATIBILITY_STATES = new Set(['compatible', 'incompatible_source_pptx']);
 const KNOWN_SELECTION_STATES = new Set(['unbound', 'bound']);
 const KNOWN_QUEUE_STATUSES = new Set(['pending', 'processing', 'done', 'failed']);
-const KNOWN_FLOW_LANES = new Set(['dummy_render', 'legacy_analysis']);
+const KNOWN_FLOW_LANES = new Set(['dummy_render', 'asset_render', 'legacy_analysis']);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const REUSABLE_ASSET_ID_PATTERN = /^reusable_template_asset__[a-f0-9]{40}$/;
 const BOUNDED_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$/;
 const JOB_ID_PATTERN = /^fd_uc6_admin_[A-Za-z0-9][A-Za-z0-9_.-]{2,127}$/;
 
@@ -91,6 +98,13 @@ export function normalizeUc6JobId(value) {
   if (typeof value !== 'string') throw new TypeError('invalid_job_id');
   const trimmed = value.trim();
   if (!JOB_ID_PATTERN.test(trimmed)) throw new TypeError('invalid_job_id');
+  return trimmed;
+}
+
+export function normalizeUc6ReusableAssetId(value) {
+  if (typeof value !== 'string') throw new TypeError('invalid_reusable_asset_id');
+  const trimmed = value.trim();
+  if (!REUSABLE_ASSET_ID_PATTERN.test(trimmed)) throw new TypeError('invalid_reusable_asset_id');
   return trimmed;
 }
 
@@ -198,6 +212,11 @@ export function projectUc6PersistedState(value) {
   }
   if (typeof input.selected_panel === 'string' && /^[a-z_]{3,32}$/.test(input.selected_panel)) projected.selected_panel = input.selected_panel;
   if (typeof input.flow_lane === 'string' && KNOWN_FLOW_LANES.has(input.flow_lane)) projected.flow_lane = input.flow_lane;
+  try {
+    if (typeof input.selected_asset_id === 'string') projected.selected_asset_id = normalizeUc6ReusableAssetId(input.selected_asset_id);
+  } catch (_) {
+    // Invalid persisted Asset IDs are intentionally dropped.
+  }
   const packageIdValid = typeof input.selected_package_id === 'string' && BOUNDED_ID_PATTERN.test(input.selected_package_id);
   const packageVersionValid = typeof input.selected_package_version === 'string' && BOUNDED_ID_PATTERN.test(input.selected_package_version);
   if (packageIdValid && packageVersionValid) {
@@ -561,6 +580,329 @@ export function validateUc6ReusableAssetPublicationCommand(command) {
       reviewed_final_pdf_sha256: pdfSha,
       ...(administratorNote ? { administrator_note: administratorNote } : {})
     }
+  };
+}
+
+const UC6_A8G_CATALOG_SCHEMA = 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_catalog_v1';
+const UC6_A8G_PACKAGE_OPTIONS_SCHEMA = 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_package_options_v1';
+const UC6_A8G_SUBMISSION_SCHEMA = 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_submission_v1';
+const UC6_A8G_RESULT_SCHEMA = 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_result_v1';
+const UC6_A8G_TASK_TYPE = 'fetchdoc_browser_admin_uc6_render_reusable_asset';
+
+function validateUc6ControlPlaneVersion(value) {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 128 || !BOUNDED_ID_PATTERN.test(value)) {
+    throw new TypeError('invalid_control_plane_contract_version');
+  }
+  return value;
+}
+
+function validateUc6SafePublicText(value, { maxLength, allowEmpty = false, code = 'invalid_public_text' } = {}) {
+  if (typeof value !== 'string') throw new TypeError(code);
+  const trimmed = value.trim();
+  if ((!allowEmpty && !trimmed) || trimmed.length > maxLength || (trimmed && isUc6UnsafePublicScalar(trimmed))) {
+    throw new TypeError(code);
+  }
+  return trimmed;
+}
+
+function projectUc6ReusableAssetRow(row) {
+  if (!isPlainObject(row)) throw new TypeError('invalid_reusable_asset_item');
+  const allowed = new Set([
+    'asset_id', 'status', 'review_state', 'publication_state', 'source_pptx_sha256',
+    'generation_unit_count', 'slot_count', 'slide_count', 'approved_at',
+    'template_family_ids', 'compatible_dummy_databag_package_count'
+  ]);
+  if (Object.keys(row).some((key) => !allowed.has(key)) || Object.keys(row).length !== allowed.size) {
+    throw new TypeError('invalid_reusable_asset_item_fields');
+  }
+  const assetId = normalizeUc6ReusableAssetId(row.asset_id);
+  if (row.status !== 'published' || row.review_state !== 'approved_for_reuse' || row.publication_state !== 'published') {
+    throw new TypeError('invalid_reusable_asset_state');
+  }
+  if (typeof row.source_pptx_sha256 !== 'string' || !SHA256_PATTERN.test(row.source_pptx_sha256)) {
+    throw new TypeError('invalid_reusable_asset_source_sha');
+  }
+  for (const key of ['generation_unit_count', 'slot_count', 'slide_count']) {
+    if (!Number.isInteger(row[key]) || row[key] <= 0) throw new TypeError(`invalid_reusable_asset_${key}`);
+  }
+  const approvedAt = validateUc6SafePublicText(row.approved_at, { maxLength: 64, code: 'invalid_reusable_asset_approved_at' });
+  if (!Number.isFinite(Date.parse(approvedAt))) throw new TypeError('invalid_reusable_asset_approved_at');
+  if (!Array.isArray(row.template_family_ids) || row.template_family_ids.length > 32) {
+    throw new TypeError('invalid_reusable_asset_template_families');
+  }
+  const seenFamilies = new Set();
+  const templateFamilyIds = row.template_family_ids.map((value) => {
+    if (typeof value !== 'string' || !BOUNDED_ID_PATTERN.test(value) || seenFamilies.has(value)) {
+      throw new TypeError('invalid_reusable_asset_template_family');
+    }
+    seenFamilies.add(value);
+    return value;
+  });
+  if (!Number.isInteger(row.compatible_dummy_databag_package_count) || row.compatible_dummy_databag_package_count < 0) {
+    throw new TypeError('invalid_reusable_asset_package_count');
+  }
+  return {
+    asset_id: assetId,
+    status: row.status,
+    review_state: row.review_state,
+    publication_state: row.publication_state,
+    source_pptx_sha256: row.source_pptx_sha256,
+    generation_unit_count: row.generation_unit_count,
+    slot_count: row.slot_count,
+    slide_count: row.slide_count,
+    approved_at: approvedAt,
+    template_family_ids: templateFamilyIds,
+    compatible_dummy_databag_package_count: row.compatible_dummy_databag_package_count
+  };
+}
+
+function projectUc6A8gPackageRow(pkg, expectedSourceSha = '') {
+  if (!isPlainObject(pkg)) throw new TypeError('invalid_asset_package_item');
+  if (pkg.schema_version !== 'uc6_a8c_dummy_databag_package_public_projection_v1') {
+    throw new TypeError('invalid_asset_package_schema');
+  }
+  if (typeof pkg.package_id !== 'string' || !BOUNDED_ID_PATTERN.test(pkg.package_id)) throw new TypeError('invalid_asset_package_id');
+  if (typeof pkg.package_version !== 'string' || !BOUNDED_ID_PATTERN.test(pkg.package_version)) throw new TypeError('invalid_asset_package_version');
+  const title = validateUc6SafePublicText(pkg.title, { maxLength: 256, code: 'invalid_asset_package_title' });
+  const description = validateUc6SafePublicText(pkg.description, { maxLength: 1024, allowEmpty: true, code: 'invalid_asset_package_description' });
+  if (typeof pkg.template_family_id !== 'string' || !BOUNDED_ID_PATTERN.test(pkg.template_family_id)) throw new TypeError('invalid_asset_template_family_id');
+  if (typeof pkg.source_pptx_sha256 !== 'string' || !SHA256_PATTERN.test(pkg.source_pptx_sha256)) throw new TypeError('invalid_asset_package_source_sha');
+  if (expectedSourceSha && pkg.source_pptx_sha256 !== expectedSourceSha) throw new TypeError('asset_package_source_sha_mismatch');
+  if (typeof pkg.canonical_sha256 !== 'string' || !SHA256_PATTERN.test(pkg.canonical_sha256)) throw new TypeError('invalid_asset_package_canonical_sha');
+  if (!Number.isInteger(pkg.supported_canonical_source_group_count) || pkg.supported_canonical_source_group_count <= 0) {
+    throw new TypeError('invalid_asset_package_group_count');
+  }
+  if (pkg.status !== 'active') throw new TypeError('invalid_asset_package_status');
+  return {
+    schema_version: pkg.schema_version,
+    package_id: pkg.package_id,
+    package_version: pkg.package_version,
+    title,
+    description,
+    template_family_id: pkg.template_family_id,
+    source_pptx_sha256: pkg.source_pptx_sha256,
+    supported_canonical_source_group_count: pkg.supported_canonical_source_group_count,
+    status: pkg.status,
+    canonical_sha256: pkg.canonical_sha256
+  };
+}
+
+function projectUc6A8gBoundPackage(value) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_asset_bound_package');
+  if (typeof value.package_id !== 'string' || !BOUNDED_ID_PATTERN.test(value.package_id)) throw new TypeError('invalid_asset_bound_package_id');
+  if (typeof value.package_version !== 'string' || !BOUNDED_ID_PATTERN.test(value.package_version)) throw new TypeError('invalid_asset_bound_package_version');
+  const title = validateUc6SafePublicText(value.title, { maxLength: 256, code: 'invalid_asset_bound_package_title' });
+  const description = validateUc6SafePublicText(value.description, { maxLength: 1024, allowEmpty: true, code: 'invalid_asset_bound_package_description' });
+  if (typeof value.source_context_bundle_sha256 !== 'string' || !SHA256_PATTERN.test(value.source_context_bundle_sha256)) {
+    throw new TypeError('invalid_asset_bound_package_sha');
+  }
+  return {
+    package_id: value.package_id,
+    package_version: value.package_version,
+    title,
+    description,
+    source_context_bundle_sha256: value.source_context_bundle_sha256
+  };
+}
+
+export function projectUc6ReusableAssetCatalog(payload) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_reusable_asset_catalog_payload');
+  if (payload.schema_version !== UC6_A8G_CATALOG_SCHEMA) throw new TypeError('invalid_reusable_asset_catalog_schema');
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_reusable_asset_catalog_public_safety');
+  validateUc6ControlPlaneVersion(payload.control_plane_contract_version);
+  if (!Array.isArray(payload.assets) || !Number.isInteger(payload.asset_count) || payload.asset_count !== payload.assets.length || payload.asset_count < 0 || payload.asset_count > 10000) {
+    throw new TypeError('invalid_reusable_asset_catalog_count');
+  }
+  const seen = new Set();
+  const assets = payload.assets.map((row) => {
+    const projected = projectUc6ReusableAssetRow(row);
+    if (seen.has(projected.asset_id)) throw new TypeError('duplicate_reusable_asset_id');
+    seen.add(projected.asset_id);
+    return projected;
+  });
+  return {
+    schema_version: payload.schema_version,
+    asset_count: assets.length,
+    assets,
+    control_plane_contract_version: payload.control_plane_contract_version,
+    public_safety: payload.public_safety
+  };
+}
+
+export function projectUc6ReusableAssetPackageOptions(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_reusable_asset_package_options_payload');
+  const expectedAssetId = normalizeUc6ReusableAssetId(options.expectedAssetId);
+  if (payload.schema_version !== UC6_A8G_PACKAGE_OPTIONS_SCHEMA) throw new TypeError('invalid_reusable_asset_package_options_schema');
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_reusable_asset_package_options_public_safety');
+  validateUc6ControlPlaneVersion(payload.control_plane_contract_version);
+  const asset = projectUc6ReusableAssetRow(payload.asset);
+  if (asset.asset_id !== expectedAssetId) throw new TypeError('reusable_asset_package_options_asset_mismatch');
+  if (!Array.isArray(payload.packages) || !Number.isInteger(payload.package_count) || payload.package_count !== payload.packages.length || payload.package_count < 0) {
+    throw new TypeError('invalid_reusable_asset_package_options_count');
+  }
+  const seen = new Set();
+  const packages = payload.packages.map((pkg) => {
+    const projected = projectUc6A8gPackageRow(pkg, asset.source_pptx_sha256);
+    const key = `${projected.package_id}:${projected.package_version}`;
+    if (seen.has(key)) throw new TypeError('duplicate_reusable_asset_package');
+    seen.add(key);
+    if (!asset.template_family_ids.includes(projected.template_family_id)) throw new TypeError('reusable_asset_package_family_mismatch');
+    return projected;
+  });
+  if (asset.compatible_dummy_databag_package_count !== packages.length) {
+    throw new TypeError('reusable_asset_package_count_mismatch');
+  }
+  return {
+    schema_version: payload.schema_version,
+    asset,
+    package_count: packages.length,
+    packages,
+    control_plane_contract_version: payload.control_plane_contract_version,
+    public_safety: payload.public_safety
+  };
+}
+
+export function validateUc6ReusableAssetRenderCommand(command, packageOptions = null) {
+  if (!isPlainObject(command)) return { ok: false, code: 'asset_render_command_invalid', message: 'Asset 생성 명령이 유효하지 않습니다.' };
+  const keys = Object.keys(command).sort();
+  if (keys.length !== 2 || keys[0] !== 'package_id' || keys[1] !== 'package_version') {
+    return { ok: false, code: 'asset_render_command_fields_invalid', message: 'Asset 생성 명령 필드를 확인하세요.' };
+  }
+  const packageId = String(command.package_id || '').trim();
+  const packageVersion = String(command.package_version || '').trim();
+  if (!BOUNDED_ID_PATTERN.test(packageId) || !BOUNDED_ID_PATTERN.test(packageVersion)) {
+    return { ok: false, code: 'asset_render_package_identity_invalid', message: '선택한 데이터 패키지를 다시 확인하세요.' };
+  }
+  if (packageOptions !== null) {
+    if (!isPlainObject(packageOptions) || !Array.isArray(packageOptions.packages) || !isPlainObject(packageOptions.asset)) {
+      return { ok: false, code: 'asset_render_package_options_invalid', message: 'Asset 데이터 패키지 상태를 다시 확인하세요.' };
+    }
+    const matched = packageOptions.packages.find((pkg) => pkg.package_id === packageId && pkg.package_version === packageVersion);
+    if (!matched) return { ok: false, code: 'asset_render_package_not_found', message: '선택한 데이터 패키지를 목록에서 찾을 수 없습니다.' };
+  }
+  return { ok: true, body: { package_id: packageId, package_version: packageVersion } };
+}
+
+export function projectUc6ReusableAssetRenderSubmission(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_reusable_asset_render_submission_payload');
+  const expectedAssetId = normalizeUc6ReusableAssetId(options.expectedAssetId);
+  if (payload.schema_version !== UC6_A8G_SUBMISSION_SCHEMA) throw new TypeError('invalid_reusable_asset_render_submission_schema');
+  const jobId = normalizeUc6JobId(payload.job_id);
+  if (payload.task_type !== UC6_A8G_TASK_TYPE) throw new TypeError('invalid_reusable_asset_render_task_type');
+  if (!Number.isInteger(payload.task_id) || payload.task_id <= 0) throw new TypeError('invalid_reusable_asset_render_task_id');
+  if (!KNOWN_QUEUE_STATUSES.has(payload.queue_status)) throw new TypeError('invalid_reusable_asset_render_queue_status');
+  if (typeof payload.created !== 'boolean') throw new TypeError('invalid_reusable_asset_render_created');
+  const mappedState = QUEUE_STATE_MAP[payload.queue_status];
+  if (payload.state !== mappedState) throw new TypeError('reusable_asset_render_queue_state_mismatch');
+  const asset = projectUc6ReusableAssetRow(payload.asset);
+  if (asset.asset_id !== expectedAssetId) throw new TypeError('reusable_asset_render_asset_mismatch');
+  const boundPackage = projectUc6A8gBoundPackage(payload.bound_package);
+  validateUc6ControlPlaneVersion(payload.control_plane_contract_version);
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_reusable_asset_render_submission_public_safety');
+  return {
+    schema_version: payload.schema_version,
+    job_id: jobId,
+    task_type: payload.task_type,
+    task_id: payload.task_id,
+    queue_status: payload.queue_status,
+    created: payload.created,
+    state: payload.state,
+    asset,
+    bound_package: boundPackage,
+    control_plane_contract_version: payload.control_plane_contract_version,
+    public_safety: payload.public_safety
+  };
+}
+
+function projectUc6A8gFinalArtifact(value, expectedAlias) {
+  if (!isPlainObject(value) || value.alias !== expectedAlias || typeof value.sha256 !== 'string' || !SHA256_PATTERN.test(value.sha256) || !Number.isInteger(value.size_bytes) || value.size_bytes <= 0) {
+    throw new TypeError('invalid_reusable_asset_render_artifact');
+  }
+  return { alias: value.alias, sha256: value.sha256, size_bytes: value.size_bytes };
+}
+
+function projectUc6A8gCompletedRender(render, expectedAssetId) {
+  if (!isPlainObject(render) || render.schema_version !== UC6_A8G_RESULT_SCHEMA || render.state !== 'render_completed' || render.render_state !== 'render_completed') {
+    throw new TypeError('invalid_reusable_asset_render_result');
+  }
+  if (render.review_state !== 'not_required' || render.publication_state !== 'not_applicable' || render.promotion_eligible !== false || render.public_safety !== 'PASS') {
+    throw new TypeError('invalid_reusable_asset_render_terminal_state');
+  }
+  const asset = render.asset;
+  if (!isPlainObject(asset) || normalizeUc6ReusableAssetId(asset.asset_id) !== expectedAssetId) throw new TypeError('reusable_asset_render_result_asset_mismatch');
+  const assetProjection = {
+    asset_id: asset.asset_id,
+    source_pptx_sha256: asset.source_pptx_sha256,
+    asset_manifest_sha256: asset.asset_manifest_sha256,
+    catalog_entry_sha256: asset.catalog_entry_sha256,
+    approval_receipt_sha256: asset.approval_receipt_sha256
+  };
+  for (const key of ['source_pptx_sha256', 'asset_manifest_sha256', 'catalog_entry_sha256', 'approval_receipt_sha256']) {
+    if (typeof assetProjection[key] !== 'string' || !SHA256_PATTERN.test(assetProjection[key])) throw new TypeError('invalid_reusable_asset_render_result_asset_sha');
+  }
+  const boundPackage = projectUc6A8gBoundPackage(render.bound_package);
+  if (!isPlainObject(render.final_artifacts)) throw new TypeError('invalid_reusable_asset_render_final_artifacts');
+  const finalArtifacts = {
+    pptx: projectUc6A8gFinalArtifact(render.final_artifacts.pptx, 'final_render_output_pptx'),
+    pdf: projectUc6A8gFinalArtifact(render.final_artifacts.pdf, 'final_render_output_pdf')
+  };
+  return {
+    schema_version: render.schema_version,
+    job_id: render.job_id,
+    state: render.state,
+    render_state: render.render_state,
+    review_state: render.review_state,
+    publication_state: render.publication_state,
+    promotion_eligible: render.promotion_eligible,
+    asset: assetProjection,
+    bound_package: boundPackage,
+    final_artifacts: finalArtifacts,
+    control_plane_contract_version: validateUc6ControlPlaneVersion(render.control_plane_contract_version),
+    public_safety: render.public_safety
+  };
+}
+
+export function projectUc6ReusableAssetRenderJobStatus(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_reusable_asset_render_job_payload');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  const expectedAssetId = normalizeUc6ReusableAssetId(options.expectedAssetId);
+  if (payload.job_id !== expectedJobId) throw new TypeError('reusable_asset_render_job_id_mismatch');
+  if (!KNOWN_RENDER_STATES.has(payload.state)) throw new TypeError('invalid_reusable_asset_render_job_state');
+  validateUc6ControlPlaneVersion(payload.control_plane_contract_version);
+  if (!isPlainObject(payload.source)) throw new TypeError('invalid_reusable_asset_render_job_source');
+  if (typeof payload.source.sha256 !== 'string' || !SHA256_PATTERN.test(payload.source.sha256)) throw new TypeError('invalid_reusable_asset_render_job_source_sha');
+  if (!Number.isInteger(payload.source.size_bytes) || payload.source.size_bytes <= 0) throw new TypeError('invalid_reusable_asset_render_job_source_size');
+  if (!Number.isInteger(payload.source.slide_count) || payload.source.slide_count <= 0) throw new TypeError('invalid_reusable_asset_render_job_source_slides');
+  const filename = validateUc6SafePublicText(payload.source.filename, { maxLength: 256, code: 'invalid_reusable_asset_render_job_source_filename' });
+  const source = { sha256: payload.source.sha256, size_bytes: payload.source.size_bytes, slide_count: payload.source.slide_count, filename };
+  if (payload.state !== 'render_completed') {
+    if (payload.render !== undefined) throw new TypeError('non_completed_reusable_asset_render_must_not_have_result');
+    return {
+      job_id: payload.job_id,
+      state: payload.state,
+      source,
+      render: null,
+      control_plane_contract_version: payload.control_plane_contract_version
+    };
+  }
+  const render = projectUc6A8gCompletedRender(payload.render, expectedAssetId);
+  if (render.job_id !== expectedJobId || render.asset.source_pptx_sha256 !== source.sha256) {
+    throw new TypeError('reusable_asset_render_result_lineage_mismatch');
+  }
+  return {
+    job_id: payload.job_id,
+    state: payload.state,
+    source,
+    render,
+    render_state: render.render_state,
+    review_state: render.review_state,
+    publication_state: render.publication_state,
+    promotion_eligible: render.promotion_eligible,
+    asset: render.asset,
+    bound_package: render.bound_package,
+    final_artifacts: render.final_artifacts,
+    control_plane_contract_version: payload.control_plane_contract_version,
+    public_safety: render.public_safety
   };
 }
 
@@ -1140,6 +1482,26 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
         throw err;
       }
       return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.render(jobId), { method: 'POST', json: validation.body, signal: options?.signal });
+    },
+    getReusableAssets(options = {}) {
+      return request(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssets, { method: 'GET', signal: options.signal });
+    },
+    getReusableAssetPackages(assetId, options = {}) {
+      return request(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssetPackages(assetId), { method: 'GET', signal: options.signal });
+    },
+    submitReusableAssetRender(assetId, command, options = {}) {
+      const validation = validateUc6ReusableAssetRenderCommand(command, options?.packageOptions);
+      if (!validation.ok) {
+        const err = new Error(validation.message);
+        err.name = 'Uc6AssetRenderValidationError';
+        err.code = validation.code;
+        err.publicMessage = validation.message;
+        throw err;
+      }
+      return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssetRenders(assetId), { method: 'POST', json: validation.body, signal: options?.signal });
+    },
+    getRenderArtifactCapabilities(jobId, options = {}) {
+      return request(UC6_BROWSER_ADMIN_ENDPOINTS.renderArtifactCapabilities(jobId), { method: 'GET', signal: options.signal });
     },
     submitReusableAssetPublication(jobId, command, options = {}) {
       const validation = validateUc6ReusableAssetPublicationCommand(command);
