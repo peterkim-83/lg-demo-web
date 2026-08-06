@@ -17,10 +17,12 @@ import {
   parseUc6PublicError,
   projectUc6PersistedState,
   projectUc6ReviewIssuePresentation,
+  projectUc6ReusableAssetPublication,
   runUc6CreateJobAndSubmitInitialAnalysis,
   splitDecisionTextLines,
   validateUc6DecisionCommand,
-  validateUc6DummyDatabagRenderCommand
+  validateUc6DummyDatabagRenderCommand,
+  validateUc6ReusableAssetPublicationCommand
 } from '../public/uc6-browser-admin.mjs';
 
 const API_BASE = 'https://api.peter-n8n.duckdns.org/';
@@ -70,6 +72,53 @@ function validFinalDeliveryPayload(overrides = {}) {
     ]
   };
   return Object.assign(payload, overrides);
+}
+
+
+function unpublishedPublicationPayload(overrides = {}) {
+  return Object.assign({
+    schema_version: 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1',
+    job_id: JOB_ID,
+    render_state: 'render_completed',
+    review_state: 'review_pending',
+    publication_state: 'unpublished',
+    publication_requires_manual_admin_action: true,
+    reviewed_final_pptx_sha256: 'a'.repeat(64),
+    reviewed_final_pdf_sha256: 'b'.repeat(64),
+    published_asset: null,
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+    public_safety: 'PASS'
+  }, overrides);
+}
+
+function publishedPublicationPayload(overrides = {}) {
+  return Object.assign({
+    schema_version: 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1',
+    job_id: JOB_ID,
+    render_state: 'render_completed',
+    review_state: 'approved_for_reuse',
+    publication_state: 'published',
+    publication_requires_manual_admin_action: false,
+    published_asset: {
+      asset_id: 'reusable_template_asset__' + 'c'.repeat(40),
+      template_job_id: 'fd_uc6_e2e4c2c_a7r6a_20260803T090516Z_62cee54d',
+      decision: 'approve_for_reuse_and_publish',
+      decision_identity: 'a8f-test-001',
+      approved_at: '2026-08-05T08:00:00Z',
+      reviewed_final_pptx_sha256: 'a'.repeat(64),
+      reviewed_final_pdf_sha256: 'b'.repeat(64),
+      source_pptx_sha256: 'c'.repeat(64),
+      generation_unit_count: 54,
+      slot_count: 177,
+      slide_count: 7,
+      asset_manifest_sha256: 'd'.repeat(64),
+      catalog_entry_sha256: 'e'.repeat(64),
+      approval_receipt_sha256: 'f'.repeat(64)
+    },
+    idempotent_replay: false,
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+    public_safety: 'PASS'
+  }, overrides);
 }
 
 function allNotReadyFinalDeliveryPayload() {
@@ -156,6 +205,8 @@ test('token and request boundary headers are bounded for each request', async ()
   assert.equal(calls[0].init.credentials, 'omit');
   assert.equal(calls[0].init.cache, 'no-store');
   assert.equal(projectUc6PersistedState({ job_id: JOB_ID, id_token: 'secret', token: 'secret' }).id_token, undefined);
+  assert.equal(projectUc6PersistedState({ job_id: JOB_ID, publication_decision_identity: 'a8f-test-001' }).publication_decision_identity, 'a8f-test-001');
+  assert.equal(projectUc6PersistedState({ job_id: JOB_ID, publication_decision_identity: '../bad' }).publication_decision_identity, undefined);
 });
 
 test('401 forced refresh retries once; 403 and network POST failures are not replayed', async () => {
@@ -956,7 +1007,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8e-dummy-render-resume-repair-2026-08-05-v2"), true);
+  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-05-v1"), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -971,7 +1022,9 @@ test('authentication, token processing, endpoints, route constants, and webhooks
     '/analysis',
     '/review',
     '/review-decision',
-    '/final-delivery-capabilities'
+    '/final-delivery-capabilities',
+    '/review-artifact-capabilities',
+    '/reusable-asset-publication'
   ]) {
     assert.equal(admin.includes(endpoint), true);
   }
@@ -1270,6 +1323,89 @@ test('A8-E Section 9: Detailed contract projection and validation tests', async 
   assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: true }, commandOptions).code, 'retry_requires_bound_package');
 });
 
+
+test('A8-F publication projection and command validation are strict and public-safe', () => {
+  const unpublished = projectUc6ReusableAssetPublication(unpublishedPublicationPayload(), { expectedJobId: JOB_ID });
+  assert.equal(unpublished.publication_state, 'unpublished');
+  assert.equal(unpublished.reviewed_final_pptx_sha256, 'a'.repeat(64));
+
+  const published = projectUc6ReusableAssetPublication(publishedPublicationPayload(), { expectedJobId: JOB_ID });
+  assert.equal(published.publication_state, 'published');
+  assert.equal(published.published_asset.slot_count, 177);
+  assert.equal(published.idempotent_replay, false);
+
+  const command = validateUc6ReusableAssetPublicationCommand({
+    decision: 'approve_for_reuse_and_publish',
+    decision_identity: 'a8f-test-001',
+    reviewed_final_pptx_sha256: 'a'.repeat(64),
+    reviewed_final_pdf_sha256: 'b'.repeat(64),
+    administrator_note: 'Reviewed in the Browser Admin PDF viewer.'
+  });
+  assert.equal(command.ok, true);
+  assert.equal(command.body.administrator_note, 'Reviewed in the Browser Admin PDF viewer.');
+  assert.equal(validateUc6ReusableAssetPublicationCommand({ ...command.body, decision_identity: '../bad' }).ok, false);
+  assert.equal(validateUc6ReusableAssetPublicationCommand({ ...command.body, reviewed_final_pdf_sha256: 'bad' }).ok, false);
+  assert.equal(validateUc6ReusableAssetPublicationCommand({ ...command.body, administrator_note: '/data/fetchdoc/jobs/private' }).ok, false);
+
+  assert.throws(() => projectUc6ReusableAssetPublication(unpublishedPublicationPayload({ public_safety: 'FAIL' }), { expectedJobId: JOB_ID }));
+  assert.throws(() => projectUc6ReusableAssetPublication(publishedPublicationPayload({ idempotent_replay: 'false' }), { expectedJobId: JOB_ID }));
+});
+
+test('A8-F review capability GET and approval POST use exact routes and never replay ambiguous POST', async () => {
+  const calls = [];
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async () => 'firebase-token',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      if (init.method === 'GET' && url.endsWith('/review-artifact-capabilities')) return response(200, validFinalDeliveryPayload());
+      if (init.method === 'GET' && url.endsWith('/reusable-asset-publication')) return response(200, unpublishedPublicationPayload());
+      throw new Error('ambiguous network failure');
+    }
+  });
+
+  await api.getReviewArtifactCapabilities(JOB_ID);
+  await api.getReusableAssetPublication(JOB_ID);
+  const command = {
+    decision: 'approve_for_reuse_and_publish',
+    decision_identity: 'a8f-test-001',
+    reviewed_final_pptx_sha256: 'a'.repeat(64),
+    reviewed_final_pdf_sha256: 'b'.repeat(64)
+  };
+  await assert.rejects(() => api.submitReusableAssetPublication(JOB_ID, command), { code: 'ambiguous_submission' });
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/review-artifact-capabilities`);
+  assert.equal(calls[1].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/reusable-asset-publication`);
+  assert.equal(calls[2].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/reusable-asset-publication`);
+  assert.equal(calls[2].init.method, 'POST');
+  assert.equal(calls[2].init.headers.Authorization, 'Bearer firebase-token');
+  assert.equal(calls[2].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
+  assert.deepEqual(JSON.parse(calls[2].init.body), command);
+});
+
+test('A8-F app source provides PDF review, stable decision identity, and server reconciliation', () => {
+  const appSource = readSource('../public/app.js');
+  const cssSource = readSource('../public/style.css');
+  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
+  const submitBody = extractFunctionBody(appSource, 'submitUC6ReusableAssetPublication');
+  assert.equal(resultBody.includes('/pdf-embed.html?file='), true);
+  assert.equal(resultBody.includes('uc6-publicationReviewConfirmed'), true);
+  assert.equal(resultBody.includes('uc6-submitPublicationBtn'), true);
+  assert.equal(submitBody.includes('ensureUC6PublicationDecisionIdentity()'), true);
+  assert.equal(submitBody.includes('reconcileUC6PublicationState'), true);
+  assert.equal(submitBody.includes('submitReusableAssetPublication'), true);
+  assert.equal(cssSource.includes('#view-uc6 .uc6-a8f-review-layout'), true);
+  assert.equal(cssSource.includes('#view-uc6 .uc6-a8f-pdf-frame'), true);
+});
+
+test('A8-F administrator session actions remain on one compact row', () => {
+  const cssSource = readSource('../public/style.css');
+  assert.equal(cssSource.includes('#view-uc6 .uc6-auth-actions {'), true);
+  assert.equal(cssSource.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'), true);
+  assert.equal(cssSource.includes('#view-uc6 .uc6-auth-actions .btn {'), true);
+  assert.equal(cssSource.includes('white-space: nowrap;'), true);
+});
+
 test('A8-E Section 9: Source code assertions for single function declarations and active-stage rendering', () => {
   const appSource = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 
@@ -1281,7 +1417,7 @@ test('A8-E Section 9: Source code assertions for single function declarations an
   const activeStageFn = appSource.slice(appSource.indexOf('function renderUC6ActiveStage'));
   const activeStageBody = activeStageFn.slice(0, activeStageFn.indexOf('function renderUC6ContextSummary'));
 
-  for (const stage of ['auth', 'intake', 'package', 'render', 'render_unknown', 'render_error', 'result', 'analysis', 'analysis_error', 'review', 'decision', 'complete']) {
+  for (const stage of ['auth', 'intake', 'package', 'render', 'render_unknown', 'render_error', 'result', 'publication', 'analysis', 'analysis_error', 'review', 'decision', 'complete']) {
     assert.equal(activeStageBody.includes(`stage === '${stage}'`), true, `Active stage renderer must support stage: ${stage}`);
   }
 
@@ -1293,8 +1429,9 @@ test('A8-E Section 9: Source code assertions for single function declarations an
   assert.equal(packageBody.includes('saveUC6LocalState()'), true);
   assert.equal(packageBody.includes("uc6State.jobState === 'source_ready'"), true);
   assert.equal(packageBody.includes('패키지 다시 불러오기'), true);
-  assert.equal(resultBody.includes("renderStatus.review_state !== 'review_pending'"), true);
-  assert.equal(resultBody.includes('boundPkg.title'), true);
+  assert.equal(resultBody.includes("uc6-submitPublicationBtn"), true);
+  assert.equal(resultBody.includes('uc6-a8f-pdf-frame'), true);
+  assert.equal(resultBody.includes('publication_state'), true);
   assert.equal(appSource.includes("flowLane: 'dummy_render'"), true);
   assert.equal(appSource.includes("renderSubmissionActive"), false);
   assert.equal(appSource.includes("renderMessage"), false);

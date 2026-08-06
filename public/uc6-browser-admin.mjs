@@ -8,6 +8,8 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   review: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review`,
   reviewDecision: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-decision`,
   finalDeliveryCapabilities: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/final-delivery-capabilities`,
+  reviewArtifactCapabilities: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-artifact-capabilities`,
+  reusableAssetPublication: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/reusable-asset-publication`,
   dummyDatabagPackages: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/dummy-databag-packages`,
   render: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/render`
 });
@@ -34,6 +36,7 @@ export const UC6_PUBLIC_ERROR_MESSAGES = Object.freeze({
   browser_admin_uc6_analysis_failed: '분석 작업이 실패했습니다. 재시도할 수 있습니다.',
   browser_admin_uc6_queue_unavailable: '분석 대기열을 일시적으로 사용할 수 없습니다.',
   browser_admin_uc6_final_delivery_not_approved: '승인 완료 후 최종 산출물 상태를 확인할 수 있습니다.',
+  browser_admin_uc6_review_artifact_not_ready: '관리자 검토용 산출물이 아직 준비되지 않았습니다.',
   browser_admin_uc6_service_unavailable: 'FetchDoc 서비스를 일시적으로 사용할 수 없습니다.',
   browser_admin_uc6_dummy_databag_package_invalid: '선택한 데이터 패키지가 유효하지 않습니다.',
   browser_admin_uc6_dummy_databag_binding_conflict: '이 작업에 이미 다른 데이터 패키지가 고정되어 있습니다. 작업 상태를 새로고침하세요.',
@@ -200,6 +203,13 @@ export function projectUc6PersistedState(value) {
   if (packageIdValid && packageVersionValid) {
     projected.selected_package_id = input.selected_package_id;
     projected.selected_package_version = input.selected_package_version;
+  }
+  if (
+    typeof input.publication_decision_identity === 'string'
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(input.publication_decision_identity)
+    && !input.publication_decision_identity.includes('..')
+  ) {
+    projected.publication_decision_identity = input.publication_decision_identity;
   }
   return projected;
 }
@@ -400,6 +410,157 @@ export function projectUc6FinalDeliveryCapabilities(payload, options = {}) {
     artifacts,
     readyCount: artifacts.filter((artifact) => artifact.ready).length,
     totalCount: artifacts.length
+  };
+}
+
+
+const UC6_PUBLICATION_SCHEMA_VERSION = 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1';
+const UC6_PUBLICATION_DECISION = 'approve_for_reuse_and_publish';
+
+function invalidReusablePublicationContract() {
+  throw new TypeError('invalid_uc6_reusable_asset_publication');
+}
+
+function projectUc6PublishedAsset(value) {
+  if (!isPlainObject(value)) invalidReusablePublicationContract();
+  const stringFields = [
+    'asset_id', 'template_job_id', 'decision', 'decision_identity', 'approved_at',
+    'reviewed_final_pptx_sha256', 'reviewed_final_pdf_sha256', 'source_pptx_sha256',
+    'asset_manifest_sha256', 'catalog_entry_sha256', 'approval_receipt_sha256'
+  ];
+  for (const field of stringFields) {
+    if (typeof value[field] !== 'string' || value[field].trim() !== value[field] || value[field] === '') {
+      invalidReusablePublicationContract();
+    }
+  }
+  if (value.decision !== UC6_PUBLICATION_DECISION) invalidReusablePublicationContract();
+  for (const field of [
+    'reviewed_final_pptx_sha256', 'reviewed_final_pdf_sha256', 'source_pptx_sha256',
+    'asset_manifest_sha256', 'catalog_entry_sha256', 'approval_receipt_sha256'
+  ]) {
+    if (!SHA256_PATTERN.test(value[field])) invalidReusablePublicationContract();
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(value.decision_identity) || value.decision_identity.includes('..')) {
+    invalidReusablePublicationContract();
+  }
+  for (const field of ['generation_unit_count', 'slot_count', 'slide_count']) {
+    if (!Number.isSafeInteger(value[field]) || value[field] <= 0) invalidReusablePublicationContract();
+  }
+  const approvedAt = Date.parse(value.approved_at);
+  if (!Number.isFinite(approvedAt)) invalidReusablePublicationContract();
+  return {
+    asset_id: value.asset_id,
+    template_job_id: value.template_job_id,
+    decision: value.decision,
+    decision_identity: value.decision_identity,
+    approved_at: value.approved_at,
+    reviewed_final_pptx_sha256: value.reviewed_final_pptx_sha256,
+    reviewed_final_pdf_sha256: value.reviewed_final_pdf_sha256,
+    source_pptx_sha256: value.source_pptx_sha256,
+    generation_unit_count: value.generation_unit_count,
+    slot_count: value.slot_count,
+    slide_count: value.slide_count,
+    asset_manifest_sha256: value.asset_manifest_sha256,
+    catalog_entry_sha256: value.catalog_entry_sha256,
+    approval_receipt_sha256: value.approval_receipt_sha256
+  };
+}
+
+export function projectUc6ReusableAssetPublication(payload, options = {}) {
+  if (!isPlainObject(payload)) invalidReusablePublicationContract();
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.schema_version !== UC6_PUBLICATION_SCHEMA_VERSION) invalidReusablePublicationContract();
+  if (payload.job_id !== expectedJobId || payload.public_safety !== 'PASS') invalidReusablePublicationContract();
+  if (payload.render_state !== 'render_completed') invalidReusablePublicationContract();
+  if (payload.control_plane_contract_version !== 'uc6_11c8r2_browser_admin_uc6_control_plane_v1') {
+    invalidReusablePublicationContract();
+  }
+
+  if (payload.publication_state === 'unpublished') {
+    if (
+      payload.review_state !== 'review_pending'
+      || payload.publication_requires_manual_admin_action !== true
+      || payload.published_asset !== null
+      || !SHA256_PATTERN.test(payload.reviewed_final_pptx_sha256)
+      || !SHA256_PATTERN.test(payload.reviewed_final_pdf_sha256)
+      || Object.prototype.hasOwnProperty.call(payload, 'idempotent_replay')
+    ) {
+      invalidReusablePublicationContract();
+    }
+    return {
+      state: 'unpublished',
+      render_state: 'render_completed',
+      review_state: 'review_pending',
+      publication_state: 'unpublished',
+      publication_requires_manual_admin_action: true,
+      reviewed_final_pptx_sha256: payload.reviewed_final_pptx_sha256,
+      reviewed_final_pdf_sha256: payload.reviewed_final_pdf_sha256,
+      published_asset: null,
+      idempotent_replay: null
+    };
+  }
+
+  if (
+    payload.publication_state !== 'published'
+    || payload.review_state !== 'approved_for_reuse'
+    || payload.publication_requires_manual_admin_action !== false
+    || !isPlainObject(payload.published_asset)
+  ) {
+    invalidReusablePublicationContract();
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(payload, 'idempotent_replay')
+    && typeof payload.idempotent_replay !== 'boolean'
+  ) {
+    invalidReusablePublicationContract();
+  }
+  return {
+    state: 'published',
+    render_state: 'render_completed',
+    review_state: 'approved_for_reuse',
+    publication_state: 'published',
+    publication_requires_manual_admin_action: false,
+    published_asset: projectUc6PublishedAsset(payload.published_asset),
+    idempotent_replay: typeof payload.idempotent_replay === 'boolean' ? payload.idempotent_replay : null
+  };
+}
+
+export function validateUc6ReusableAssetPublicationCommand(command) {
+  const decision = String(command?.decision || '').trim();
+  const decisionIdentity = String(command?.decision_identity || '').trim();
+  const pptxSha = String(command?.reviewed_final_pptx_sha256 || '').trim();
+  const pdfSha = String(command?.reviewed_final_pdf_sha256 || '').trim();
+  const rawNote = command?.administrator_note;
+  if (decision !== UC6_PUBLICATION_DECISION) {
+    return { ok: false, code: 'publication_decision_invalid', message: '승인·게시 결정을 확인하세요.' };
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(decisionIdentity) || decisionIdentity.includes('..')) {
+    return { ok: false, code: 'publication_identity_invalid', message: '승인 식별자를 다시 생성하세요.' };
+  }
+  if (!SHA256_PATTERN.test(pptxSha) || !SHA256_PATTERN.test(pdfSha)) {
+    return { ok: false, code: 'publication_sha_invalid', message: '검토한 산출물 SHA-256을 확인하세요.' };
+  }
+  let administratorNote;
+  if (rawNote !== undefined && rawNote !== null && String(rawNote).trim() !== '') {
+    administratorNote = String(rawNote).replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    if (
+      administratorNote.length > 1000
+      || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(administratorNote)
+      || /^(?:\/|~\/|[A-Za-z]:[\\/])/.test(administratorNote)
+      || /internal_secret_token|authorization:\s*bearer|api_key=|password=/i.test(administratorNote)
+    ) {
+      return { ok: false, code: 'publication_note_invalid', message: '관리자 메모는 1,000자 이하의 공개 가능한 텍스트여야 합니다.' };
+    }
+  }
+  return {
+    ok: true,
+    body: {
+      decision: UC6_PUBLICATION_DECISION,
+      decision_identity: decisionIdentity,
+      reviewed_final_pptx_sha256: pptxSha,
+      reviewed_final_pdf_sha256: pdfSha,
+      ...(administratorNote ? { administrator_note: administratorNote } : {})
+    }
   };
 }
 
@@ -960,6 +1121,12 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
     getFinalDeliveryCapabilities(jobId, options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.finalDeliveryCapabilities(jobId), { method: 'GET', signal: options.signal });
     },
+    getReviewArtifactCapabilities(jobId, options = {}) {
+      return request(UC6_BROWSER_ADMIN_ENDPOINTS.reviewArtifactCapabilities(jobId), { method: 'GET', signal: options.signal });
+    },
+    getReusableAssetPublication(jobId, options = {}) {
+      return request(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssetPublication(jobId), { method: 'GET', signal: options.signal });
+    },
     getDummyDatabagPackages(jobId, options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.dummyDatabagPackages(jobId), { method: 'GET', signal: options.signal });
     },
@@ -973,6 +1140,17 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
         throw err;
       }
       return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.render(jobId), { method: 'POST', json: validation.body, signal: options?.signal });
+    },
+    submitReusableAssetPublication(jobId, command, options = {}) {
+      const validation = validateUc6ReusableAssetPublicationCommand(command);
+      if (!validation.ok) {
+        const err = new Error(validation.message);
+        err.name = 'Uc6PublicationValidationError';
+        err.code = validation.code;
+        err.publicMessage = validation.message;
+        throw err;
+      }
+      return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssetPublication(jobId), { method: 'POST', json: validation.body, signal: options?.signal });
     },
     submitDecision(jobId, command, options = {}) {
       const validation = validateUc6DecisionCommand(command);
