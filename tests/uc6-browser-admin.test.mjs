@@ -1769,5 +1769,5 @@ test('A8-H runtime branches keep status polling, context summary, and retry sema
 
   const init = app.slice(app.indexOf('function initUC6()'));
   assert.equal(init.includes("if (uc6State.flowLane === 'asset_render')"), true);
-  assert.equal(init.includes('restartUC6AssetRenderSelection();\n          submitUC6ReusableAssetRender();'), true);
+  assert.equal(/restartUC6AssetRenderSelection\(\);\r?\n\s*submitUC6ReusableAssetRender\(\);/.test(init), true);
 });
