@@ -10,7 +10,12 @@ import {
   mapUc6StateToView,
   normalizeUc6ApiBaseUrl,
   normalizeUc6JobId,
+  normalizeUc6ReusableAssetId,
   projectUc6DummyDatabagPackageOptions,
+  projectUc6ReusableAssetCatalog,
+  projectUc6ReusableAssetPackageOptions,
+  projectUc6ReusableAssetRenderJobStatus,
+  projectUc6ReusableAssetRenderSubmission,
   projectUc6DummyDatabagRenderJobStatus,
   projectUc6DummyDatabagRenderSubmission,
   projectUc6FinalDeliveryCapabilities,
@@ -22,7 +27,8 @@ import {
   splitDecisionTextLines,
   validateUc6DecisionCommand,
   validateUc6DummyDatabagRenderCommand,
-  validateUc6ReusableAssetPublicationCommand
+  validateUc6ReusableAssetPublicationCommand,
+  validateUc6ReusableAssetRenderCommand
 } from '../public/uc6-browser-admin.mjs';
 
 const API_BASE = 'https://api.peter-n8n.duckdns.org/';
@@ -1007,7 +1013,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-06-v3"), true);
+  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8h-approved-asset-render-only-2026-08-06-v1"), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -1505,8 +1511,8 @@ test('A8-E Section 9: Source code assertions for single function declarations an
 
   const resumeBody = extractFunctionBody(appSource, 'resumeUC6PersistedJob');
   assert.equal(resumeBody.includes('await refreshUC6JobStatus({'), true);
-  assert.equal(resumeBody.includes("fetchReview: uc6State.flowLane !== 'dummy_render'"), true);
-  assert.equal(resumeBody.includes("const shouldPoll = uc6State.flowLane === 'dummy_render'"), true);
+  assert.equal(resumeBody.includes("fetchReview: uc6State.flowLane === 'legacy_analysis'"), true);
+  assert.equal(resumeBody.includes("uc6State.flowLane === 'asset_render'"), true);
 
   const refreshBody = extractFunctionBody(appSource, 'refreshUC6JobStatus');
   assert.equal(refreshBody.includes('const authoritativeDummyRenderLane = rawJob'), true);
@@ -1519,4 +1525,249 @@ test('A8-E Section 9: Source code assertions for single function declarations an
       < refreshBody.indexOf("if (uc6State.flowLane === 'dummy_render')"),
     true
   );
+});
+
+
+const A8H_ASSET_ID = 'reusable_template_asset__' + '1'.repeat(40);
+const A8H_SOURCE_SHA = 'a'.repeat(64);
+
+function a8hAssetRow(overrides = {}) {
+  return Object.assign({
+    asset_id: A8H_ASSET_ID,
+    status: 'published',
+    review_state: 'approved_for_reuse',
+    publication_state: 'published',
+    source_pptx_sha256: A8H_SOURCE_SHA,
+    generation_unit_count: 54,
+    slot_count: 177,
+    slide_count: 7,
+    approved_at: '2026-08-06T01:02:03Z',
+    template_family_ids: ['ax_agentic_selling_v3'],
+    compatible_dummy_databag_package_count: 1
+  }, overrides);
+}
+
+function a8hPackageRow(overrides = {}) {
+  return Object.assign({
+    schema_version: 'uc6_a8c_dummy_databag_package_public_projection_v1',
+    package_id: 'ax_growth_acceleration',
+    package_version: 'v1',
+    title: 'AX Growth Acceleration',
+    description: 'Growth scenario',
+    template_family_id: 'ax_agentic_selling_v3',
+    source_pptx_sha256: A8H_SOURCE_SHA,
+    supported_canonical_source_group_count: 5,
+    status: 'active',
+    canonical_sha256: 'b'.repeat(64)
+  }, overrides);
+}
+
+function a8hPackageOptions(overrides = {}) {
+  return Object.assign({
+    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_package_options_v1',
+    asset: a8hAssetRow(),
+    package_count: 1,
+    packages: [a8hPackageRow()],
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+    public_safety: 'PASS'
+  }, overrides);
+}
+
+function a8hBoundPackage(overrides = {}) {
+  return Object.assign({
+    package_id: 'ax_growth_acceleration',
+    package_version: 'v1',
+    title: 'AX Growth Acceleration',
+    description: 'Growth scenario',
+    source_context_bundle_sha256: 'c'.repeat(64)
+  }, overrides);
+}
+
+test('A8-H Asset identifiers, catalog, package options, and persistence are strict', () => {
+  assert.equal(normalizeUc6ReusableAssetId(A8H_ASSET_ID), A8H_ASSET_ID);
+  assert.throws(() => normalizeUc6ReusableAssetId('../bad'));
+
+  const catalog = projectUc6ReusableAssetCatalog({
+    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_catalog_v1',
+    asset_count: 1,
+    assets: [a8hAssetRow()],
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+    public_safety: 'PASS'
+  });
+  assert.equal(catalog.asset_count, 1);
+  assert.equal(catalog.assets[0].review_state, 'approved_for_reuse');
+
+  const options = projectUc6ReusableAssetPackageOptions(a8hPackageOptions(), { expectedAssetId: A8H_ASSET_ID });
+  assert.equal(options.package_count, 1);
+  assert.equal(options.packages[0].source_pptx_sha256, A8H_SOURCE_SHA);
+  assert.throws(() => projectUc6ReusableAssetPackageOptions(a8hPackageOptions({ asset: a8hAssetRow({ source_pptx_sha256: 'd'.repeat(64) }) }), { expectedAssetId: A8H_ASSET_ID }));
+
+  const persisted = projectUc6PersistedState({
+    flow_lane: 'asset_render',
+    selected_asset_id: A8H_ASSET_ID,
+    selected_package_id: 'ax_growth_acceleration',
+    selected_package_version: 'v1',
+    token: 'secret'
+  });
+  assert.deepEqual(persisted, {
+    flow_lane: 'asset_render',
+    selected_asset_id: A8H_ASSET_ID,
+    selected_package_id: 'ax_growth_acceleration',
+    selected_package_version: 'v1'
+  });
+});
+
+test('A8-H render command and submission preserve Asset identity without retry fields', () => {
+  const options = projectUc6ReusableAssetPackageOptions(a8hPackageOptions(), { expectedAssetId: A8H_ASSET_ID });
+  const valid = validateUc6ReusableAssetRenderCommand({ package_id: 'ax_growth_acceleration', package_version: 'v1' }, options);
+  assert.equal(valid.ok, true);
+  assert.deepEqual(valid.body, { package_id: 'ax_growth_acceleration', package_version: 'v1' });
+  assert.equal(validateUc6ReusableAssetRenderCommand({ package_id: 'ax_growth_acceleration', package_version: 'v1', retry_failed: false }, options).ok, false);
+
+  const projected = projectUc6ReusableAssetRenderSubmission({
+    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_submission_v1',
+    job_id: JOB_ID,
+    task_type: 'fetchdoc_browser_admin_uc6_render_reusable_asset',
+    task_id: 2473,
+    queue_status: 'pending',
+    created: true,
+    state: 'render_queued',
+    asset: a8hAssetRow(),
+    bound_package: a8hBoundPackage(),
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+    public_safety: 'PASS'
+  }, { expectedAssetId: A8H_ASSET_ID });
+  assert.equal(projected.job_id, JOB_ID);
+  assert.equal(projected.state, 'render_queued');
+  assert.throws(() => projectUc6ReusableAssetRenderSubmission({ ...projected, state: 'render_running' }, { expectedAssetId: A8H_ASSET_ID }));
+});
+
+test('A8-H completed job status is delivery-only and rejects publication semantics', () => {
+  const payload = {
+    job_id: JOB_ID,
+    state: 'render_completed',
+    source: { sha256: A8H_SOURCE_SHA, size_bytes: 24377844, slide_count: 7, filename: 'source.pptx' },
+    render: {
+      schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_result_v1',
+      job_id: JOB_ID,
+      state: 'render_completed',
+      render_state: 'render_completed',
+      review_state: 'not_required',
+      publication_state: 'not_applicable',
+      promotion_eligible: false,
+      asset: {
+        asset_id: A8H_ASSET_ID,
+        source_pptx_sha256: A8H_SOURCE_SHA,
+        asset_manifest_sha256: 'd'.repeat(64),
+        catalog_entry_sha256: 'e'.repeat(64),
+        approval_receipt_sha256: 'f'.repeat(64)
+      },
+      bound_package: a8hBoundPackage(),
+      final_artifacts: {
+        pptx: { alias: 'final_render_output_pptx', sha256: '1'.repeat(64), size_bytes: 120 },
+        pdf: { alias: 'final_render_output_pdf', sha256: '2'.repeat(64), size_bytes: 121 }
+      },
+      control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+      public_safety: 'PASS'
+    },
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1'
+  };
+  const projected = projectUc6ReusableAssetRenderJobStatus(payload, { expectedJobId: JOB_ID, expectedAssetId: A8H_ASSET_ID });
+  assert.equal(projected.review_state, 'not_required');
+  assert.equal(projected.publication_state, 'not_applicable');
+  assert.equal(projected.promotion_eligible, false);
+  assert.throws(() => projectUc6ReusableAssetRenderJobStatus({ ...payload, render: { ...payload.render, publication_state: 'published' } }, { expectedJobId: JOB_ID, expectedAssetId: A8H_ASSET_ID }));
+});
+
+test('A8-H API uses exact routes, Firebase Bearer, and one-shot render POST', async () => {
+  const calls = [];
+  const packageOptions = projectUc6ReusableAssetPackageOptions(a8hPackageOptions(), { expectedAssetId: A8H_ASSET_ID });
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: 'http://127.0.0.1',
+    allowLoopbackHttp: true,
+    getIdToken: async () => 'firebase-token',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(200, {});
+    }
+  });
+  await api.getReusableAssets();
+  await api.getReusableAssetPackages(A8H_ASSET_ID);
+  await api.submitReusableAssetRender(A8H_ASSET_ID, { package_id: 'ax_growth_acceleration', package_version: 'v1' }, { packageOptions });
+  await api.getRenderArtifactCapabilities(JOB_ID);
+  assert.deepEqual(calls.map((call) => new URL(call.url).pathname), [
+    '/fetchdoc/browser-admin/uc6/reusable-assets',
+    `/fetchdoc/browser-admin/uc6/reusable-assets/${A8H_ASSET_ID}/dummy-databag-packages`,
+    `/fetchdoc/browser-admin/uc6/reusable-assets/${A8H_ASSET_ID}/renders`,
+    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/render-artifact-capabilities`
+  ]);
+  assert.equal(calls[2].init.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[2].init.body), { package_id: 'ax_growth_acceleration', package_version: 'v1' });
+  assert.equal(calls.every((call) => call.init.headers.Authorization === 'Bearer firebase-token'), true);
+  assert.equal(calls.every((call) => !Object.prototype.hasOwnProperty.call(call.init.headers, 'X-Internal-Token')), true);
+
+  let attempts = 0;
+  const ambiguousApi = createUc6BrowserAdminApi({
+    apiBaseUrl: 'http://127.0.0.1',
+    allowLoopbackHttp: true,
+    getIdToken: async () => 'firebase-token',
+    fetchImpl: async () => { attempts += 1; throw new Error('network'); }
+  });
+  await assert.rejects(() => ambiguousApi.submitReusableAssetRender(A8H_ASSET_ID, { package_id: 'ax_growth_acceleration', package_version: 'v1' }, { packageOptions }), { name: 'Uc6AmbiguousSubmissionError' });
+  assert.equal(attempts, 1);
+});
+
+test('A8-H app source keeps Asset render-only lane separate from upload review publication', () => {
+  const app = readSource('../public/app.js');
+  const admin = readSource('../public/uc6-browser-admin.mjs');
+  const style = readSource('../public/style.css');
+  assert.equal(app.includes("flowLane === 'asset_render'"), true);
+  assert.equal(app.includes('renderUC6AssetSelectionStage'), true);
+  assert.equal(app.includes('renderUC6AssetPackageStage'), true);
+  assert.equal(app.includes('submitUC6ReusableAssetRender'), true);
+  assert.equal(app.includes('loadUC6A8HDeliveryState'), true);
+  assert.equal(app.includes('review_state !== \'not_required\''), true);
+  assert.equal(app.includes('publication_state !== \'not_applicable\''), true);
+  assert.equal(app.includes('같은 Asset으로 새 문서 생성'), true);
+  assert.equal(admin.includes('/render-artifact-capabilities'), true);
+  assert.equal(admin.includes('X-Internal-Token'), false);
+  assert.equal(style.includes('#view-uc6 .uc6-a8h-asset-grid'), true);
+  assert.equal(style.includes('#view-uc6 .uc6-flow-lane-switch'), true);
+});
+
+test('A8-H runtime branches keep status polling, context summary, and retry semantics isolated', () => {
+  const app = readSource('../public/app.js');
+  const sliceFunction = (name, nextName) => {
+    const start = app.indexOf(`function ${name}(`);
+    const end = app.indexOf(`function ${nextName}(`, start + 1);
+    assert.notEqual(start, -1, `${name} missing`);
+    assert.notEqual(end, -1, `${nextName} missing`);
+    return app.slice(start, end);
+  };
+
+  assert.equal(app.includes("persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render')"), true);
+
+  const refreshStart = app.indexOf('async function refreshUC6JobStatus(');
+  const refreshEnd = app.indexOf('const UC6_REVIEW_ARTIFACT_DOWNLOAD_SPECS', refreshStart);
+  assert.notEqual(refreshStart, -1, 'refreshUC6JobStatus missing');
+  assert.notEqual(refreshEnd, -1, 'refreshUC6JobStatus end marker missing');
+  const refresh = app.slice(refreshStart, refreshEnd);
+  assert.equal(refresh.includes("flowLane === 'asset_render'"), true);
+  assert.equal(refresh.includes('projectUc6ReusableAssetRenderJobStatus'), true);
+  assert.equal(refresh.includes("flowLane === 'dummy_render'"), true);
+  assert.equal(refresh.includes('projectUc6DummyDatabagRenderJobStatus'), true);
+  assert.equal(refresh.includes('rows.push'), false);
+
+  const context = sliceFunction('renderUC6ContextSummary', 'renderUC6All');
+  assert.equal(context.includes("flowLane === 'asset_render'"), true);
+  assert.equal(context.includes("rows.push(['Reusable Asset'"), true);
+  assert.equal(context.includes("flowLane === 'dummy_render'"), true);
+
+  const renderError = sliceFunction('renderUC6RenderErrorStage', 'createUC6A8FReviewPanel');
+  assert.equal(renderError.includes('같은 Asset으로 다시 생성'), true);
+  assert.equal(renderError.includes('uc6-restartAssetRenderBtn'), true);
+
+  const init = app.slice(app.indexOf('function initUC6()'));
+  assert.equal(init.includes("if (uc6State.flowLane === 'asset_render')"), true);
+  assert.equal(/restartUC6AssetRenderSelection\(\);\r?\n\s*submitUC6ReusableAssetRender\(\);/.test(init), true);
 });
