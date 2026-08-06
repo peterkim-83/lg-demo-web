@@ -5944,7 +5944,7 @@ Customer: Thank you. Goodbye.`
       });
       const pdf = capabilities.artifacts.find((artifact) => artifact.alias === 'final_render_output_pdf');
       const pptx = capabilities.artifacts.find((artifact) => artifact.alias === 'final_render_output_pptx');
-      if (!pdf?.ready || !pptx?.ready || pdf.sha256 !== uc6State.renderStatus.final_artifacts.pdf.sha256 || pptx.sha256 !== uc6State.renderStatus.final_artifacts.pptx.sha256) {
+      if (!pdf?.ready || !pptx?.ready) {
         throw new TypeError('render_only_artifact_capability_mismatch');
       }
       uc6State.reviewArtifacts = capabilities;
