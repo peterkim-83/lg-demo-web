@@ -1007,7 +1007,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-06-v2"), true);
+  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-06-v3"), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -1387,10 +1387,11 @@ test('A8-F app source provides PDF review, stable decision identity, and server 
   const appSource = readSource('../public/app.js');
   const cssSource = readSource('../public/style.css');
   const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
+  const panelBody = extractFunctionBody(appSource, 'createUC6A8FReviewPanel');
   const submitBody = extractFunctionBody(appSource, 'submitUC6ReusableAssetPublication');
   assert.equal(resultBody.includes('/pdf-embed.html?file='), true);
-  assert.equal(resultBody.includes('uc6-publicationReviewConfirmed'), true);
-  assert.equal(resultBody.includes('uc6-submitPublicationBtn'), true);
+  assert.equal(panelBody.includes('uc6-publicationReviewConfirmed'), true);
+  assert.equal(panelBody.includes('uc6-submitPublicationBtn'), true);
   assert.equal(submitBody.includes('ensureUC6PublicationDecisionIdentity()'), true);
   assert.equal(submitBody.includes('reconcileUC6PublicationState'), true);
   assert.equal(submitBody.includes('submitReusableAssetPublication'), true);
@@ -1410,6 +1411,55 @@ test('A8-F review loading isolates publication failure from PDF capability state
   assert.equal(loadBody.includes(`uc6State.reviewArtifacts = null;
       uc6State.reviewArtifactsStatus = 'error';
       uc6State.reviewArtifactsMessage = message;`), false);
+});
+
+test('A8-F publication interactions preserve the mounted PDF viewer', () => {
+  const appSource = readSource('../public/app.js');
+  const surfaceBody = extractFunctionBody(appSource, 'renderUC6A8FReviewSurfaceOnly');
+  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
+  const submitBody = extractFunctionBody(appSource, 'submitUC6ReusableAssetPublication');
+  const reconcileBody = extractFunctionBody(appSource, 'reconcileUC6PublicationState');
+  const changeHandler = appSource.slice(
+    appSource.indexOf("target.id === 'uc6-publicationReviewConfirmed'"),
+    appSource.indexOf("target.id === 'uc6-decisionChoice'")
+  );
+
+  assert.equal(resultBody.includes('createUC6A8FReviewPanel(renderStatus, publication, isPublished)'), true);
+  assert.equal(surfaceBody.includes('currentPanel.replaceWith(createUC6A8FReviewPanel'), true);
+  assert.equal(surfaceBody.includes('root.replaceChildren'), false);
+  assert.equal(surfaceBody.includes('uc6-a8f-viewer-column'), false);
+  assert.equal(changeHandler.includes('renderUC6A8FReviewSurfaceOnly()'), true);
+  assert.equal(changeHandler.includes('renderUC6All()'), false);
+  assert.equal(submitBody.includes('renderUC6A8FReviewSurfaceOnly()'), true);
+  assert.equal(submitBody.includes('renderUC6All()'), false);
+  assert.equal(reconcileBody.includes('renderUC6A8FReviewSurfaceOnly()'), true);
+  assert.equal(reconcileBody.includes('renderUC6All()'), false);
+});
+
+test('A8-F artifact downloads refresh signed capabilities and never navigate to expired JSON', () => {
+  const appSource = readSource('../public/app.js');
+  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
+  const downloadBody = extractFunctionBody(appSource, 'downloadUC6ReviewArtifact');
+  const consumeBody = extractFunctionBody(appSource, 'consumeUC6ReviewArtifactDownload');
+  const triggerBody = extractFunctionBody(appSource, 'triggerUC6ReviewArtifactDownload');
+  const clickHandler = appSource.slice(
+    appSource.indexOf("const reviewArtifactAlias = target.dataset.uc6ArtifactDownload"),
+    appSource.indexOf("uc6Els.section.addEventListener('change'")
+  );
+
+  assert.equal(resultBody.includes('button.dataset.uc6ArtifactDownload = capability.alias'), true);
+  assert.equal(resultBody.includes('link.href = capability.actions.download.href'), false);
+  assert.equal(downloadBody.includes('getReviewArtifactCapabilities'), true);
+  assert.equal(downloadBody.includes('projectUc6FinalDeliveryCapabilities'), true);
+  assert.equal(downloadBody.includes('for (let attempt = 0; attempt < 2; attempt += 1)'), true);
+  assert.equal(downloadBody.includes("error?.code === 'review_artifact_capability_expired'"), true);
+  assert.equal(consumeBody.includes('response.status === 410'), true);
+  assert.equal(consumeBody.includes("credentials: 'omit'"), true);
+  assert.equal(consumeBody.includes("redirect: 'error'"), true);
+  assert.equal(consumeBody.includes('response.blob()'), true);
+  assert.equal(triggerBody.includes('URL.createObjectURL(blob)'), true);
+  assert.equal(triggerBody.includes('anchor.click()'), true);
+  assert.equal(clickHandler.includes('downloadUC6ReviewArtifact(reviewArtifactAlias)'), true);
 });
 
 test('A8-F administrator session actions remain on one compact row', () => {
@@ -1438,14 +1488,16 @@ test('A8-E Section 9: Source code assertions for single function declarations an
   const intakeBody = extractFunctionBody(appSource, 'renderUC6IntakeStage');
   const packageBody = extractFunctionBody(appSource, 'renderUC6PackageStage');
   const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
+  const publicationPanelBody = extractFunctionBody(appSource, 'createUC6A8FReviewPanel');
   assert.equal(intakeBody.includes('분석 시작'), false);
   assert.equal(intakeBody.includes('PPTX 등록'), true);
   assert.equal(packageBody.includes('saveUC6LocalState()'), true);
   assert.equal(packageBody.includes("uc6State.jobState === 'source_ready'"), true);
   assert.equal(packageBody.includes('패키지 다시 불러오기'), true);
-  assert.equal(resultBody.includes("uc6-submitPublicationBtn"), true);
+  assert.equal(resultBody.includes('createUC6A8FReviewPanel'), true);
+  assert.equal(publicationPanelBody.includes("uc6-submitPublicationBtn"), true);
   assert.equal(resultBody.includes('uc6-a8f-pdf-frame'), true);
-  assert.equal(resultBody.includes('publication_state'), true);
+  assert.equal(publicationPanelBody.includes('publication_state'), true);
   assert.equal(appSource.includes("flowLane: 'dummy_render'"), true);
   assert.equal(appSource.includes("renderSubmissionActive"), false);
   assert.equal(appSource.includes("renderMessage"), false);
