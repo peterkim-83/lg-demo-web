@@ -44,7 +44,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-05-v1';
+const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-06-v2';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6020,43 +6020,104 @@ Customer: Thank you. Goodbye.`
     uc6State.publicationMessage = '승인·게시 상태를 확인하고 있습니다.';
     renderUC6All();
     try {
-      const [capabilityPayload, publicationPayload] = await Promise.all([
+      const [capabilityResult, publicationResult] = await Promise.allSettled([
         uc6State.api.getReviewArtifactCapabilities(uc6State.jobId, { signal }),
         uc6State.api.getReusableAssetPublication(uc6State.jobId, { signal })
       ]);
-      const capabilities = projectUc6FinalDeliveryCapabilities(capabilityPayload, {
-        expectedJobId: uc6State.jobId,
-        apiBaseUrl: CONFIG.UC6_BROWSER_ADMIN_API_BASE
-      });
-      const publication = projectUc6ReusableAssetPublication(publicationPayload, {
-        expectedJobId: uc6State.jobId
-      });
-      assertUC6ReviewArtifactParity(capabilities, publication);
-      uc6State.reviewArtifacts = capabilities;
-      uc6State.reviewArtifactsStatus = 'ready';
-      uc6State.reviewArtifactsMessage = '관리자 검토용 산출물이 준비되었습니다.';
-      uc6State.publication = publication;
-      uc6State.publicationStatus = 'ready';
-      uc6State.publicationMessage = publication.publication_state === 'published'
-        ? '승인 및 게시가 완료되었습니다.'
-        : 'PDF를 검토한 뒤 명시적으로 승인·게시하세요.';
-      if (publication.publication_state === 'published') {
-        uc6State.publicationReviewConfirmed = true;
-        if (publication.published_asset?.decision_identity) {
-          uc6State.publicationDecisionIdentity = publication.published_asset.decision_identity;
+      const rejected = [capabilityResult, publicationResult]
+        .filter((result) => result.status === 'rejected')
+        .map((result) => result.reason);
+      for (const error of rejected) {
+        if (handleUC6AuthorizationFailure(error)) return;
+        if (error?.name === 'AbortError') return;
+      }
+
+      let capabilities = null;
+      let publication = null;
+      let capabilityError = null;
+      let publicationError = null;
+
+      if (capabilityResult.status === 'fulfilled') {
+        try {
+          capabilities = projectUc6FinalDeliveryCapabilities(capabilityResult.value, {
+            expectedJobId: uc6State.jobId,
+            apiBaseUrl: CONFIG.UC6_BROWSER_ADMIN_API_BASE
+          });
+        } catch (error) {
+          capabilityError = error;
+        }
+      } else {
+        capabilityError = capabilityResult.reason;
+      }
+
+      if (publicationResult.status === 'fulfilled') {
+        try {
+          publication = projectUc6ReusableAssetPublication(publicationResult.value, {
+            expectedJobId: uc6State.jobId
+          });
+        } catch (error) {
+          publicationError = error;
+        }
+      } else {
+        publicationError = publicationResult.reason;
+      }
+
+      if (capabilities && publication) {
+        try {
+          assertUC6ReviewArtifactParity(capabilities, publication);
+        } catch (error) {
+          capabilityError = error;
+          publicationError = error;
+          capabilities = null;
+          publication = null;
         }
       }
+
+      if (capabilities) {
+        uc6State.reviewArtifacts = capabilities;
+        uc6State.reviewArtifactsStatus = 'ready';
+        uc6State.reviewArtifactsMessage = '관리자 검토용 산출물이 준비되었습니다.';
+      } else {
+        uc6State.reviewArtifacts = null;
+        uc6State.reviewArtifactsStatus = 'error';
+        uc6State.reviewArtifactsMessage = uc6MessageFromError(capabilityError);
+      }
+
+      if (publication) {
+        uc6State.publication = publication;
+        uc6State.publicationStatus = 'ready';
+        uc6State.publicationMessage = publication.publication_state === 'published'
+          ? '승인 및 게시가 완료되었습니다.'
+          : 'PDF를 검토한 뒤 명시적으로 승인·게시하세요.';
+        if (publication.publication_state === 'published') {
+          uc6State.publicationReviewConfirmed = true;
+          if (publication.published_asset?.decision_identity) {
+            uc6State.publicationDecisionIdentity = publication.published_asset.decision_identity;
+          }
+        }
+      } else {
+        uc6State.publication = null;
+        uc6State.publicationStatus = 'error';
+        uc6State.publicationMessage = uc6MessageFromError(publicationError);
+      }
+
+      const surfacedError = publicationError || capabilityError;
+      if (surfacedError) setUC6LiveMessage(uc6MessageFromError(surfacedError));
       saveUC6LocalState();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
       if (error?.name === 'AbortError') return;
       const message = uc6MessageFromError(error);
-      uc6State.reviewArtifacts = null;
-      uc6State.reviewArtifactsStatus = 'error';
-      uc6State.reviewArtifactsMessage = message;
-      uc6State.publication = null;
-      uc6State.publicationStatus = 'error';
-      uc6State.publicationMessage = message;
+      if (uc6State.reviewArtifactsStatus === 'loading') {
+        uc6State.reviewArtifacts = null;
+        uc6State.reviewArtifactsStatus = 'error';
+        uc6State.reviewArtifactsMessage = message;
+      }
+      if (uc6State.publicationStatus === 'loading') {
+        uc6State.publication = null;
+        uc6State.publicationStatus = 'error';
+        uc6State.publicationMessage = message;
+      }
       setUC6LiveMessage(message);
     } finally {
       uc6State.reviewSurfaceRequestActive = false;

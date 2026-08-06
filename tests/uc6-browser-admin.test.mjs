@@ -1007,7 +1007,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-05-v1"), true);
+  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8f-admin-review-publication-2026-08-06-v2"), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -1396,6 +1396,20 @@ test('A8-F app source provides PDF review, stable decision identity, and server 
   assert.equal(submitBody.includes('submitReusableAssetPublication'), true);
   assert.equal(cssSource.includes('#view-uc6 .uc6-a8f-review-layout'), true);
   assert.equal(cssSource.includes('#view-uc6 .uc6-a8f-pdf-frame'), true);
+});
+
+test('A8-F review loading isolates publication failure from PDF capability state', () => {
+  const appSource = readSource('../public/app.js');
+  const loadBody = extractFunctionBody(appSource, 'loadUC6A8FReviewState');
+  assert.equal(loadBody.includes('Promise.allSettled(['), true);
+  assert.equal(loadBody.includes('capabilityResult.status'), true);
+  assert.equal(loadBody.includes('publicationResult.status'), true);
+  assert.equal(loadBody.includes("uc6State.reviewArtifactsStatus = 'ready'"), true);
+  assert.equal(loadBody.includes("uc6State.publicationStatus = 'error'"), true);
+  assert.equal(loadBody.includes('publicationError || capabilityError'), true);
+  assert.equal(loadBody.includes(`uc6State.reviewArtifacts = null;
+      uc6State.reviewArtifactsStatus = 'error';
+      uc6State.reviewArtifactsMessage = message;`), false);
 });
 
 test('A8-F administrator session actions remain on one compact row', () => {
