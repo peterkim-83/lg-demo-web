@@ -6,6 +6,7 @@ import {
   createUc6BrowserAdminApi,
   mapUc6StateToView,
   normalizeUc6JobId,
+  projectUc6DummyDatabagPackageFamilyOptions,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
   projectUc6ReusableAssetPackageOptions,
@@ -48,7 +49,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8h-approved-asset-render-only-2026-08-06-v1';
+const APP_VERSION = 'app.uc6-r6c-template-family-variant-selection-2026-08-11-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5174,6 +5175,7 @@ Customer: Thank you. Goodbye.`
     assetPackageOptions: null,
     assetSubmissionAmbiguous: false,
     packageOptions: null,
+    selectedPackageFamilyId: '',
     selectedPackageId: '',
     selectedPackageVersion: '',
     renderStatus: null,
@@ -5443,6 +5445,7 @@ Customer: Thank you. Goodbye.`
         selected_panel: 'review',
         flow_lane: uc6State.flowLane,
         selected_asset_id: uc6State.selectedAssetId,
+        selected_package_family_id: uc6State.selectedPackageFamilyId,
         selected_package_id: uc6State.selectedPackageId,
         selected_package_version: uc6State.selectedPackageVersion,
         publication_decision_identity: uc6State.publicationDecisionIdentity
@@ -5546,6 +5549,7 @@ Customer: Thank you. Goodbye.`
     uc6State.assetPackageOptions = null;
     uc6State.assetSubmissionAmbiguous = false;
     uc6State.packageOptions = null;
+    uc6State.selectedPackageFamilyId = '';
     uc6State.selectedPackageId = '';
     uc6State.selectedPackageVersion = '';
     uc6State.renderStatus = null;
@@ -5722,6 +5726,9 @@ Customer: Thank you. Goodbye.`
     try {
       uc6State.flowLane = persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render');
       if (persisted.selected_asset_id) uc6State.selectedAssetId = persisted.selected_asset_id;
+      if (persisted.selected_package_family_id && uc6State.flowLane === 'dummy_render') {
+        uc6State.selectedPackageFamilyId = persisted.selected_package_family_id;
+      }
       if (persisted.selected_package_id) uc6State.selectedPackageId = persisted.selected_package_id;
       if (persisted.selected_package_version) uc6State.selectedPackageVersion = persisted.selected_package_version;
       if (persisted.publication_decision_identity) uc6State.publicationDecisionIdentity = persisted.publication_decision_identity;
@@ -5764,7 +5771,7 @@ Customer: Thank you. Goodbye.`
     uc6State.selectedFile = validation.file;
     uc6State.operationInFlight = true;
     uc6State.flowLane = 'dummy_render';
-    uc6State.stageMessage = 'PPTX를 등록하고 사용할 데이터 패키지를 확인하고 있습니다.';
+    uc6State.stageMessage = 'PPTX를 등록하고 Template Profile과 데이터 그룹을 확인하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
     try {
@@ -5797,6 +5804,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = '';
     uc6State.assetSubmissionAmbiguous = false;
     if (lane === 'asset_render') {
+      uc6State.selectedPackageFamilyId = '';
       uc6State.selectedFile = null;
       loadUC6ReusableAssetCatalog().catch(() => {});
     }
@@ -5976,28 +5984,86 @@ Customer: Thank you. Goodbye.`
     renderUC6All();
   }
 
+  function findUC6PackageFamiliesForPackage(packageId, packageVersion, options = uc6State.packageOptions) {
+    if (!options || !Array.isArray(options.package_families)) return [];
+    return options.package_families.filter((family) => (
+      Array.isArray(family.variants)
+      && family.variants.some((variant) => variant.package_id === packageId && variant.package_version === packageVersion)
+    ));
+  }
+
+  function getSelectedUC6PackageFamily(options = uc6State.packageOptions) {
+    if (!options || !Array.isArray(options.package_families)) return null;
+    return options.package_families.find((family) => family.package_family_id === uc6State.selectedPackageFamilyId) || null;
+  }
+
+  function getSelectedUC6PackageVariant(options = uc6State.packageOptions) {
+    const family = getSelectedUC6PackageFamily(options);
+    if (!family || !Array.isArray(family.variants)) return null;
+    return family.variants.find((variant) => (
+      variant.package_id === uc6State.selectedPackageId
+      && variant.package_version === uc6State.selectedPackageVersion
+    )) || null;
+  }
+
+  function reconcileUC6BoundPackageFamily(boundPackage, options = uc6State.packageOptions) {
+    if (!boundPackage || !options) return null;
+    const families = findUC6PackageFamiliesForPackage(boundPackage.package_id, boundPackage.package_version, options);
+    if (families.length !== 1) {
+      uc6State.selectedPackageFamilyId = '';
+      options.selection_state = 'bound';
+      options.bound_package_family_id = null;
+      options.bound_package = boundPackage;
+      uc6State.stageMessage = '서버가 데이터 시나리오를 고정했지만 데이터 그룹을 확인할 수 없습니다. 상태를 다시 확인하세요.';
+      return null;
+    }
+    const family = families[0];
+    uc6State.selectedPackageFamilyId = family.package_family_id;
+    options.selection_state = 'bound';
+    options.bound_package_family_id = family.package_family_id;
+    options.bound_package = boundPackage;
+    return family;
+  }
+
   async function loadUC6PackageOptions(signal) {
-    if (!isUc6Authorized() || !uc6State.jobId) return;
+    if (!isUc6Authorized() || uc6State.flowLane !== 'dummy_render' || !uc6State.jobId) return;
     try {
-      const raw = await uc6State.api.getDummyDatabagPackages(uc6State.jobId, { signal });
-      const projected = projectUc6DummyDatabagPackageOptions(raw, { expectedJobId: uc6State.jobId });
+      const raw = await uc6State.api.getDummyDatabagPackageFamilies(uc6State.jobId, { signal });
+      const projected = projectUc6DummyDatabagPackageFamilyOptions(raw, { expectedJobId: uc6State.jobId });
       uc6State.packageOptions = projected;
-      if (projected.bound_package) {
+      if (projected.selection_state === 'bound' && projected.bound_package) {
+        uc6State.selectedPackageFamilyId = projected.bound_package_family_id;
         uc6State.selectedPackageId = projected.bound_package.package_id;
         uc6State.selectedPackageVersion = projected.bound_package.package_version;
       } else {
-        const matched = (projected.packages || []).find((p) => p.package_id === uc6State.selectedPackageId && p.package_version === uc6State.selectedPackageVersion);
-        if (!matched) {
+        const selectedFamily = getSelectedUC6PackageFamily(projected);
+        if (!selectedFamily) {
+          uc6State.selectedPackageFamilyId = '';
           uc6State.selectedPackageId = '';
           uc6State.selectedPackageVersion = '';
+        } else {
+          const matched = selectedFamily.variants.find((variant) => (
+            variant.package_id === uc6State.selectedPackageId
+            && variant.package_version === uc6State.selectedPackageVersion
+          ));
+          if (!matched) {
+            uc6State.selectedPackageId = '';
+            uc6State.selectedPackageVersion = '';
+          }
         }
       }
       if (uc6State.jobState === 'failed') {
-        uc6State.stageMessage = '문서 생성 작업이 실패했습니다. 서버에 고정된 데이터 패키지를 확인한 후 다시 생성할 수 있습니다.';
+        uc6State.stageMessage = '문서 생성 작업이 실패했습니다. 서버에 고정된 데이터 그룹과 시나리오를 확인한 후 다시 생성할 수 있습니다.';
+      } else if (projected.compatibility_state === 'incompatible_source_pptx') {
+        uc6State.stageMessage = '업로드한 PPTX와 호환되는 Template Profile을 확인할 수 없습니다.';
       } else if (projected.selection_state === 'bound') {
-        uc6State.stageMessage = '이 작업의 데이터 패키지가 서버에 고정되어 있습니다.';
+        uc6State.stageMessage = 'Template Profile이 확인되었으며 데이터 그룹과 시나리오가 서버에 고정되어 있습니다.';
+      } else if (projected.package_family_count === 0) {
+        uc6State.stageMessage = 'Template Profile은 확인되었지만 선택 가능한 데이터 그룹이 없습니다.';
+      } else if (uc6State.selectedPackageFamilyId) {
+        uc6State.stageMessage = '선택한 데이터 그룹에서 문서에 적용할 시나리오를 선택하세요.';
       } else {
-        uc6State.stageMessage = '문서에 적용할 데이터 시나리오를 선택하세요.';
+        uc6State.stageMessage = 'Template Profile이 확인되었습니다. 사용할 데이터 그룹을 선택하세요.';
       }
       saveUC6LocalState();
       renderUC6All();
@@ -6011,8 +6077,15 @@ Customer: Thank you. Goodbye.`
 
   async function submitUC6DummyRender(retryFailed = false) {
     if (!isUc6Authorized() || uc6State.operationInFlight || !uc6State.jobId) return;
-    if (!uc6State.selectedPackageId || !uc6State.selectedPackageVersion) {
-      uc6State.stageMessage = '데이터 패키지를 선택하세요.';
+    const selectedFamily = getSelectedUC6PackageFamily();
+    const selectedVariant = getSelectedUC6PackageVariant();
+    if (!selectedFamily) {
+      uc6State.stageMessage = '사용할 데이터 그룹을 선택하세요.';
+      renderUC6All();
+      return;
+    }
+    if (!selectedVariant) {
+      uc6State.stageMessage = '선택한 데이터 그룹에서 시나리오를 선택하세요.';
       renderUC6All();
       return;
     }
@@ -6036,10 +6109,7 @@ Customer: Thank you. Goodbye.`
       if (projected.bound_package) {
         uc6State.selectedPackageId = projected.bound_package.package_id;
         uc6State.selectedPackageVersion = projected.bound_package.package_version;
-        if (uc6State.packageOptions) {
-          uc6State.packageOptions.selection_state = 'bound';
-          uc6State.packageOptions.bound_package = projected.bound_package;
-        }
+        reconcileUC6BoundPackageFamily(projected.bound_package);
       }
       uc6State.consecutivePollErrors = 0;
 
@@ -6206,8 +6276,7 @@ Customer: Thank you. Goodbye.`
         uc6State.selectedPackageId = projected.bound_package.package_id;
         uc6State.selectedPackageVersion = projected.bound_package.package_version;
         if (uc6State.packageOptions) {
-          uc6State.packageOptions.selection_state = 'bound';
-          uc6State.packageOptions.bound_package = projected.bound_package;
+          reconcileUC6BoundPackageFamily(projected.bound_package);
         }
       }
 
@@ -6969,12 +7038,12 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6PackageStage(root) {
     const card = createUc6Node('section', 'uc6-stage-card');
-    card.append(createUc6Node('h2', '', '데이터 시나리오 선택'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '문서에 적용할 데이터 시나리오를 선택하세요.'));
+    card.append(createUc6Node('h2', '', 'Template Profile · 데이터 선택'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', '확인된 Template Profile에 맞는 데이터 그룹과 시나리오를 순서대로 선택하세요.'));
 
     const options = uc6State.packageOptions;
     if (!options) {
-      card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage || '데이터 패키지를 불러오는 중입니다...'));
+      card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage || 'Template Profile과 데이터 그룹을 확인하고 있습니다...'));
       const actions = createUc6Node('div', 'uc6-action-row');
       actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '패키지 다시 불러오기', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
       actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
@@ -6984,7 +7053,7 @@ Customer: Thank you. Goodbye.`
     }
 
     if (options.compatibility_state === 'incompatible_source_pptx') {
-      card.append(createUc6Node('p', 'uc6-inline-error', '선택한 PPTX 템플릿과 호환되는 데이터 패키지가 없습니다.'));
+      card.append(createUc6Node('p', 'uc6-inline-error', '업로드한 PPTX와 호환되는 Template Profile 및 데이터 그룹을 확인할 수 없습니다.'));
       const actions = createUc6Node('div', 'uc6-action-row');
       actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
       card.append(actions);
@@ -6992,70 +7061,134 @@ Customer: Thank you. Goodbye.`
       return;
     }
 
-    const isBound = options.selection_state === 'bound' || !!options.bound_package;
-    if (isBound && options.bound_package) {
+    const isBound = options.selection_state === 'bound';
+    if (isBound) {
+      uc6State.selectedPackageFamilyId = options.bound_package_family_id;
       uc6State.selectedPackageId = options.bound_package.package_id;
       uc6State.selectedPackageVersion = options.bound_package.package_version;
     }
 
-    const grid = createUc6Node('div', 'uc6-package-grid');
-    (options.packages || []).forEach((pkg) => {
-      const isSelected = uc6State.selectedPackageId === pkg.package_id && uc6State.selectedPackageVersion === pkg.package_version;
-      const packageCard = createUc6Node('article', `uc6-package-card${isSelected ? ' is-selected' : ''}${isBound ? ' is-bound' : ''}`);
+    const profileLayer = createUc6Node('section', 'uc6-selection-layer uc6-template-profile-layer');
+    profileLayer.append(createUc6Node('h3', 'uc6-selection-layer-title', '1. Template Profile'));
+    const profileSummary = createUc6Node('div', 'uc6-template-profile-summary');
+    const profile = options.template_profile;
+    if (profile) {
+      profileSummary.append(createUC6SummaryItem('Profile ID', profile.profile_id));
+      profileSummary.append(createUC6SummaryItem('Profile version', profile.profile_version));
+      profileSummary.append(createUC6SummaryItem('Generation units', profile.generation_unit_count));
+      profileSummary.append(createUC6SummaryItem('Fillable slots', profile.fillable_slot_count));
+    }
+    profileLayer.append(profileSummary);
+    card.append(profileLayer);
 
-      const header = createUc6Node('div', 'uc6-package-header');
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'uc6-package-radio';
-      radio.value = `${pkg.package_id}:${pkg.package_version}`;
-      radio.checked = isSelected;
-      radio.disabled = isBound || uc6State.operationInFlight;
-      radio.id = `uc6-pkg-${pkg.package_id}-${pkg.package_version}`;
-
-      const titleLabel = document.createElement('label');
-      titleLabel.htmlFor = radio.id;
-      titleLabel.className = 'uc6-package-title-label';
-      titleLabel.append(createUc6Node('strong', 'uc6-package-title', pkg.title));
-
-      header.append(radio, titleLabel, createUc6Node('span', 'uc6-admin-chip is-neutral', pkg.package_version));
-      packageCard.append(header);
-
-      if (pkg.description) {
-        packageCard.append(createUc6Node('p', 'uc6-package-desc', pkg.description));
-      }
-
-      const meta = createUc6Node('div', 'uc6-package-meta');
-      meta.append(createUc6Node('small', '', `상태: ${pkg.status}`));
-      meta.append(createUc6Node('small', '', `지원 그룹: ${pkg.supported_canonical_source_group_count}`));
-      packageCard.append(meta);
-
-      packageCard.addEventListener('click', (e) => {
-        if (isBound || uc6State.operationInFlight) return;
-        if (e.target.tagName !== 'INPUT') {
-          radio.checked = true;
-        }
-        uc6State.selectedPackageId = pkg.package_id;
-        uc6State.selectedPackageVersion = pkg.package_version;
-        saveUC6LocalState();
-        renderUC6All();
+    const familyLayer = createUc6Node('section', 'uc6-selection-layer uc6-family-layer');
+    familyLayer.append(createUc6Node('h3', 'uc6-selection-layer-title', '2. 데이터 그룹 / Package Family'));
+    if (options.package_family_count === 0) {
+      familyLayer.append(createUc6Node('p', 'uc6-stage-message', 'Template Profile은 확인되었지만 현재 선택 가능한 데이터 그룹이 없습니다.'));
+    } else {
+      const familyGrid = createUc6Node('div', 'uc6-package-family-grid');
+      options.package_families.forEach((family) => {
+        const familySelected = uc6State.selectedPackageFamilyId === family.package_family_id;
+        const familyCard = createUc6Node('article', `uc6-package-family-card${familySelected ? ' is-selected' : ''}${isBound ? ' is-bound' : ''}`);
+        const familyHeader = createUc6Node('div', 'uc6-package-header');
+        const familyRadio = document.createElement('input');
+        familyRadio.type = 'radio';
+        familyRadio.name = 'uc6-package-family-radio';
+        familyRadio.value = family.package_family_id;
+        familyRadio.checked = familySelected;
+        familyRadio.disabled = isBound || uc6State.operationInFlight;
+        familyRadio.id = `uc6-family-${family.package_family_id}`;
+        const familyLabel = document.createElement('label');
+        familyLabel.htmlFor = familyRadio.id;
+        familyLabel.className = 'uc6-package-title-label';
+        familyLabel.append(createUc6Node('strong', 'uc6-package-title', family.title));
+        familyHeader.append(familyRadio, familyLabel, createUc6Node('span', 'uc6-admin-chip is-neutral', `${family.variant_count} scenarios`));
+        familyCard.append(familyHeader);
+        if (family.description) familyCard.append(createUc6Node('p', 'uc6-package-desc', family.description));
+        familyCard.addEventListener('click', (event) => {
+          if (isBound || uc6State.operationInFlight) return;
+          if (event.target.tagName !== 'INPUT') familyRadio.checked = true;
+          uc6State.selectedPackageFamilyId = family.package_family_id;
+          const packageStillBelongsToFamily = family.variants.some((variant) => (
+            variant.package_id === uc6State.selectedPackageId
+            && variant.package_version === uc6State.selectedPackageVersion
+          ));
+          if (!packageStillBelongsToFamily) {
+            uc6State.selectedPackageId = '';
+            uc6State.selectedPackageVersion = '';
+          }
+          saveUC6LocalState();
+          renderUC6All();
+        });
+        familyGrid.append(familyCard);
       });
+      familyLayer.append(familyGrid);
+    }
+    card.append(familyLayer);
 
-      grid.append(packageCard);
-    });
+    const selectedFamily = getSelectedUC6PackageFamily(options);
+    const variantLayer = createUc6Node('section', 'uc6-selection-layer uc6-variant-layer');
+    variantLayer.append(createUc6Node('h3', 'uc6-selection-layer-title', '3. 시나리오 / Package Variant'));
+    if (!selectedFamily) {
+      variantLayer.append(createUc6Node('p', 'uc6-help-text', options.package_family_count ? '데이터 그룹을 선택하면 해당 그룹의 시나리오가 표시됩니다.' : '선택 가능한 데이터 그룹이 준비되면 시나리오를 선택할 수 있습니다.'));
+    } else {
+      const variantGrid = createUc6Node('div', 'uc6-package-grid uc6-package-variant-grid');
+      selectedFamily.variants.forEach((pkg) => {
+        const isSelected = uc6State.selectedPackageId === pkg.package_id && uc6State.selectedPackageVersion === pkg.package_version;
+        const packageCard = createUc6Node('article', `uc6-package-card${isSelected ? ' is-selected' : ''}${isBound ? ' is-bound' : ''}`);
+        const header = createUc6Node('div', 'uc6-package-header');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'uc6-package-variant-radio';
+        radio.value = `${pkg.package_id}:${pkg.package_version}`;
+        radio.checked = isSelected;
+        radio.disabled = isBound || uc6State.operationInFlight;
+        radio.id = `uc6-pkg-${pkg.package_id}-${pkg.package_version}`;
 
-    card.append(grid);
+        const titleLabel = document.createElement('label');
+        titleLabel.htmlFor = radio.id;
+        titleLabel.className = 'uc6-package-title-label';
+        titleLabel.append(createUc6Node('strong', 'uc6-package-title', pkg.title));
+
+        header.append(radio, titleLabel, createUc6Node('span', 'uc6-admin-chip is-neutral', pkg.package_version));
+        packageCard.append(header);
+
+        if (pkg.description) {
+          packageCard.append(createUc6Node('p', 'uc6-package-desc', pkg.description));
+        }
+
+        const meta = createUc6Node('div', 'uc6-package-meta');
+        meta.append(createUc6Node('small', '', `상태: ${pkg.status}`));
+        meta.append(createUc6Node('small', '', `지원 그룹: ${pkg.supported_canonical_source_group_count}`));
+        packageCard.append(meta);
+
+        packageCard.addEventListener('click', (e) => {
+          if (isBound || uc6State.operationInFlight) return;
+          if (e.target.tagName !== 'INPUT') radio.checked = true;
+          uc6State.selectedPackageId = pkg.package_id;
+          uc6State.selectedPackageVersion = pkg.package_version;
+          saveUC6LocalState();
+          renderUC6All();
+        });
+
+        variantGrid.append(packageCard);
+      });
+      variantLayer.append(variantGrid);
+    }
+    card.append(variantLayer);
 
     if (isBound) {
-      card.append(createUc6Node('p', 'uc6-help-text', '생성 요청이 접수되어 이 작업의 데이터 패키지가 고정되었습니다.'));
+      card.append(createUc6Node('p', 'uc6-help-text uc6-bound-selection-message', '서버가 이 작업의 데이터 그룹과 시나리오를 고정했습니다. 로컬 선택으로 변경할 수 없습니다.'));
     } else {
-      card.append(createUc6Node('p', 'uc6-help-text', '선택한 데이터 패키지는 생성 요청 시 이 작업에 고정됩니다.'));
+      card.append(createUc6Node('p', 'uc6-help-text', '선택한 시나리오의 package_id와 package_version은 생성 요청 시 이 작업에 고정됩니다.'));
     }
 
     const actions = createUc6Node('div', 'uc6-action-row');
+    const selectedVariant = getSelectedUC6PackageVariant(options);
     const canSubmit = isUc6Authorized()
       && uc6State.jobState === 'source_ready'
-      && !!uc6State.selectedPackageId
-      && !!uc6State.selectedPackageVersion
+      && !!selectedFamily
+      && !!selectedVariant
       && !uc6State.operationInFlight;
     const submitLabel = isBound ? '고정된 데이터로 문서 생성' : '선택한 데이터로 문서 생성';
     actions.append(createUC6ActionButton('uc6-submitRenderBtn', submitLabel, 'btn btn-primary', !canSubmit));
@@ -7138,7 +7271,9 @@ Customer: Thank you. Goodbye.`
       actions.append(createUC6ActionButton('uc6-retryRenderBtn', '같은 Asset으로 다시 생성', 'btn btn-primary', !isUc6Authorized() || !hasSelection || uc6State.operationInFlight));
       actions.append(createUC6ActionButton('uc6-restartAssetRenderBtn', 'Asset 선택으로 돌아가기', 'btn btn-outline', uc6State.operationInFlight));
     } else {
-      const isBound = uc6State.packageOptions?.selection_state === 'bound' && !!uc6State.packageOptions?.bound_package;
+      const isBound = uc6State.packageOptions?.selection_state === 'bound'
+        && !!uc6State.packageOptions?.bound_package_family_id
+        && !!getSelectedUC6PackageVariant();
       if (isBound) {
         actions.append(createUC6ActionButton('uc6-retryRenderBtn', '다시 생성', 'btn btn-primary', !isUc6Authorized() || uc6State.operationInFlight));
       } else {
@@ -7389,8 +7524,13 @@ Customer: Thank you. Goodbye.`
         rows.push(['게시 상태', uc6State.renderStatus.publication_state]);
       }
     } else if (uc6State.flowLane === 'dummy_render') {
-      const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.packageOptions?.bound_package?.title || '';
-      if (packageTitle) rows.push(['데이터 패키지', packageTitle]);
+      const profile = uc6State.packageOptions?.template_profile;
+      const family = getSelectedUC6PackageFamily();
+      const variant = getSelectedUC6PackageVariant();
+      if (profile) rows.push(['Template Profile', `${profile.profile_id}:${profile.profile_version}`]);
+      if (family) rows.push(['데이터 그룹', family.title || family.package_family_id]);
+      const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.packageOptions?.bound_package?.title || variant?.title || '';
+      if (packageTitle) rows.push(['데이터 시나리오', packageTitle]);
       if (uc6State.selectedPackageId) rows.push(['선택 패키지', `${uc6State.selectedPackageId}:${uc6State.selectedPackageVersion}`]);
       if (uc6State.renderStatus) {
         rows.push(['검토 상태', uc6State.publication?.review_state || uc6State.renderStatus.review_state || 'review_pending']);

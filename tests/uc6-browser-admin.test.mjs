@@ -11,6 +11,7 @@ import {
   normalizeUc6ApiBaseUrl,
   normalizeUc6JobId,
   normalizeUc6ReusableAssetId,
+  projectUc6DummyDatabagPackageFamilyOptions,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
   projectUc6ReusableAssetPackageOptions,
@@ -33,6 +34,83 @@ import {
 
 const API_BASE = 'https://api.peter-n8n.duckdns.org/';
 const JOB_ID = 'fd_uc6_admin_test_12345';
+const R6C_SOURCE_SHA = 'a'.repeat(64);
+const R6C_CONTROL_PLANE_VERSION = 'uc6_11c8r2_browser_admin_uc6_control_plane_v1';
+
+function cloneFixture(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function r6cVariant(profileId, packageId, order) {
+  return {
+    schema_version: 'uc6_a8c_dummy_databag_package_public_projection_v1',
+    package_id: packageId,
+    package_version: '2026.08.11',
+    title: `Scenario ${order}`,
+    description: `Synthetic public scenario ${order}.`,
+    template_family_id: profileId,
+    source_pptx_sha256: R6C_SOURCE_SHA,
+    supported_canonical_source_group_count: order,
+    status: 'active',
+    canonical_sha256: String(order).repeat(64)
+  };
+}
+
+function r6cFamily(packageFamilyId, title, variants) {
+  return {
+    schema_version: 'uc6_a9_0g2a_r6a_dummy_databag_package_family_projection_v1',
+    package_family_id: packageFamilyId,
+    title,
+    description: `${title} public description.`,
+    variant_count: variants.length,
+    variants
+  };
+}
+
+function r6cAxFixture() {
+  const profileId = 'ax_agentic_selling_v3';
+  return {
+    schema_version: 'uc6_a9_0g2a_r6a_browser_admin_dummy_databag_package_family_options_v1',
+    job_id: JOB_ID,
+    source_pptx_sha256: R6C_SOURCE_SHA,
+    compatibility_state: 'compatible',
+    template_profile: {
+      profile_id: profileId,
+      profile_version: 'v3',
+      generation_unit_count: 54,
+      fillable_slot_count: 177
+    },
+    package_family_count: 1,
+    package_families: [r6cFamily('ax_demo_scenarios', 'AX demo scenarios', [
+      r6cVariant(profileId, 'ax_customer_retention', 1),
+      r6cVariant(profileId, 'ax_growth_acceleration', 2),
+      r6cVariant(profileId, 'ax_operational_recovery', 3)
+    ])],
+    selection_state: 'unbound',
+    bound_package_family_id: null,
+    bound_package: null,
+    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
+    public_safety: 'PASS'
+  };
+}
+
+function r6cNovaGridFixture() {
+  const profileId = 'novagrid_energy_proposal_v2';
+  return {
+    ...r6cAxFixture(),
+    template_profile: {
+      profile_id: profileId,
+      profile_version: 'v2',
+      generation_unit_count: 42,
+      fillable_slot_count: 120
+    },
+    package_families: [r6cFamily('novagrid_customer_scenarios', 'NovaGrid customer scenarios', [
+      r6cVariant(profileId, 'novagrid_helios_foods', 4),
+      r6cVariant(profileId, 'novagrid_orion_metals', 5),
+      r6cVariant(profileId, 'novagrid_asteron_mobility', 6)
+    ])]
+  };
+}
 
 function response(status, body) {
   return {
@@ -1013,7 +1091,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes("app.uc6-tpl-05c-2t-11c-8r-e2e4c2c-a8h-approved-asset-render-only-2026-08-06-v1"), true);
+  assert.equal(app.includes('app.uc6-r6c-template-family-variant-selection-2026-08-11-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -1784,4 +1862,291 @@ test('A8-H runtime branches keep status polling, context summary, and retry sema
   const init = app.slice(app.indexOf('function initUC6()'));
   assert.equal(init.includes("if (uc6State.flowLane === 'asset_render')"), true);
   assert.equal(/restartUC6AssetRenderSelection\(\);\r?\n\s*submitUC6ReusableAssetRender\(\);/.test(init), true);
+});
+
+test('R6C package-family endpoint uses normalized job route and Firebase GET boundary', async () => {
+  const calls = [];
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async () => 'firebase-r6c-token',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(200, r6cAxFixture());
+    }
+  });
+
+  assert.equal(
+    UC6_BROWSER_ADMIN_ENDPOINTS.dummyDatabagPackageFamilies(`  ${JOB_ID}  `),
+    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/dummy-databag-package-families`
+  );
+  assert.equal(typeof api.getDummyDatabagPackageFamilies, 'function');
+  assert.equal(typeof api.getDummyDatabagPackages, 'function');
+  await api.getDummyDatabagPackageFamilies(`  ${JOB_ID}  `);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/dummy-databag-package-families`);
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-r6c-token');
+  assert.equal(calls[0].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
+  assert.equal(calls[0].init.credentials, 'omit');
+  assert.equal(calls[0].init.cache, 'no-store');
+});
+
+test('R6C family projector accepts AX and NovaGrid while preserving detached catalog order', () => {
+  const ax = r6cAxFixture();
+  const axBefore = JSON.stringify(ax);
+  const axProjected = projectUc6DummyDatabagPackageFamilyOptions(ax, { expectedJobId: JOB_ID });
+  assert.equal(JSON.stringify(ax), axBefore);
+  assert.deepEqual(axProjected.template_profile, ax.template_profile);
+  assert.equal(axProjected.package_family_count, 1);
+  assert.equal(axProjected.package_count, 3);
+  assert.deepEqual(
+    axProjected.packages.map((pkg) => pkg.package_id),
+    ['ax_customer_retention', 'ax_growth_acceleration', 'ax_operational_recovery']
+  );
+  assert.notStrictEqual(axProjected.package_families, ax.package_families);
+  assert.notStrictEqual(axProjected.package_families[0].variants, ax.package_families[0].variants);
+  axProjected.package_families[0].variants[0].title = 'Detached title';
+  assert.equal(ax.package_families[0].variants[0].title, 'Scenario 1');
+
+  const nova = r6cNovaGridFixture();
+  const novaProjected = projectUc6DummyDatabagPackageFamilyOptions(nova, { expectedJobId: JOB_ID });
+  assert.equal(novaProjected.template_profile.profile_id, 'novagrid_energy_proposal_v2');
+  assert.deepEqual(
+    novaProjected.package_families[0].variants.map((pkg) => pkg.package_id),
+    ['novagrid_helios_foods', 'novagrid_orion_metals', 'novagrid_asteron_mobility']
+  );
+
+  const ordered = r6cAxFixture();
+  ordered.package_families.push(r6cFamily('ax_secondary_scenarios', 'AX secondary scenarios', [
+    r6cVariant(ordered.template_profile.profile_id, 'ax_secondary_variant', 7)
+  ]));
+  ordered.package_family_count = 2;
+  const orderedProjected = projectUc6DummyDatabagPackageFamilyOptions(ordered, { expectedJobId: JOB_ID });
+  assert.deepEqual(orderedProjected.package_families.map((family) => family.package_family_id), ['ax_demo_scenarios', 'ax_secondary_scenarios']);
+  assert.deepEqual(orderedProjected.packages.map((pkg) => pkg.package_id), [
+    'ax_customer_retention',
+    'ax_growth_acceleration',
+    'ax_operational_recovery',
+    'ax_secondary_variant'
+  ]);
+});
+
+test('R6C family projector accepts only coherent bound family and compact package identity', () => {
+  const bound = r6cAxFixture();
+  const variant = bound.package_families[0].variants[1];
+  bound.selection_state = 'bound';
+  bound.bound_package_family_id = 'ax_demo_scenarios';
+  bound.bound_package = {
+    package_id: variant.package_id,
+    package_version: variant.package_version,
+    title: variant.title,
+    description: variant.description
+  };
+  const projected = projectUc6DummyDatabagPackageFamilyOptions(bound, { expectedJobId: JOB_ID });
+  assert.equal(projected.selection_state, 'bound');
+  assert.equal(projected.bound_package_family_id, 'ax_demo_scenarios');
+  assert.deepEqual(projected.bound_package, bound.bound_package);
+  assert.notStrictEqual(projected.bound_package, bound.bound_package);
+});
+
+test('R6C family projector fails closed for malformed, unsafe, incompatible, and contradictory responses', () => {
+  const incompatible = () => ({
+    ...r6cAxFixture(),
+    compatibility_state: 'incompatible_source_pptx',
+    template_profile: null,
+    package_family_count: 0,
+    package_families: [],
+    selection_state: 'unbound',
+    bound_package_family_id: null,
+    bound_package: null
+  });
+  const withSecondFamily = () => {
+    const value = r6cAxFixture();
+    value.package_families.push(r6cFamily('ax_secondary_scenarios', 'AX secondary scenarios', [
+      r6cVariant(value.template_profile.profile_id, 'ax_secondary_variant', 7)
+    ]));
+    value.package_family_count = 2;
+    return value;
+  };
+  const compact = (variant) => ({
+    package_id: variant.package_id,
+    package_version: variant.package_version,
+    title: variant.title,
+    description: variant.description
+  });
+  const cases = [
+    ['wrong top schema', (v) => { v.schema_version = 'wrong'; }],
+    ['wrong job id', (v) => { v.job_id = 'fd_uc6_admin_other_12345'; }],
+    ['public safety fail', (v) => { v.public_safety = 'FAIL'; }],
+    ['invalid source sha', (v) => { v.source_pptx_sha256 = 'ABC'; }],
+    ['invalid compatibility state', (v) => { v.compatibility_state = 'unknown'; }],
+    ['invalid selection state', (v) => { v.selection_state = 'unknown'; }],
+    ['family count mismatch', (v) => { v.package_family_count = 2; }],
+    ['non-array family list', (v) => { v.package_families = {}; }],
+    ['duplicate family id', (v) => { v.package_families.push(cloneFixture(v.package_families[0])); v.package_family_count = 2; }],
+    ['wrong family schema', (v) => { v.package_families[0].schema_version = 'wrong'; }],
+    ['empty family variants', (v) => { v.package_families[0].variants = []; v.package_families[0].variant_count = 0; }],
+    ['variant count mismatch', (v) => { v.package_families[0].variant_count = 99; }],
+    ['duplicate package identity across families', (v) => {
+      v.package_families.push(r6cFamily('ax_secondary_scenarios', 'AX secondary scenarios', [cloneFixture(v.package_families[0].variants[0])]));
+      v.package_family_count = 2;
+    }],
+    ['wrong package schema', (v) => { v.package_families[0].variants[0].schema_version = 'wrong'; }],
+    ['invalid package id', (v) => { v.package_families[0].variants[0].package_id = 'bad id'; }],
+    ['invalid package version', (v) => { v.package_families[0].variants[0].package_version = '*bad'; }],
+    ['bad package title', (v) => { v.package_families[0].variants[0].title = ' '; }],
+    ['unsafe package description', (v) => { v.package_families[0].variants[0].description = 'https://internal.example/private'; }],
+    ['unsafe family title', (v) => { v.package_families[0].title = 'file:///private/catalog'; }],
+    ['variant source mismatch', (v) => { v.package_families[0].variants[0].source_pptx_sha256 = 'b'.repeat(64); }],
+    ['variant template profile mismatch', (v) => { v.package_families[0].variants[0].template_family_id = 'other_profile'; }],
+    ['invalid canonical sha', (v) => { v.package_families[0].variants[0].canonical_sha256 = 'bad'; }],
+    ['inactive variant status', (v) => { v.package_families[0].variants[0].status = 'deprecated'; }],
+    ['invalid control plane text', (v) => { v.control_plane_contract_version = 'bad value'; }],
+    ['unbound with family id', (v) => { v.bound_package_family_id = 'ax_demo_scenarios'; }],
+    ['unbound with package', (v) => { v.bound_package = compact(v.package_families[0].variants[0]); }],
+    ['bound without family id', (v) => { v.selection_state = 'bound'; v.bound_package = compact(v.package_families[0].variants[0]); }],
+    ['bound without package', (v) => { v.selection_state = 'bound'; v.bound_package_family_id = 'ax_demo_scenarios'; }],
+    ['bound family missing', (v) => {
+      v.selection_state = 'bound';
+      v.bound_package_family_id = 'missing_family';
+      v.bound_package = compact(v.package_families[0].variants[0]);
+    }],
+    ['bound package missing from family', (v) => {
+      v.selection_state = 'bound';
+      v.bound_package_family_id = 'ax_demo_scenarios';
+      v.bound_package = { package_id: 'missing_variant', package_version: 'v1', title: 'Missing', description: '' };
+    }]
+  ];
+  for (const [label, mutate] of cases) {
+    const value = r6cAxFixture();
+    mutate(value);
+    assert.throws(
+      () => projectUc6DummyDatabagPackageFamilyOptions(value, { expectedJobId: JOB_ID }),
+      TypeError,
+      label
+    );
+  }
+
+  const incompatibleWithFamilies = incompatible();
+  incompatibleWithFamilies.package_families = cloneFixture(r6cAxFixture().package_families);
+  incompatibleWithFamilies.package_family_count = 1;
+  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(incompatibleWithFamilies, { expectedJobId: JOB_ID }), TypeError);
+
+  const incompatibleWithProfile = incompatible();
+  incompatibleWithProfile.template_profile = cloneFixture(r6cAxFixture().template_profile);
+  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(incompatibleWithProfile, { expectedJobId: JOB_ID }), TypeError);
+
+  const incompatibleBound = incompatible();
+  incompatibleBound.selection_state = 'bound';
+  incompatibleBound.bound_package_family_id = 'ax_demo_scenarios';
+  incompatibleBound.bound_package = { package_id: 'pkg', package_version: 'v1', title: 'Package', description: '' };
+  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(incompatibleBound, { expectedJobId: JOB_ID }), TypeError);
+
+  const wrongFamilyBinding = withSecondFamily();
+  wrongFamilyBinding.selection_state = 'bound';
+  wrongFamilyBinding.bound_package_family_id = 'ax_demo_scenarios';
+  wrongFamilyBinding.bound_package = compact(wrongFamilyBinding.package_families[1].variants[0]);
+  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(wrongFamilyBinding, { expectedJobId: JOB_ID }), TypeError);
+});
+
+test('R6C render command and persistence boundaries keep family metadata out of runtime identity', () => {
+  const options = projectUc6DummyDatabagPackageFamilyOptions(r6cAxFixture(), { expectedJobId: JOB_ID });
+  const validation = validateUc6DummyDatabagRenderCommand({
+    package_id: 'ax_customer_retention',
+    package_version: '2026.08.11',
+    retry_failed: false
+  }, options);
+  assert.equal(validation.ok, true);
+  assert.deepEqual(validation.body, {
+    package_id: 'ax_customer_retention',
+    package_version: '2026.08.11',
+    retry_failed: false
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(validation.body, 'package_family_id'), false);
+
+  const persisted = projectUc6PersistedState({
+    job_id: JOB_ID,
+    selected_package_family_id: 'ax_demo_scenarios',
+    selected_package_id: 'ax_customer_retention',
+    selected_package_version: '2026.08.11',
+    id_token: 'secret',
+    token: 'secret',
+    internal_path: '/data/fetchdoc/private',
+    template_profile: { profile_id: 'secret' },
+    package_families: r6cAxFixture().package_families,
+    backend_payload: r6cAxFixture()
+  });
+  assert.deepEqual(persisted, {
+    job_id: JOB_ID,
+    selected_package_family_id: 'ax_demo_scenarios',
+    selected_package_id: 'ax_customer_retention',
+    selected_package_version: '2026.08.11'
+  });
+  assert.equal(projectUc6PersistedState({ selected_package_family_id: 'bad family' }).selected_package_family_id, undefined);
+  assert.deepEqual(projectUc6PersistedState({
+    selected_package_family_id: 'ax_demo_scenarios',
+    selected_package_id: 'ax_customer_retention'
+  }), { selected_package_family_id: 'ax_demo_scenarios' });
+});
+
+test('R6C app source uses hierarchical dummy-render selection and preserves flat Asset flow', () => {
+  const app = readSource('../public/app.js');
+  const apiSource = readSource('../public/uc6-browser-admin.mjs');
+  const css = readSource('../public/style.css');
+  const load = extractFunctionBody(app, 'loadUC6PackageOptions');
+  const save = extractFunctionBody(app, 'saveUC6LocalState');
+  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
+  const reset = extractFunctionBody(app, 'resetUC6JobState');
+  const render = extractFunctionBody(app, 'renderUC6PackageStage');
+  const reconcile = extractFunctionBody(app, 'reconcileUC6BoundPackageFamily');
+  const submit = extractFunctionBody(app, 'submitUC6DummyRender');
+  const assetLoad = extractFunctionBody(app, 'loadUC6ReusableAssetPackages');
+  const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
+
+  assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
+  assert.equal(app.includes('uc6-r6c-template-family-variant-selection'), true);
+  assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
+  assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
+  assert.equal(load.includes('getDummyDatabagPackages('), false);
+  assert.equal(app.includes("selectedPackageFamilyId: ''"), true);
+  assert.equal(save.includes('selected_package_family_id: uc6State.selectedPackageFamilyId'), true);
+  assert.equal(resume.includes('persisted.selected_package_family_id'), true);
+  assert.equal(reset.includes("uc6State.selectedPackageFamilyId = ''"), true);
+
+  assert.equal(render.includes('Template Profile'), true);
+  assert.equal(render.includes('package_families.forEach'), true);
+  assert.equal(render.includes('selectedFamily.variants.forEach'), true);
+  assert.equal(render.includes('packageStillBelongsToFamily'), true);
+  assert.equal(render.includes("uc6State.selectedPackageId = ''"), true);
+  assert.equal(render.includes("uc6State.selectedPackageVersion = ''"), true);
+  assert.equal(render.includes("const isBound = options.selection_state === 'bound';"), true);
+  assert.equal(render.includes('options.bound_package_family_id'), true);
+  assert.equal(render.includes('innerHTML'), false);
+  assert.equal(reconcile.includes("options.selection_state = 'unbound'"), false);
+  assert.equal(reconcile.includes("options.selection_state = 'bound'"), true);
+  assert.equal(reconcile.includes('options.bound_package_family_id = null'), true);
+  assert.equal(reconcile.includes('options.bound_package = boundPackage'), true);
+
+  const commandStart = submit.indexOf('const command = {');
+  const commandEnd = submit.indexOf('};', commandStart);
+  const command = submit.slice(commandStart, commandEnd + 2);
+  assert.notEqual(commandStart, -1);
+  assert.equal(command.includes('package_id:'), true);
+  assert.equal(command.includes('package_version:'), true);
+  assert.equal(command.includes('retry_failed:'), true);
+  assert.equal(command.includes('package_family_id'), false);
+  assert.equal(command.includes('template_profile_id'), false);
+
+  assert.equal(assetLoad.includes('getReusableAssetPackages'), true);
+  assert.equal(assetLoad.includes('projectUc6ReusableAssetPackageOptions'), true);
+  assert.equal(assetLoad.includes('getDummyDatabagPackageFamilies'), false);
+  assert.equal(assetRender.includes('package_families'), false);
+  assert.equal(app.includes('X-Internal-Token'), false);
+  assert.equal(apiSource.includes('X-Internal-Token'), false);
+
+  const newSelectorLines = css.split(/\r?\n/).filter((line) => (
+    /\.uc6-(?:selection-layer|template-profile|package-family|variant-layer|bound-selection)/.test(line)
+  ));
+  assert.ok(newSelectorLines.length > 0);
+  assert.equal(newSelectorLines.every((line) => line.trimStart().startsWith('#view-uc6')), true);
 });

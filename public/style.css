@@ -6683,6 +6683,76 @@ body:has(#view-uc5.active) #main-content {
     font-size: 0.78rem;
 }
 
+#view-uc6 .uc6-selection-layer {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #f9fafb;
+}
+
+#view-uc6 .uc6-selection-layer-title {
+    margin: 0;
+    color: #111827;
+    font-size: 0.92rem;
+    font-weight: 800;
+}
+
+#view-uc6 .uc6-template-profile-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+#view-uc6 .uc6-template-profile-summary .uc6-summary-item {
+    background: #ffffff;
+}
+
+#view-uc6 .uc6-package-family-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+}
+
+#view-uc6 .uc6-package-family-card {
+    display: grid;
+    gap: 8px;
+    padding: 13px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#view-uc6 .uc6-package-family-card:hover {
+    border-color: var(--primary);
+}
+
+#view-uc6 .uc6-package-family-card.is-selected {
+    border-color: var(--primary);
+    background: #eef2ff;
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.16);
+}
+
+#view-uc6 .uc6-package-family-card.is-bound {
+    cursor: default;
+}
+
+#view-uc6 .uc6-variant-layer {
+    border-top: 3px solid #c7d2fe;
+    background: #ffffff;
+}
+
+#view-uc6 .uc6-bound-selection-message {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-weight: 700;
+}
+
 #view-uc6 .uc6-render-evidence {
     display: grid;
     gap: 10px;
@@ -6729,7 +6799,8 @@ body:has(#view-uc5.active) #main-content {
 
     #view-uc6 .uc6-compact-facts,
     #view-uc6 .uc6-review-summary,
-    #view-uc6 .uc6-artifact-grid {
+    #view-uc6 .uc6-artifact-grid,
+    #view-uc6 .uc6-template-profile-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
@@ -6760,7 +6831,9 @@ body:has(#view-uc5.active) #main-content {
 
     #view-uc6 .uc6-compact-facts,
     #view-uc6 .uc6-review-summary,
-    #view-uc6 .uc6-artifact-grid {
+    #view-uc6 .uc6-artifact-grid,
+    #view-uc6 .uc6-template-profile-summary,
+    #view-uc6 .uc6-package-family-grid {
         grid-template-columns: 1fr;
     }
 
