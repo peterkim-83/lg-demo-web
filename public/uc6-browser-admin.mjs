@@ -4,6 +4,7 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   session: '/fetchdoc/browser-admin/session',
   jobs: '/fetchdoc/browser-admin/uc6/jobs',
   analysis: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/analysis`,
+  onboarding: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/onboarding`,
   job: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}`,
   review: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review`,
   reviewDecision: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-decision`,
@@ -60,6 +61,8 @@ const REVIEW_STATES = new Set(['review_ready', 'review_ready_with_warnings', 're
 const TERMINAL_STATES = new Set(['approved', 'revision_requested', 'rejected']);
 const POLLABLE_STATES = new Set(['analysis_queued', 'analysis_running']);
 const RENDER_POLLABLE_STATES = new Set(['render_queued', 'render_running']);
+const ONBOARDING_POLLABLE_STATES = new Set(['onboarding_queued', 'onboarding_running']);
+const KNOWN_ONBOARDING_STATES = new Set(['onboarding_queued', 'onboarding_running', 'onboarding_ready', 'onboarding_blocked']);
 const KNOWN_RENDER_STATES = new Set(['render_queued', 'render_running', 'render_completed', 'failed']);
 const KNOWN_COMPATIBILITY_STATES = new Set(['compatible', 'incompatible_source_pptx']);
 const KNOWN_SELECTION_STATES = new Set(['unbound', 'bound']);
@@ -182,6 +185,12 @@ export function mapUc6StateToView(state) {
   if (RENDER_POLLABLE_STATES.has(normalized)) {
     return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, renderPollable: true };
   }
+  if (ONBOARDING_POLLABLE_STATES.has(normalized)) {
+    return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, onboardingPollable: true };
+  }
+  if (normalized === 'onboarding_ready' || normalized === 'onboarding_blocked') {
+    return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, onboardingPollable: false };
+  }
   if (normalized === 'render_completed') {
     return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, renderPollable: false };
   }
@@ -213,6 +222,7 @@ export function projectUc6PersistedState(value) {
   }
   if (typeof input.selected_panel === 'string' && /^[a-z_]{3,32}$/.test(input.selected_panel)) projected.selected_panel = input.selected_panel;
   if (typeof input.flow_lane === 'string' && KNOWN_FLOW_LANES.has(input.flow_lane)) projected.flow_lane = input.flow_lane;
+  if (typeof input.fresh_onboarding_expected === 'boolean') projected.fresh_onboarding_expected = input.fresh_onboarding_expected;
   try {
     if (typeof input.selected_asset_id === 'string') projected.selected_asset_id = normalizeUc6ReusableAssetId(input.selected_asset_id);
   } catch (_) {
@@ -607,6 +617,74 @@ function validateUc6SafePublicText(value, { maxLength, allowEmpty = false, code 
     throw new TypeError(code);
   }
   return trimmed;
+}
+
+function projectUc6FreshOnboardingSource(value) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_onboarding_job_source');
+  if (typeof value.sha256 !== 'string' || !SHA256_PATTERN.test(value.sha256)) {
+    throw new TypeError('invalid_onboarding_job_source_sha');
+  }
+  if (!Number.isInteger(value.size_bytes) || value.size_bytes <= 0) {
+    throw new TypeError('invalid_onboarding_job_source_size');
+  }
+  if (!Number.isInteger(value.slide_count) || value.slide_count <= 0) {
+    throw new TypeError('invalid_onboarding_job_source_slides');
+  }
+  const filename = validateUc6SafePublicText(value.filename, {
+    maxLength: 256,
+    code: 'invalid_onboarding_job_source_filename'
+  });
+  if (/[\\/\u0000-\u001f]/.test(filename)) throw new TypeError('invalid_onboarding_job_source_filename');
+  return {
+    sha256: value.sha256,
+    size_bytes: value.size_bytes,
+    slide_count: value.slide_count,
+    filename
+  };
+}
+
+export function projectUc6FreshTemplateOnboardingSubmission(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_onboarding_submission_payload');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.schema_version !== 'uc6_a9_0g2a_r6d2a_browser_admin_fresh_template_onboarding_submission_v1') {
+    throw new TypeError('invalid_onboarding_submission_schema');
+  }
+  if (payload.job_id !== expectedJobId) throw new TypeError('invalid_onboarding_submission_job_id');
+  if (payload.task_type !== 'fetchdoc_browser_admin_uc6_fresh_template_onboarding') {
+    throw new TypeError('invalid_onboarding_submission_task_type');
+  }
+  if (!Number.isInteger(payload.task_id) || payload.task_id <= 0 || payload.task_id > Number.MAX_SAFE_INTEGER) {
+    throw new TypeError('invalid_onboarding_submission_task_id');
+  }
+  if (!KNOWN_QUEUE_STATUSES.has(payload.queue_status)) throw new TypeError('invalid_onboarding_submission_queue_status');
+  if (typeof payload.created !== 'boolean') throw new TypeError('invalid_onboarding_submission_created');
+  if (!KNOWN_ONBOARDING_STATES.has(payload.state)) throw new TypeError('invalid_onboarding_submission_state');
+  const controlPlaneContractVersion = validateUc6ControlPlaneVersion(payload.control_plane_contract_version);
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_onboarding_submission_public_safety');
+  return {
+    schema_version: payload.schema_version,
+    job_id: payload.job_id,
+    task_type: payload.task_type,
+    task_id: payload.task_id,
+    queue_status: payload.queue_status,
+    created: payload.created,
+    state: payload.state,
+    control_plane_contract_version: controlPlaneContractVersion,
+    public_safety: payload.public_safety
+  };
+}
+
+export function projectUc6FreshTemplateOnboardingJobStatus(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_onboarding_job_status_payload');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.job_id !== expectedJobId) throw new TypeError('invalid_onboarding_job_status_job_id');
+  if (!KNOWN_ONBOARDING_STATES.has(payload.state)) throw new TypeError('invalid_onboarding_job_status_state');
+  return {
+    job_id: payload.job_id,
+    state: payload.state,
+    source: projectUc6FreshOnboardingSource(payload.source),
+    control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version)
+  };
 }
 
 function projectUc6ReusableAssetRow(row) {
@@ -1060,8 +1138,11 @@ export function projectUc6DummyDatabagPackageOptions(payload, options = {}) {
 }
 
 const UC6_R6A_PACKAGE_FAMILY_OPTIONS_SCHEMA = 'uc6_a9_0g2a_r6a_browser_admin_dummy_databag_package_family_options_v1';
+const UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA = 'uc6_a9_0g2a_r6d2b_browser_admin_dummy_databag_package_family_options_v1';
 const UC6_R6A_PACKAGE_FAMILY_SCHEMA = 'uc6_a9_0g2a_r6a_dummy_databag_package_family_projection_v1';
 const UC6_DUMMY_PACKAGE_PUBLIC_SCHEMA = 'uc6_a8c_dummy_databag_package_public_projection_v1';
+const UC6_R6D2B_FRESH_PROFILE_SCHEMA = 'uc6_a9_0g2a_r6d2b_fresh_same_job_r1_template_profile_projection_v1';
+const FRESH_COMPATIBILITY_STATES = new Set(['fresh_onboarding_not_ready', 'fresh_onboarding_blocked', 'compatible', 'no_compatible_packages']);
 
 function projectUc6R6cTemplateProfile(value) {
   if (!isPlainObject(value)) throw new TypeError('invalid_package_family_template_profile');
@@ -1085,7 +1166,7 @@ function projectUc6R6cTemplateProfile(value) {
   };
 }
 
-function projectUc6R6cPackageVariant(value, { expectedSourceSha, expectedTemplateProfileId } = {}) {
+function projectUc6R6cPackageVariant(value, { expectedSourceSha, expectedTemplateFamilyId } = {}) {
   if (!isPlainObject(value)) throw new TypeError('invalid_package_family_variant');
   if (value.schema_version !== UC6_DUMMY_PACKAGE_PUBLIC_SCHEMA) {
     throw new TypeError('invalid_package_family_variant_schema');
@@ -1108,8 +1189,8 @@ function projectUc6R6cPackageVariant(value, { expectedSourceSha, expectedTemplat
   if (typeof value.template_family_id !== 'string' || !BOUNDED_ID_PATTERN.test(value.template_family_id)) {
     throw new TypeError('invalid_package_family_variant_template_family_id');
   }
-  if (value.template_family_id !== expectedTemplateProfileId) {
-    throw new TypeError('package_family_variant_template_profile_mismatch');
+  if (value.template_family_id !== expectedTemplateFamilyId) {
+    throw new TypeError('package_family_variant_template_family_mismatch');
   }
   if (typeof value.source_pptx_sha256 !== 'string' || !SHA256_PATTERN.test(value.source_pptx_sha256)) {
     throw new TypeError('invalid_package_family_variant_source_sha');
@@ -1161,9 +1242,190 @@ function projectUc6R6cBoundPackage(value) {
   };
 }
 
+function projectUc6FreshSourceGroups(value, code) {
+  if (!Array.isArray(value) || value.length > 64) throw new TypeError(code);
+  const seen = new Set();
+  return value.map((item) => {
+    const projected = validateUc6SafePublicText(item, { maxLength: 128, code });
+    if (seen.has(projected)) throw new TypeError(code);
+    seen.add(projected);
+    return projected;
+  });
+}
+
+function projectUc6FreshTemplateProfile(value, expectedSourceSha) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_fresh_template_profile');
+  if (value.schema_version !== UC6_R6D2B_FRESH_PROFILE_SCHEMA) throw new TypeError('invalid_fresh_template_profile_schema');
+  if (value.profile_origin !== 'fresh_same_job') throw new TypeError('invalid_fresh_template_profile_origin');
+  if (value.profile_id !== undefined || value.profile_version !== undefined || value.template_family_id !== undefined) {
+    throw new TypeError('invalid_fresh_template_profile_identity');
+  }
+  if (typeof value.source_pptx_sha256 !== 'string' || !SHA256_PATTERN.test(value.source_pptx_sha256) || value.source_pptx_sha256 !== expectedSourceSha) {
+    throw new TypeError('invalid_fresh_template_profile_source_sha');
+  }
+  if (typeof value.delivery_bundle_id !== 'string' || !BOUNDED_ID_PATTERN.test(value.delivery_bundle_id)) {
+    throw new TypeError('invalid_fresh_template_profile_delivery_bundle_id');
+  }
+  if (!Number.isInteger(value.generation_unit_count) || value.generation_unit_count < 0) {
+    throw new TypeError('invalid_fresh_template_profile_generation_unit_count');
+  }
+  if (!Number.isInteger(value.fillable_slot_count) || value.fillable_slot_count < 0) {
+    throw new TypeError('invalid_fresh_template_profile_fillable_slot_count');
+  }
+  for (const field of [
+    'authoritative_generation_unit_delivery_sha256',
+    'private_renderer_fallback_lineage_sha256',
+    'authoritative_delivery_boundary_validation_sha256'
+  ]) {
+    if (typeof value[field] !== 'string' || !SHA256_PATTERN.test(value[field])) {
+      throw new TypeError(`invalid_fresh_template_profile_${field}`);
+    }
+  }
+  return {
+    schema_version: value.schema_version,
+    profile_origin: value.profile_origin,
+    source_pptx_sha256: value.source_pptx_sha256,
+    delivery_bundle_id: value.delivery_bundle_id,
+    generation_unit_count: value.generation_unit_count,
+    fillable_slot_count: value.fillable_slot_count,
+    authoritative_generation_unit_delivery_sha256: value.authoritative_generation_unit_delivery_sha256,
+    private_renderer_fallback_lineage_sha256: value.private_renderer_fallback_lineage_sha256,
+    authoritative_delivery_boundary_validation_sha256: value.authoritative_delivery_boundary_validation_sha256,
+    required_authoritative_source_groups: projectUc6FreshSourceGroups(value.required_authoritative_source_groups, 'invalid_fresh_template_profile_required_source_groups'),
+    supporting_source_groups: projectUc6FreshSourceGroups(value.supporting_source_groups, 'invalid_fresh_template_profile_supporting_source_groups')
+  };
+}
+
+function projectUc6FreshCompatibilityMetadata(value, allowNullIdentity) {
+  if (value === null && allowNullIdentity) return null;
+  if (!isPlainObject(value)) throw new TypeError('invalid_fresh_compatibility_metadata');
+  const templateFamilyId = value.template_family_id;
+  if (templateFamilyId !== null && (typeof templateFamilyId !== 'string' || !BOUNDED_ID_PATTERN.test(templateFamilyId))) {
+    throw new TypeError('invalid_fresh_compatibility_template_family_id');
+  }
+  if (!allowNullIdentity && templateFamilyId === null) throw new TypeError('invalid_fresh_compatibility_template_family_id');
+  if (!Number.isInteger(value.source_matched_package_count) || value.source_matched_package_count < 0) {
+    throw new TypeError('invalid_fresh_source_matched_package_count');
+  }
+  if (templateFamilyId === null && value.source_matched_package_count !== 0) {
+    throw new TypeError('invalid_fresh_null_compatibility_identity_package_count');
+  }
+  return {
+    template_family_id: templateFamilyId,
+    source_matched_package_count: value.source_matched_package_count
+  };
+}
+
+function projectUc6FreshPackageFamilyOptions(payload, expectedJobId) {
+  if (payload.job_id !== expectedJobId) throw new TypeError('invalid_package_family_options_job_id');
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_package_family_options_public_safety');
+  if (!KNOWN_ONBOARDING_STATES.has(payload.onboarding_state)) throw new TypeError('invalid_fresh_onboarding_state');
+  if (!FRESH_COMPATIBILITY_STATES.has(payload.compatibility_state)) throw new TypeError('invalid_fresh_compatibility_state');
+  if (payload.selection_state !== 'binding_deferred') throw new TypeError('invalid_fresh_selection_state');
+  if (payload.bound_package_family_id !== null || payload.bound_package !== null) throw new TypeError('invalid_fresh_bound_package');
+  if (typeof payload.source_pptx_sha256 !== 'string' || !SHA256_PATTERN.test(payload.source_pptx_sha256)) {
+    throw new TypeError('invalid_package_family_options_source_sha');
+  }
+  if (!Array.isArray(payload.package_families)) throw new TypeError('invalid_package_family_options_families');
+  if (!Number.isInteger(payload.package_family_count) || payload.package_family_count < 0 || payload.package_family_count !== payload.package_families.length) {
+    throw new TypeError('invalid_package_family_options_family_count');
+  }
+  const waiting = payload.onboarding_state === 'onboarding_queued' || payload.onboarding_state === 'onboarding_running';
+  const blocked = payload.onboarding_state === 'onboarding_blocked';
+  const ready = payload.onboarding_state === 'onboarding_ready';
+  if (
+    (waiting && payload.compatibility_state !== 'fresh_onboarding_not_ready')
+    || (blocked && payload.compatibility_state !== 'fresh_onboarding_blocked')
+    || (ready && payload.compatibility_state !== 'compatible' && payload.compatibility_state !== 'no_compatible_packages')
+  ) {
+    throw new TypeError('invalid_fresh_onboarding_compatibility_combination');
+  }
+  if (!waiting && !blocked && !ready) throw new TypeError('invalid_fresh_onboarding_state');
+  const compatibilityMetadata = projectUc6FreshCompatibilityMetadata(
+    payload.compatibility_metadata,
+    payload.compatibility_state !== 'compatible'
+  );
+  const controlPlaneContractVersion = validateUc6ControlPlaneVersion(payload.control_plane_contract_version);
+
+  if (waiting || blocked) {
+    if (payload.template_profile !== null || payload.package_family_count !== 0) throw new TypeError('invalid_fresh_non_ready_options');
+    return {
+      schema_version: payload.schema_version,
+      job_id: payload.job_id,
+      source_pptx_sha256: payload.source_pptx_sha256,
+      onboarding_state: payload.onboarding_state,
+      compatibility_state: payload.compatibility_state,
+      template_profile: null,
+      compatibility_metadata: compatibilityMetadata,
+      package_family_count: 0,
+      package_families: [],
+      package_count: 0,
+      packages: [],
+      selection_state: payload.selection_state,
+      bound_package_family_id: null,
+      bound_package: null,
+      control_plane_contract_version: controlPlaneContractVersion,
+      public_safety: payload.public_safety
+    };
+  }
+
+  const templateProfile = projectUc6FreshTemplateProfile(payload.template_profile, payload.source_pptx_sha256);
+  if (payload.compatibility_state === 'compatible' && payload.package_family_count < 1) throw new TypeError('fresh_compatible_requires_package_family');
+  if (payload.compatibility_state === 'no_compatible_packages' && payload.package_family_count !== 0) {
+    throw new TypeError('fresh_no_compatible_packages_requires_empty_families');
+  }
+  const seenFamilyIds = new Set();
+  const seenPackageIdentities = new Set();
+  const packages = [];
+  const packageFamilies = payload.package_families.map((family) => {
+    if (!isPlainObject(family) || family.schema_version !== UC6_R6A_PACKAGE_FAMILY_SCHEMA) throw new TypeError('invalid_package_family_schema');
+    if (typeof family.package_family_id !== 'string' || !BOUNDED_ID_PATTERN.test(family.package_family_id)) throw new TypeError('invalid_package_family_id');
+    if (seenFamilyIds.has(family.package_family_id)) throw new TypeError('duplicate_package_family_id');
+    seenFamilyIds.add(family.package_family_id);
+    const title = validateUc6SafePublicText(family.title, { maxLength: 256, code: 'invalid_package_family_title' });
+    const description = validateUc6SafePublicText(family.description, { maxLength: 1024, allowEmpty: true, code: 'invalid_package_family_description' });
+    if (!Array.isArray(family.variants) || !Number.isInteger(family.variant_count) || family.variant_count < 1 || family.variant_count !== family.variants.length) {
+      throw new TypeError('invalid_package_family_variant_count');
+    }
+    const variants = family.variants.map((variant) => {
+      const projected = projectUc6R6cPackageVariant(variant, {
+        expectedSourceSha: payload.source_pptx_sha256,
+        expectedTemplateFamilyId: compatibilityMetadata.template_family_id
+      });
+      const identity = `${projected.package_id}:${projected.package_version}`;
+      if (seenPackageIdentities.has(identity)) throw new TypeError('duplicate_package_identity_across_families');
+      seenPackageIdentities.add(identity);
+      packages.push(projected);
+      return projected;
+    });
+    return { schema_version: family.schema_version, package_family_id: family.package_family_id, title, description, variant_count: variants.length, variants };
+  });
+  return {
+    schema_version: payload.schema_version,
+    job_id: payload.job_id,
+    source_pptx_sha256: payload.source_pptx_sha256,
+    onboarding_state: payload.onboarding_state,
+    compatibility_state: payload.compatibility_state,
+    template_profile: templateProfile,
+    compatibility_metadata: compatibilityMetadata,
+    package_family_count: packageFamilies.length,
+    package_families: packageFamilies,
+    package_count: packages.length,
+    packages,
+    selection_state: payload.selection_state,
+    bound_package_family_id: null,
+    bound_package: null,
+    control_plane_contract_version: controlPlaneContractVersion,
+    public_safety: payload.public_safety
+  };
+}
+
 export function projectUc6DummyDatabagPackageFamilyOptions(payload, options = {}) {
   if (!isPlainObject(payload)) throw new TypeError('invalid_package_family_options_payload');
   const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.schema_version === UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA) {
+    return projectUc6FreshPackageFamilyOptions(payload, expectedJobId);
+  }
   if (payload.schema_version !== UC6_R6A_PACKAGE_FAMILY_OPTIONS_SCHEMA) {
     throw new TypeError('invalid_package_family_options_schema');
   }
@@ -1257,7 +1519,7 @@ export function projectUc6DummyDatabagPackageFamilyOptions(payload, options = {}
     const variants = family.variants.map((variant) => {
       const projected = projectUc6R6cPackageVariant(variant, {
         expectedSourceSha: payload.source_pptx_sha256,
-        expectedTemplateProfileId: templateProfile.profile_id
+        expectedTemplateFamilyId: templateProfile.profile_id
       });
       const identity = `${projected.package_id}:${projected.package_version}`;
       if (seenPackageIdentities.has(identity)) throw new TypeError('duplicate_package_identity_across_families');
@@ -1339,6 +1601,9 @@ export function validateUc6DummyDatabagRenderCommand(command, packageOptions = n
   }
 
   if (packageOptions !== null) {
+    if (packageOptions.schema_version === UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA || packageOptions.selection_state === 'binding_deferred') {
+      return { ok: false, code: 'fresh_render_deferred', message: 'Fresh same-job 데이터 선택의 문서 생성 연결은 다음 단계에서 지원됩니다.' };
+    }
     if (!isPlainObject(packageOptions) || packageOptions.compatibility_state !== 'compatible' || !Array.isArray(packageOptions.packages)) {
       return { ok: false, code: 'package_options_invalid', message: '데이터 패키지 상태를 다시 확인하세요.' };
     }
@@ -1690,10 +1955,10 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
       response = await fetchImpl(url, requestInit);
     } catch (cause) {
       if (cause?.name === 'AbortError') throw cause;
-      const ambError = new Error('Network failure during render submission; outcome is ambiguous.');
+      const ambError = new Error(options.ambiguousMessage || 'Network failure during submission; outcome is ambiguous.');
       ambError.name = 'Uc6AmbiguousSubmissionError';
       ambError.code = 'ambiguous_submission';
-      ambError.publicMessage = '생성 요청의 접수 여부를 확인할 수 없습니다.';
+      ambError.publicMessage = options.ambiguousPublicMessage || '요청의 접수 여부를 확인할 수 없습니다.';
       throw ambError;
     }
 
@@ -1715,6 +1980,14 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
     submitAnalysis(jobId, options = {}) {
       const body = { retry_failed: options.retryFailed === true };
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.analysis(jobId), { method: 'POST', json: body, signal: options.signal });
+    },
+    submitFreshTemplateOnboarding(jobId, options = {}) {
+      return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.onboarding(jobId), {
+        method: 'POST',
+        signal: options.signal,
+        ambiguousMessage: 'Network failure during fresh onboarding submission; outcome is ambiguous.',
+        ambiguousPublicMessage: 'Fresh onboarding 요청의 접수 여부를 확인할 수 없습니다. 작업 상태를 새로고침하세요.'
+      });
     },
     getJob(jobId, options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.job(jobId), { method: 'GET', signal: options.signal });

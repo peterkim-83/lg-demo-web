@@ -7,6 +7,8 @@ import {
   mapUc6StateToView,
   normalizeUc6JobId,
   projectUc6DummyDatabagPackageFamilyOptions,
+  projectUc6FreshTemplateOnboardingJobStatus,
+  projectUc6FreshTemplateOnboardingSubmission,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
   projectUc6ReusableAssetPackageOptions,
@@ -5104,6 +5106,7 @@ Customer: Thank you. Goodbye.`
   const UC6_POLL_INTERVAL_MS = 3500;
   const UC6_MAX_TRANSIENT_ERRORS = 3;
   const UC6_AUTHORIZED_LABEL = '승인된 FetchDoc 관리자';
+  const UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA = 'uc6_a9_0g2a_r6d2b_browser_admin_dummy_databag_package_family_options_v1';
 
   const UC6_AUTH_COPY = {
     initializing: ['초기화 중', 'Firebase Auth와 FetchDoc 관리자 세션을 준비하고 있습니다.'],
@@ -5117,6 +5120,10 @@ Customer: Thank you. Goodbye.`
 
   const UC6_STATE_LABELS = {
     source_ready: '소스 준비 완료',
+    onboarding_queued: 'Fresh onboarding 대기 중',
+    onboarding_running: 'Fresh onboarding 실행 중',
+    onboarding_ready: 'Fresh onboarding 준비 완료',
+    onboarding_blocked: 'Fresh onboarding 차단',
     render_queued: '생성 대기 중',
     render_running: '생성 실행 중',
     render_completed: '생성 완료',
@@ -5175,6 +5182,8 @@ Customer: Thank you. Goodbye.`
     assetPackageOptions: null,
     assetSubmissionAmbiguous: false,
     packageOptions: null,
+    freshOnboardingExpected: false,
+    onboardingSubmissionAmbiguous: false,
     selectedPackageFamilyId: '',
     selectedPackageId: '',
     selectedPackageVersion: '',
@@ -5287,7 +5296,7 @@ Customer: Thank you. Goodbye.`
     const state = publicState || null;
     if (flowLane === 'dummy_render') {
       if (!state || state === 'idle') return 'intake';
-      if (state === 'source_ready') return 'package';
+      if (state === 'source_ready' || state === 'onboarding_queued' || state === 'onboarding_running' || state === 'onboarding_ready' || state === 'onboarding_blocked') return 'package';
       if (state === 'render_queued' || state === 'render_running') return 'render';
       if (state === 'render_unknown') return 'render_unknown';
       if (state === 'failed') return 'render_error';
@@ -5444,6 +5453,7 @@ Customer: Thank you. Goodbye.`
         last_polling_timestamp: uc6State.lastPollingTimestamp,
         selected_panel: 'review',
         flow_lane: uc6State.flowLane,
+        fresh_onboarding_expected: uc6State.freshOnboardingExpected,
         selected_asset_id: uc6State.selectedAssetId,
         selected_package_family_id: uc6State.selectedPackageFamilyId,
         selected_package_id: uc6State.selectedPackageId,
@@ -5549,6 +5559,8 @@ Customer: Thank you. Goodbye.`
     uc6State.assetPackageOptions = null;
     uc6State.assetSubmissionAmbiguous = false;
     uc6State.packageOptions = null;
+    uc6State.freshOnboardingExpected = false;
+    uc6State.onboardingSubmissionAmbiguous = false;
     uc6State.selectedPackageFamilyId = '';
     uc6State.selectedPackageId = '';
     uc6State.selectedPackageVersion = '';
@@ -5724,7 +5736,10 @@ Customer: Thank you. Goodbye.`
   async function resumeUC6PersistedJob() {
     const persisted = loadUC6LocalState();
     try {
-      uc6State.flowLane = persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render');
+      uc6State.freshOnboardingExpected = persisted.fresh_onboarding_expected === true;
+      uc6State.flowLane = uc6State.freshOnboardingExpected
+        ? 'dummy_render'
+        : persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render');
       if (persisted.selected_asset_id) uc6State.selectedAssetId = persisted.selected_asset_id;
       if (persisted.selected_package_family_id && uc6State.flowLane === 'dummy_render') {
         uc6State.selectedPackageFamilyId = persisted.selected_package_family_id;
@@ -5741,9 +5756,10 @@ Customer: Thank you. Goodbye.`
       await refreshUC6JobStatus({ fetchReview: uc6State.flowLane === 'legacy_analysis' });
 
       const mapped = mapUc6StateToView(uc6State.jobState);
-      const shouldPoll = (uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
-        ? mapped.renderPollable
-        : mapped.pollable;
+      const shouldPoll = isUC6FreshSourceReconciliationPending()
+        || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
+        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && mapped.onboardingPollable))
+        : mapped.pollable);
       if (shouldPoll) startUC6Polling();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
@@ -5771,22 +5787,48 @@ Customer: Thank you. Goodbye.`
     uc6State.selectedFile = validation.file;
     uc6State.operationInFlight = true;
     uc6State.flowLane = 'dummy_render';
-    uc6State.stageMessage = 'PPTX를 등록하고 Template Profile과 데이터 그룹을 확인하고 있습니다.';
+    uc6State.stageMessage = 'PPTX를 등록하고 Fresh same-job R1 onboarding을 준비하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
     try {
       const created = await uc6State.api.createJob(validation.file, { signal: controller.signal });
       uc6State.jobId = normalizeUc6JobId(created?.job_id);
       uc6State.jobState = created.state || 'source_ready';
+      uc6State.freshOnboardingExpected = true;
       uc6State.source = {
+        sha256: created.source?.sha256,
         size_bytes: created.source?.size_bytes,
         slide_count: created.source?.slide_count,
         filename: boundedFilename(created.source?.filename || validation.file.name)
       };
       saveUC6LocalState();
       renderUC6All();
-      await loadUC6PackageOptions(controller.signal);
+      const submitted = await uc6State.api.submitFreshTemplateOnboarding(uc6State.jobId, { signal: controller.signal });
+      const projected = projectUc6FreshTemplateOnboardingSubmission(submitted, { expectedJobId: uc6State.jobId });
+      uc6State.jobState = projected.state;
+      uc6State.consecutivePollErrors = 0;
+      if (projected.state === 'onboarding_ready') {
+        uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 호환 데이터 그룹을 확인하고 있습니다.';
+        saveUC6LocalState();
+        await loadUC6PackageOptions(controller.signal);
+      } else if (projected.state === 'onboarding_blocked') {
+        uc6State.stageMessage = 'Fresh onboarding을 완료할 수 없습니다. 새 PPTX를 선택하거나 작업 상태를 다시 확인하세요.';
+        saveUC6LocalState();
+      } else {
+        uc6State.stageMessage = 'Fresh onboarding 요청이 접수되었습니다. 작업 상태를 확인하고 있습니다.';
+        saveUC6LocalState();
+        startUC6Polling();
+      }
     } catch (error) {
+      if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
+        uc6State.onboardingSubmissionAmbiguous = true;
+        uc6State.stageMessage = 'Fresh onboarding 요청의 접수 여부를 확인할 수 없습니다. POST를 다시 보내지 않고 작업 상태만 확인합니다.';
+        setUC6LiveMessage(uc6State.stageMessage);
+        saveUC6LocalState();
+        renderUC6All();
+        startUC6Polling();
+        return;
+      }
       if (handleUC6AuthorizationFailure(error)) return;
       uc6State.stageMessage = uc6MessageFromError(error);
       setUC6LiveMessage(uc6State.stageMessage);
@@ -6031,6 +6073,11 @@ Customer: Thank you. Goodbye.`
       const raw = await uc6State.api.getDummyDatabagPackageFamilies(uc6State.jobId, { signal });
       const projected = projectUc6DummyDatabagPackageFamilyOptions(raw, { expectedJobId: uc6State.jobId });
       uc6State.packageOptions = projected;
+      const isFresh = projected.schema_version === UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA;
+      if (isFresh) {
+        uc6State.freshOnboardingExpected = true;
+        uc6State.jobState = projected.onboarding_state;
+      }
       if (projected.selection_state === 'bound' && projected.bound_package) {
         uc6State.selectedPackageFamilyId = projected.bound_package_family_id;
         uc6State.selectedPackageId = projected.bound_package.package_id;
@@ -6052,7 +6099,13 @@ Customer: Thank you. Goodbye.`
           }
         }
       }
-      if (uc6State.jobState === 'failed') {
+      if (projected.compatibility_state === 'fresh_onboarding_not_ready') {
+        uc6State.stageMessage = 'Fresh onboarding이 아직 진행 중입니다. 준비가 완료되면 호환 데이터 그룹을 불러옵니다.';
+      } else if (projected.compatibility_state === 'fresh_onboarding_blocked') {
+        uc6State.stageMessage = 'Fresh onboarding이 차단되어 데이터 그룹을 선택할 수 없습니다.';
+      } else if (projected.compatibility_state === 'no_compatible_packages') {
+        uc6State.stageMessage = 'Fresh same-job R1 topology는 준비되었지만 현재 호환되는 dummy-data 그룹이 없습니다.';
+      } else if (uc6State.jobState === 'failed') {
         uc6State.stageMessage = '문서 생성 작업이 실패했습니다. 서버에 고정된 데이터 그룹과 시나리오를 확인한 후 다시 생성할 수 있습니다.';
       } else if (projected.compatibility_state === 'incompatible_source_pptx') {
         uc6State.stageMessage = '업로드한 PPTX와 호환되는 Template Profile을 확인할 수 없습니다.';
@@ -6077,6 +6130,11 @@ Customer: Thank you. Goodbye.`
 
   async function submitUC6DummyRender(retryFailed = false) {
     if (!isUc6Authorized() || uc6State.operationInFlight || !uc6State.jobId) return;
+    if (uc6State.packageOptions?.schema_version === UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA) {
+      uc6State.stageMessage = 'Fresh package binding과 문서 생성 연결은 R6E에서 지원됩니다. 현재 선택은 로컬에만 저장됩니다.';
+      renderUC6All();
+      return;
+    }
     const selectedFamily = getSelectedUC6PackageFamily();
     const selectedVariant = getSelectedUC6PackageVariant();
     if (!selectedFamily) {
@@ -6191,6 +6249,12 @@ Customer: Thank you. Goodbye.`
     }, delay);
   }
 
+  function isUC6FreshSourceReconciliationPending() {
+    return uc6State.flowLane === 'dummy_render'
+      && uc6State.freshOnboardingExpected === true
+      && uc6State.jobState === 'source_ready';
+  }
+
   async function pollUC6JobStatus() {
     if (uc6State.statusRequestActive || !uc6State.pollingAbortController) return;
     uc6State.statusRequestActive = true;
@@ -6198,7 +6262,10 @@ Customer: Thank you. Goodbye.`
       await refreshUC6JobStatus({ signal: uc6State.pollingAbortController.signal, fetchReview: uc6State.flowLane === 'legacy_analysis' });
       uc6State.consecutivePollErrors = 0;
       const mapped = mapUc6StateToView(uc6State.jobState);
-      const isPollable = (uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render') ? mapped.renderPollable : mapped.pollable;
+      const isPollable = isUC6FreshSourceReconciliationPending()
+        || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
+        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && mapped.onboardingPollable))
+        : mapped.pollable);
       if (isPollable) scheduleUC6Poll();
       else stopUC6Polling();
     } catch (error) {
@@ -6234,6 +6301,24 @@ Customer: Thank you. Goodbye.`
         || rawJob.state === 'render_completed'
         || (rawJob.render && typeof rawJob.render === 'object')
       );
+    const authoritativeFreshOnboardingLane = rawJob
+      && typeof rawJob === 'object'
+      && (
+        rawJob.state === 'onboarding_queued'
+        || rawJob.state === 'onboarding_running'
+        || rawJob.state === 'onboarding_ready'
+        || rawJob.state === 'onboarding_blocked'
+      );
+
+    if (authoritativeFreshOnboardingLane && uc6State.flowLane !== 'asset_render') {
+      uc6State.flowLane = 'dummy_render';
+      uc6State.freshOnboardingExpected = true;
+      uc6State.review = null;
+      uc6State.decision = null;
+      uc6State.decisionMode = false;
+      clearUC6FinalDeliveryState();
+      clearUC6A8FReviewState({ keepDecisionIdentity: true });
+    }
 
     if (authoritativeDummyRenderLane && uc6State.flowLane !== 'dummy_render' && uc6State.flowLane !== 'asset_render') {
       uc6State.flowLane = 'dummy_render';
@@ -6266,6 +6351,32 @@ Customer: Thank you. Goodbye.`
     }
 
     if (uc6State.flowLane === 'dummy_render') {
+      if (authoritativeFreshOnboardingLane) {
+        const projected = projectUc6FreshTemplateOnboardingJobStatus(rawJob, { expectedJobId: uc6State.jobId });
+        uc6State.jobState = projected.state;
+        uc6State.source = projected.source;
+        uc6State.lastPollingTimestamp = Date.now();
+        uc6State.renderStatus = null;
+        uc6State.onboardingSubmissionAmbiguous = false;
+        if (projected.state === 'onboarding_ready') {
+          stopUC6Polling();
+          uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 호환 데이터 그룹을 확인하고 있습니다.';
+          saveUC6LocalState();
+          await loadUC6PackageOptions(options.signal);
+        } else if (projected.state === 'onboarding_blocked') {
+          stopUC6Polling();
+          uc6State.packageOptions = null;
+          uc6State.stageMessage = 'Fresh onboarding을 완료할 수 없습니다. 새 PPTX를 선택하거나 작업 상태를 다시 확인하세요.';
+          saveUC6LocalState();
+          renderUC6All();
+        } else {
+          uc6State.packageOptions = null;
+          uc6State.stageMessage = 'Fresh onboarding이 진행 중입니다. 준비 상태를 계속 확인합니다.';
+          saveUC6LocalState();
+          renderUC6All();
+        }
+        return;
+      }
       const projected = projectUc6DummyDatabagRenderJobStatus(rawJob, { expectedJobId: uc6State.jobId });
       uc6State.jobState = projected.state;
       if (projected.source) uc6State.source = projected.source;
@@ -6280,7 +6391,10 @@ Customer: Thank you. Goodbye.`
         }
       }
 
-      if (projected.state === 'failed' || projected.state === 'source_ready') {
+      if (projected.state === 'source_ready' && uc6State.freshOnboardingExpected) {
+        uc6State.packageOptions = null;
+        uc6State.stageMessage = 'Fresh onboarding 접수 상태를 조정 중입니다. POST를 다시 보내지 않고 서버 작업 상태만 확인합니다.';
+      } else if (projected.state === 'failed' || projected.state === 'source_ready') {
         await loadUC6PackageOptions(options.signal);
       }
 
@@ -7038,14 +7152,17 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6PackageStage(root) {
     const card = createUc6Node('section', 'uc6-stage-card');
-    card.append(createUc6Node('h2', '', 'Template Profile · 데이터 선택'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '확인된 Template Profile에 맞는 데이터 그룹과 시나리오를 순서대로 선택하세요.'));
+    const onboardingInProgress = uc6State.jobState === 'source_ready' || uc6State.jobState === 'onboarding_queued' || uc6State.jobState === 'onboarding_running';
+    card.append(createUc6Node('h2', '', onboardingInProgress && uc6State.freshOnboardingExpected ? 'Fresh onboarding · 데이터 준비' : 'Template Profile · 데이터 선택'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', onboardingInProgress && uc6State.freshOnboardingExpected
+      ? 'Fresh same-job R1 topology를 준비하고 호환 데이터 그룹을 확인하고 있습니다.'
+      : '확인된 Template Profile에 맞는 데이터 그룹과 시나리오를 순서대로 선택하세요.'));
 
     const options = uc6State.packageOptions;
     if (!options) {
       card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage || 'Template Profile과 데이터 그룹을 확인하고 있습니다...'));
       const actions = createUc6Node('div', 'uc6-action-row');
-      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '패키지 다시 불러오기', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', uc6State.freshOnboardingExpected ? '작업 상태 새로고침' : '패키지 다시 불러오기', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
       actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
       card.append(actions);
       root.replaceChildren(card);
@@ -7061,6 +7178,19 @@ Customer: Thank you. Goodbye.`
       return;
     }
 
+    if (options.compatibility_state === 'fresh_onboarding_not_ready' || options.compatibility_state === 'fresh_onboarding_blocked') {
+      card.append(createUc6Node('p', options.compatibility_state === 'fresh_onboarding_blocked' ? 'uc6-inline-error' : 'uc6-stage-message', options.compatibility_state === 'fresh_onboarding_blocked'
+        ? 'Fresh onboarding이 차단되어 package family와 variant를 선택할 수 없습니다.'
+        : 'Fresh onboarding이 완료될 때까지 package family와 variant 선택을 기다려 주세요.'));
+      const actions = createUc6Node('div', 'uc6-action-row');
+      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '작업 상태 새로고침', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+      actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
+      card.append(actions);
+      root.replaceChildren(card);
+      return;
+    }
+
+    const isFresh = options.schema_version === UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA;
     const isBound = options.selection_state === 'bound';
     if (isBound) {
       uc6State.selectedPackageFamilyId = options.bound_package_family_id;
@@ -7073,10 +7203,21 @@ Customer: Thank you. Goodbye.`
     const profileSummary = createUc6Node('div', 'uc6-template-profile-summary');
     const profile = options.template_profile;
     if (profile) {
-      profileSummary.append(createUC6SummaryItem('Profile ID', profile.profile_id));
-      profileSummary.append(createUC6SummaryItem('Profile version', profile.profile_version));
-      profileSummary.append(createUC6SummaryItem('Generation units', profile.generation_unit_count));
-      profileSummary.append(createUC6SummaryItem('Fillable slots', profile.fillable_slot_count));
+      if (profile.profile_origin === 'fresh_same_job') {
+        profileSummary.append(createUC6SummaryItem('Origin', 'Fresh same-job R1'));
+        profileSummary.append(createUC6SummaryItem('Generation units', profile.generation_unit_count));
+        profileSummary.append(createUC6SummaryItem('Fillable slots', profile.fillable_slot_count));
+        profileSummary.append(createUC6SummaryItem('Required source groups', profile.required_authoritative_source_groups.join(', ') || '-'));
+        profileSummary.append(createUC6SummaryItem('Supporting source groups', profile.supporting_source_groups.join(', ') || '-'));
+        if (options.compatibility_metadata?.template_family_id) {
+          profileSummary.append(createUC6SummaryItem('Compatibility template family', options.compatibility_metadata.template_family_id));
+        }
+      } else {
+        profileSummary.append(createUC6SummaryItem('Profile ID', profile.profile_id));
+        profileSummary.append(createUC6SummaryItem('Profile version', profile.profile_version));
+        profileSummary.append(createUC6SummaryItem('Generation units', profile.generation_unit_count));
+        profileSummary.append(createUC6SummaryItem('Fillable slots', profile.fillable_slot_count));
+      }
     }
     profileLayer.append(profileSummary);
     card.append(profileLayer);
@@ -7084,7 +7225,9 @@ Customer: Thank you. Goodbye.`
     const familyLayer = createUc6Node('section', 'uc6-selection-layer uc6-family-layer');
     familyLayer.append(createUc6Node('h3', 'uc6-selection-layer-title', '2. 데이터 그룹 / Package Family'));
     if (options.package_family_count === 0) {
-      familyLayer.append(createUc6Node('p', 'uc6-stage-message', 'Template Profile은 확인되었지만 현재 선택 가능한 데이터 그룹이 없습니다.'));
+      familyLayer.append(createUc6Node('p', 'uc6-stage-message', options.compatibility_state === 'no_compatible_packages'
+        ? 'Fresh same-job R1 topology는 유효하지만 현재 호환되는 dummy-data 그룹이 없습니다.'
+        : 'Template Profile은 확인되었지만 현재 선택 가능한 데이터 그룹이 없습니다.'));
     } else {
       const familyGrid = createUc6Node('div', 'uc6-package-family-grid');
       options.package_families.forEach((family) => {
@@ -7177,7 +7320,9 @@ Customer: Thank you. Goodbye.`
     }
     card.append(variantLayer);
 
-    if (isBound) {
+    if (isFresh) {
+      card.append(createUc6Node('p', 'uc6-help-text', '선택 내용은 이 브라우저에만 저장됩니다. Fresh package binding과 문서 생성 연결은 R6E로 연기되었습니다.'));
+    } else if (isBound) {
       card.append(createUc6Node('p', 'uc6-help-text uc6-bound-selection-message', '서버가 이 작업의 데이터 그룹과 시나리오를 고정했습니다. 로컬 선택으로 변경할 수 없습니다.'));
     } else {
       card.append(createUc6Node('p', 'uc6-help-text', '선택한 시나리오의 package_id와 package_version은 생성 요청 시 이 작업에 고정됩니다.'));
@@ -7185,13 +7330,13 @@ Customer: Thank you. Goodbye.`
 
     const actions = createUc6Node('div', 'uc6-action-row');
     const selectedVariant = getSelectedUC6PackageVariant(options);
-    const canSubmit = isUc6Authorized()
+    const canSubmit = !isFresh && isUc6Authorized()
       && uc6State.jobState === 'source_ready'
       && !!selectedFamily
       && !!selectedVariant
       && !uc6State.operationInFlight;
     const submitLabel = isBound ? '고정된 데이터로 문서 생성' : '선택한 데이터로 문서 생성';
-    actions.append(createUC6ActionButton('uc6-submitRenderBtn', submitLabel, 'btn btn-primary', !canSubmit));
+    if (!isFresh) actions.append(createUC6ActionButton('uc6-submitRenderBtn', submitLabel, 'btn btn-primary', !canSubmit));
     actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
 
     const indicator = createUc6Node('span', 'uc6-inline-status', '생성 요청 중...');
@@ -7527,7 +7672,11 @@ Customer: Thank you. Goodbye.`
       const profile = uc6State.packageOptions?.template_profile;
       const family = getSelectedUC6PackageFamily();
       const variant = getSelectedUC6PackageVariant();
-      if (profile) rows.push(['Template Profile', `${profile.profile_id}:${profile.profile_version}`]);
+      if (profile?.profile_origin === 'fresh_same_job') {
+        rows.push(['Template/Profile', `Fresh same-job R1 · ${profile.generation_unit_count} Generation Units · ${profile.fillable_slot_count} Slots`]);
+      } else if (profile) {
+        rows.push(['Template Profile', `${profile.profile_id}:${profile.profile_version}`]);
+      }
       if (family) rows.push(['데이터 그룹', family.title || family.package_family_id]);
       const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.packageOptions?.bound_package?.title || variant?.title || '';
       if (packageTitle) rows.push(['데이터 시나리오', packageTitle]);
