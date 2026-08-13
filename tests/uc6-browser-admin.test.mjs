@@ -45,6 +45,7 @@ import {
 
 const API_BASE = 'https://api.peter-n8n.duckdns.org/';
 const JOB_ID = 'fd_uc6_admin_test_12345';
+const LIVE_FRESH_JOB_ID = 'fd_uc6_admin_20260813T001514Z_c0eb81ff7c57c63e';
 const R6C_SOURCE_SHA = 'a'.repeat(64);
 const R6C_CONTROL_PLANE_VERSION = 'uc6_11c8r2_browser_admin_uc6_control_plane_v1';
 
@@ -379,16 +380,30 @@ function freshLinkedScenarioFamily(overrides = {}) {
 
 function freshUnpublishedPublicationPayload(overrides = {}) {
   return Object.assign(unpublishedPublicationPayload(), {
+    schema_version: 'uc6_a9_0g2a_r6f_a_fresh_reusable_asset_publication_projection_v1',
     linked_scenario_family: freshLinkedScenarioFamily()
   }, overrides);
 }
 
 function freshPublishedPublicationPayload(overrides = {}) {
   return Object.assign(publishedPublicationPayload(), {
+    schema_version: 'uc6_a9_0g2a_r6f_a_fresh_reusable_asset_publication_projection_v1',
     linked_scenario_family: freshLinkedScenarioFamily({
       published_scenario_family_id: 'scenario_family_publication_8290144ea5219754',
       publication_manifest_sha256: '2'.repeat(64),
       immutable_link_identity: 'asset_scenario_family_link_8290144ea5219754'
+    })
+  }, overrides);
+}
+
+function liveFreshUnpublishedPublicationPayload(overrides = {}) {
+  return Object.assign(freshUnpublishedPublicationPayload(), {
+    job_id: LIVE_FRESH_JOB_ID,
+    reviewed_final_pptx_sha256: '7eec8e9cf43d379561f7a6c7dcd63fc934159100d4a1deccd209ac268a06d2fc',
+    reviewed_final_pdf_sha256: 'a6b1298ceca55203e8f4c5520aa7c7df0ceb95f3ac8abbdf9ac8007bf086b9b3',
+    linked_scenario_family: freshLinkedScenarioFamily({
+      synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
+      scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3'
     })
   }, overrides);
 }
@@ -1287,7 +1302,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6f-b-fresh-review-publication-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6f-b-fresh-review-publication-2026-08-14-v2'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -3544,6 +3559,19 @@ test('R6F-B Fresh publication projection requires a safe coherent linked three-s
   assert.deepEqual(replayed.published_asset, created.published_asset);
   assert.deepEqual(replayed.linked_scenario_family, created.linked_scenario_family);
 
+  for (const forbiddenBeforePublication of [
+    { published_scenario_family_id: 'scenario_family_publication_8290144ea5219754' },
+    { publication_manifest_sha256: '2'.repeat(64) },
+    { immutable_link_identity: 'asset_scenario_family_link_8290144ea5219754' }
+  ]) {
+    assert.throws(() => projectUc6FreshReusableAssetPublication(
+      freshUnpublishedPublicationPayload({
+        linked_scenario_family: freshLinkedScenarioFamily(forbiddenBeforePublication)
+      }),
+      { expectedJobId: JOB_ID }
+    ), /invalid_uc6_reusable_asset_publication/);
+  }
+
   for (const linkedScenarioFamily of [
     freshLinkedScenarioFamily({ scenario_count: 1, ordered_scenario_keys: ['scenario_000'] }),
     freshLinkedScenarioFamily({ ordered_scenario_keys: ['scenario_000', 'scenario_002', 'scenario_001'] }),
@@ -3557,6 +3585,42 @@ test('R6F-B Fresh publication projection requires a safe coherent linked three-s
     ));
   }
   assert.doesNotThrow(() => projectUc6ReusableAssetPublication(unpublishedPublicationPayload(), { expectedJobId: JOB_ID }), 'legacy A8 projection is unchanged');
+  assert.doesNotThrow(() => projectUc6ReusableAssetPublication(publishedPublicationPayload(), { expectedJobId: JOB_ID }), 'legacy A8 published projection is unchanged');
+});
+
+test('R6F-B publication projectors enforce exact lane-specific top-level schema authority', () => {
+  const freshPayload = freshUnpublishedPublicationPayload();
+  const legacyPayload = unpublishedPublicationPayload();
+  assert.equal(freshPayload.schema_version, 'uc6_a9_0g2a_r6f_a_fresh_reusable_asset_publication_projection_v1');
+  assert.equal(legacyPayload.schema_version, 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1');
+  assert.throws(
+    () => projectUc6ReusableAssetPublication(freshPayload, { expectedJobId: JOB_ID }),
+    /invalid_uc6_reusable_asset_publication/,
+    'legacy A8 projector rejects the Fresh R6F-A schema'
+  );
+  assert.throws(
+    () => projectUc6FreshReusableAssetPublication(legacyPayload, { expectedJobId: JOB_ID }),
+    /invalid_uc6_reusable_asset_publication/,
+    'Fresh projector rejects the legacy A8 schema'
+  );
+});
+
+test('R6F-B known live-shaped Fresh unpublished HTTP 200 projection reaches review_pending', () => {
+  const payload = liveFreshUnpublishedPublicationPayload();
+  const projected = projectUc6FreshReusableAssetPublication(payload, { expectedJobId: LIVE_FRESH_JOB_ID });
+  assert.equal(projected.review_state, 'review_pending');
+  assert.equal(projected.publication_state, 'unpublished');
+  assert.equal(projected.reviewed_final_pptx_sha256, '7eec8e9cf43d379561f7a6c7dcd63fc934159100d4a1deccd209ac268a06d2fc');
+  assert.equal(projected.reviewed_final_pdf_sha256, 'a6b1298ceca55203e8f4c5520aa7c7df0ceb95f3ac8abbdf9ac8007bf086b9b3');
+  assert.deepEqual(projected.linked_scenario_family, {
+    synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
+    scenario_count: 3,
+    ordered_scenario_keys: ['scenario_000', 'scenario_001', 'scenario_002'],
+    scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3'
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'published_scenario_family_id'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'publication_manifest_sha256'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'immutable_link_identity'), false);
 });
 
 test('R6F-B Fresh publication GET and explicit POST reuse the Firebase-only one-shot route', async () => {

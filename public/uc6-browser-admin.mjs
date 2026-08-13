@@ -482,6 +482,7 @@ export function projectUc6FinalDeliveryCapabilities(payload, options = {}) {
 
 
 const UC6_PUBLICATION_SCHEMA_VERSION = 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1';
+const UC6_FRESH_PUBLICATION_SCHEMA_VERSION = 'uc6_a9_0g2a_r6f_a_fresh_reusable_asset_publication_projection_v1';
 const UC6_PUBLICATION_DECISION = 'approve_for_reuse_and_publish';
 
 function invalidReusablePublicationContract() {
@@ -533,10 +534,10 @@ function projectUc6PublishedAsset(value) {
   };
 }
 
-export function projectUc6ReusableAssetPublication(payload, options = {}) {
+function projectUc6ReusableAssetPublicationBase(payload, options, expectedSchemaVersion) {
   if (!isPlainObject(payload)) invalidReusablePublicationContract();
   const expectedJobId = normalizeUc6JobId(options.expectedJobId);
-  if (payload.schema_version !== UC6_PUBLICATION_SCHEMA_VERSION) invalidReusablePublicationContract();
+  if (payload.schema_version !== expectedSchemaVersion) invalidReusablePublicationContract();
   if (payload.job_id !== expectedJobId || payload.public_safety !== 'PASS') invalidReusablePublicationContract();
   if (payload.render_state !== 'render_completed') invalidReusablePublicationContract();
   if (payload.control_plane_contract_version !== 'uc6_11c8r2_browser_admin_uc6_control_plane_v1') {
@@ -592,6 +593,10 @@ export function projectUc6ReusableAssetPublication(payload, options = {}) {
   };
 }
 
+export function projectUc6ReusableAssetPublication(payload, options = {}) {
+  return projectUc6ReusableAssetPublicationBase(payload, options, UC6_PUBLICATION_SCHEMA_VERSION);
+}
+
 function projectUc6FreshLinkedScenarioFamily(value) {
   if (!isPlainObject(value)) invalidReusablePublicationContract();
   const allowed = new Set([
@@ -632,7 +637,7 @@ function projectUc6FreshLinkedScenarioFamily(value) {
 }
 
 export function projectUc6FreshReusableAssetPublication(payload, options = {}) {
-  const publication = projectUc6ReusableAssetPublication(payload, options);
+  const publication = projectUc6ReusableAssetPublicationBase(payload, options, UC6_FRESH_PUBLICATION_SCHEMA_VERSION);
   const linkedScenarioFamily = projectUc6FreshLinkedScenarioFamily(payload?.linked_scenario_family);
   if (publication.publication_state === 'unpublished') {
     if (

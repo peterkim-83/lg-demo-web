@@ -60,7 +60,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6f-b-fresh-review-publication-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-r6f-b-fresh-review-publication-2026-08-14-v2';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
