@@ -9,6 +9,9 @@ import {
   projectUc6DummyDatabagPackageFamilyOptions,
   projectUc6FreshTemplateOnboardingJobStatus,
   projectUc6FreshTemplateOnboardingSubmission,
+  projectUc6FreshSyntheticGenerationSubmission,
+  projectUc6FreshSyntheticScenarios,
+  projectUc6FreshSyntheticScenarioBinding,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
   projectUc6ReusableAssetPackageOptions,
@@ -24,6 +27,7 @@ import {
   splitDecisionTextLines,
   validateUc6DecisionCommand,
   validateUc6DummyDatabagRenderCommand,
+  validateUc6SyntheticScenarioBindingCommand,
   validateUc6ReusableAssetPublicationCommand
 } from './uc6-browser-admin.mjs';
 
@@ -51,7 +55,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6c-template-family-variant-selection-2026-08-11-v1';
+const APP_VERSION = 'app.uc6-r6e-c2-synthetic-scenario-binding-2026-08-13-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5124,6 +5128,11 @@ Customer: Thank you. Goodbye.`
     onboarding_running: 'Fresh onboarding 실행 중',
     onboarding_ready: 'Fresh onboarding 준비 완료',
     onboarding_blocked: 'Fresh onboarding 차단',
+    synthetic_scenarios_queued: '합성 샘플 컨텍스트 생성 대기 중',
+    synthetic_scenarios_running: '합성 샘플 컨텍스트 생성 중',
+    synthetic_scenarios_ready: '합성 샘플 컨텍스트 선택 준비 완료',
+    synthetic_scenario_bound: '합성 샘플 컨텍스트 선택 완료',
+    synthetic_scenarios_failed: '합성 샘플 컨텍스트 생성 실패',
     render_queued: '생성 대기 중',
     render_running: '생성 실행 중',
     render_completed: '생성 완료',
@@ -5184,6 +5193,16 @@ Customer: Thank you. Goodbye.`
     packageOptions: null,
     freshOnboardingExpected: false,
     onboardingSubmissionAmbiguous: false,
+    freshSyntheticExpected: false,
+    syntheticGenerationSubmission: null,
+    syntheticGenerationSubmitted: false,
+    syntheticGenerationSubmissionAmbiguous: false,
+    syntheticScenarioOptions: [],
+    syntheticGenerationState: 'not_started',
+    syntheticSelectionState: 'unbound',
+    boundSyntheticScenario: null,
+    selectedSyntheticScenarioKey: '',
+    syntheticBindingSubmissionAmbiguous: false,
     selectedPackageFamilyId: '',
     selectedPackageId: '',
     selectedPackageVersion: '',
@@ -5296,7 +5315,18 @@ Customer: Thank you. Goodbye.`
     const state = publicState || null;
     if (flowLane === 'dummy_render') {
       if (!state || state === 'idle') return 'intake';
-      if (state === 'source_ready' || state === 'onboarding_queued' || state === 'onboarding_running' || state === 'onboarding_ready' || state === 'onboarding_blocked') return 'package';
+      if (
+        state === 'source_ready'
+        || state === 'onboarding_queued'
+        || state === 'onboarding_running'
+        || state === 'onboarding_ready'
+        || state === 'onboarding_blocked'
+        || state === 'synthetic_scenarios_queued'
+        || state === 'synthetic_scenarios_running'
+        || state === 'synthetic_scenarios_ready'
+        || state === 'synthetic_scenario_bound'
+        || state === 'synthetic_scenarios_failed'
+      ) return 'package';
       if (state === 'render_queued' || state === 'render_running') return 'render';
       if (state === 'render_unknown') return 'render_unknown';
       if (state === 'failed') return 'render_error';
@@ -5454,6 +5484,10 @@ Customer: Thank you. Goodbye.`
         selected_panel: 'review',
         flow_lane: uc6State.flowLane,
         fresh_onboarding_expected: uc6State.freshOnboardingExpected,
+        fresh_synthetic_expected: uc6State.freshSyntheticExpected,
+        synthetic_generation_submitted: uc6State.syntheticGenerationSubmitted,
+        synthetic_generation_submission_ambiguous: uc6State.syntheticGenerationSubmissionAmbiguous,
+        synthetic_binding_submission_ambiguous: uc6State.syntheticBindingSubmissionAmbiguous,
         selected_asset_id: uc6State.selectedAssetId,
         selected_package_family_id: uc6State.selectedPackageFamilyId,
         selected_package_id: uc6State.selectedPackageId,
@@ -5525,6 +5559,19 @@ Customer: Thank you. Goodbye.`
     uc6State.finalDeliveryRequestActive = false;
   }
 
+  function resetUC6FreshSyntheticState() {
+    uc6State.freshSyntheticExpected = false;
+    uc6State.syntheticGenerationSubmission = null;
+    uc6State.syntheticGenerationSubmitted = false;
+    uc6State.syntheticGenerationSubmissionAmbiguous = false;
+    uc6State.syntheticScenarioOptions = [];
+    uc6State.syntheticGenerationState = 'not_started';
+    uc6State.syntheticSelectionState = 'unbound';
+    uc6State.boundSyntheticScenario = null;
+    uc6State.selectedSyntheticScenarioKey = '';
+    uc6State.syntheticBindingSubmissionAmbiguous = false;
+  }
+
   function abortUC6Operations() {
     if (uc6State.operationAbortController) uc6State.operationAbortController.abort();
     if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
@@ -5561,6 +5608,7 @@ Customer: Thank you. Goodbye.`
     uc6State.packageOptions = null;
     uc6State.freshOnboardingExpected = false;
     uc6State.onboardingSubmissionAmbiguous = false;
+    resetUC6FreshSyntheticState();
     uc6State.selectedPackageFamilyId = '';
     uc6State.selectedPackageId = '';
     uc6State.selectedPackageVersion = '';
@@ -5736,7 +5784,13 @@ Customer: Thank you. Goodbye.`
   async function resumeUC6PersistedJob() {
     const persisted = loadUC6LocalState();
     try {
+      const persistedJobId = persisted.job_id ? normalizeUc6JobId(persisted.job_id) : '';
+      if (uc6State.jobId && uc6State.jobId !== persistedJobId) resetUC6FreshSyntheticState();
       uc6State.freshOnboardingExpected = persisted.fresh_onboarding_expected === true;
+      uc6State.freshSyntheticExpected = persisted.fresh_synthetic_expected === true;
+      uc6State.syntheticGenerationSubmitted = persisted.synthetic_generation_submitted === true;
+      uc6State.syntheticGenerationSubmissionAmbiguous = persisted.synthetic_generation_submission_ambiguous === true;
+      uc6State.syntheticBindingSubmissionAmbiguous = persisted.synthetic_binding_submission_ambiguous === true;
       uc6State.flowLane = uc6State.freshOnboardingExpected
         ? 'dummy_render'
         : persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render');
@@ -5752,13 +5806,14 @@ Customer: Thank you. Goodbye.`
         if (uc6State.flowLane === 'asset_render') await loadUC6ReusableAssetCatalog();
         return;
       }
-      uc6State.jobId = normalizeUc6JobId(persisted.job_id);
+      uc6State.jobId = persistedJobId;
       await refreshUC6JobStatus({ fetchReview: uc6State.flowLane === 'legacy_analysis' });
 
       const mapped = mapUc6StateToView(uc6State.jobState);
       const shouldPoll = isUC6FreshSourceReconciliationPending()
+        || isUC6FreshSyntheticPollingPending()
         || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
-        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && mapped.onboardingPollable))
+        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
         : mapped.pollable);
       if (shouldPoll) startUC6Polling();
     } catch (error) {
@@ -5795,6 +5850,7 @@ Customer: Thank you. Goodbye.`
       uc6State.jobId = normalizeUc6JobId(created?.job_id);
       uc6State.jobState = created.state || 'source_ready';
       uc6State.freshOnboardingExpected = true;
+      uc6State.freshSyntheticExpected = true;
       uc6State.source = {
         sha256: created.source?.sha256,
         size_bytes: created.source?.size_bytes,
@@ -5808,9 +5864,18 @@ Customer: Thank you. Goodbye.`
       uc6State.jobState = projected.state;
       uc6State.consecutivePollErrors = 0;
       if (projected.state === 'onboarding_ready') {
-        uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 호환 데이터 그룹을 확인하고 있습니다.';
+        uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 합성 샘플 컨텍스트 상태를 확인하고 있습니다.';
         saveUC6LocalState();
-        await loadUC6PackageOptions(controller.signal);
+        const synthetic = await reconcileUC6FreshSyntheticScenarios({ signal: controller.signal, allowSubmit: true });
+        if (
+          synthetic?.generation_state === 'generation_queued'
+          || synthetic?.generation_state === 'generation_running'
+          || (
+            synthetic?.generation_state === 'not_started'
+            && uc6State.syntheticGenerationSubmitted
+            && !uc6State.syntheticGenerationSubmissionAmbiguous
+          )
+        ) startUC6Polling();
       } else if (projected.state === 'onboarding_blocked') {
         uc6State.stageMessage = 'Fresh onboarding을 완료할 수 없습니다. 새 PPTX를 선택하거나 작업 상태를 다시 확인하세요.';
         saveUC6LocalState();
@@ -5845,6 +5910,7 @@ Customer: Thank you. Goodbye.`
     uc6State.flowLane = lane;
     uc6State.stageMessage = '';
     uc6State.assetSubmissionAmbiguous = false;
+    resetUC6FreshSyntheticState();
     if (lane === 'asset_render') {
       uc6State.selectedPackageFamilyId = '';
       uc6State.selectedFile = null;
@@ -6067,6 +6133,167 @@ Customer: Thank you. Goodbye.`
     return family;
   }
 
+  function mapUC6SyntheticGenerationStateToJobState(generationState, selectionState = 'unbound') {
+    if (selectionState === 'bound') return 'synthetic_scenario_bound';
+    return {
+      not_started: 'onboarding_ready',
+      generation_queued: 'synthetic_scenarios_queued',
+      generation_running: 'synthetic_scenarios_running',
+      generation_ready: 'synthetic_scenarios_ready',
+      generation_failed: 'synthetic_scenarios_failed'
+    }[generationState] || 'onboarding_ready';
+  }
+
+  function applyUC6FreshSyntheticProjection(projected) {
+    uc6State.freshSyntheticExpected = true;
+    uc6State.packageOptions = null;
+    uc6State.syntheticGenerationState = projected.generation_state;
+    uc6State.syntheticScenarioOptions = projected.scenario_options;
+    uc6State.syntheticSelectionState = projected.selection_state;
+    uc6State.boundSyntheticScenario = projected.bound_scenario;
+    uc6State.selectedSyntheticScenarioKey = projected.bound_scenario?.scenario_key || '';
+    uc6State.jobState = mapUC6SyntheticGenerationStateToJobState(projected.generation_state, projected.selection_state);
+    if (projected.generation_state !== 'not_started') {
+      uc6State.syntheticGenerationSubmitted = true;
+      uc6State.syntheticGenerationSubmissionAmbiguous = false;
+    }
+    if (projected.selection_state === 'bound') uc6State.syntheticBindingSubmissionAmbiguous = false;
+
+    if (projected.selection_state === 'bound') {
+      uc6State.stageMessage = '샘플 컨텍스트 선택이 완료되었습니다. 다음 render 단계는 R6E-D에서 연결됩니다.';
+    } else if (projected.generation_state === 'not_started') {
+      uc6State.stageMessage = uc6State.syntheticGenerationSubmissionAmbiguous
+        ? '생성 요청 결과가 아직 확인되지 않았습니다. POST를 다시 보내지 않고 서버 상태만 확인합니다.'
+        : '합성 샘플 컨텍스트 생성 요청을 준비하고 있습니다.';
+    } else if (projected.generation_state === 'generation_queued') {
+      uc6State.stageMessage = '샘플 컨텍스트 생성 대기 중';
+    } else if (projected.generation_state === 'generation_running') {
+      uc6State.stageMessage = '샘플 컨텍스트 생성 중';
+    } else if (projected.generation_state === 'generation_ready') {
+      uc6State.stageMessage = uc6State.syntheticBindingSubmissionAmbiguous
+        ? '선택 요청 결과를 확인하지 못했습니다. 다른 시나리오를 선택하지 말고 작업 상태를 새로고침하세요.'
+        : '생성된 세 가지 합성 샘플 컨텍스트 중 하나를 선택하세요.';
+    } else {
+      uc6State.stageMessage = '합성 샘플 컨텍스트 생성에 실패했습니다. 서버 상태를 다시 확인하거나 새 문서를 시작하세요.';
+    }
+    saveUC6LocalState();
+    renderUC6All();
+  }
+
+  async function loadUC6FreshSyntheticScenarios(signal) {
+    const raw = await uc6State.api.getFreshSyntheticScenarios(uc6State.jobId, { signal });
+    const projected = projectUc6FreshSyntheticScenarios(raw, {
+      expectedJobId: uc6State.jobId,
+      expectedSourceSha: uc6State.source?.sha256
+    });
+    applyUC6FreshSyntheticProjection(projected);
+    return projected;
+  }
+
+  async function submitUC6FreshSyntheticGeneration(signal) {
+    if (uc6State.syntheticGenerationSubmitted || uc6State.syntheticGenerationSubmissionAmbiguous) return null;
+    uc6State.syntheticGenerationSubmitted = true;
+    uc6State.stageMessage = '합성 샘플 컨텍스트 생성 요청을 전송하고 있습니다.';
+    saveUC6LocalState();
+    renderUC6All();
+    try {
+      const raw = await uc6State.api.submitFreshSyntheticScenarios(uc6State.jobId, { signal });
+      const projected = projectUc6FreshSyntheticGenerationSubmission(raw, { expectedJobId: uc6State.jobId });
+      uc6State.syntheticGenerationSubmission = projected;
+      uc6State.syntheticGenerationSubmissionAmbiguous = false;
+      uc6State.jobState = projected.state;
+      saveUC6LocalState();
+      return await loadUC6FreshSyntheticScenarios(signal);
+    } catch (error) {
+      if (error?.name !== 'Uc6AmbiguousSubmissionError' && error?.code !== 'ambiguous_submission') throw error;
+      uc6State.syntheticGenerationSubmissionAmbiguous = true;
+      uc6State.stageMessage = '생성 요청의 접수 여부를 확인할 수 없습니다. POST를 다시 보내지 않고 서버 상태만 확인합니다.';
+      saveUC6LocalState();
+      renderUC6All();
+      return loadUC6FreshSyntheticScenarios(signal);
+    }
+  }
+
+  async function reconcileUC6FreshSyntheticScenarios({ signal, allowSubmit = false } = {}) {
+    const projected = await loadUC6FreshSyntheticScenarios(signal);
+    if (
+      projected.generation_state === 'not_started'
+      && allowSubmit
+      && !uc6State.syntheticGenerationSubmitted
+      && !uc6State.syntheticGenerationSubmissionAmbiguous
+    ) {
+      return submitUC6FreshSyntheticGeneration(signal);
+    }
+    return projected;
+  }
+
+  async function bindUC6FreshSyntheticScenario(scenarioKey) {
+    if (
+      !isUc6Authorized()
+      || uc6State.operationInFlight
+      || uc6State.syntheticSelectionState === 'bound'
+      || uc6State.syntheticBindingSubmissionAmbiguous
+      || uc6State.syntheticGenerationState !== 'generation_ready'
+    ) return;
+    const validation = validateUc6SyntheticScenarioBindingCommand(scenarioKey);
+    const option = validation.ok
+      ? uc6State.syntheticScenarioOptions.find((row) => row.scenario_key === validation.body.scenario_key)
+      : null;
+    if (!validation.ok || !option) {
+      uc6State.stageMessage = validation.message || '합성 샘플 컨텍스트 선택값을 확인하세요.';
+      renderUC6All();
+      return;
+    }
+    uc6State.operationInFlight = true;
+    uc6State.selectedSyntheticScenarioKey = option.scenario_key;
+    uc6State.stageMessage = '선택한 합성 샘플 컨텍스트를 이 작업에 고정하고 있습니다.';
+    renderUC6All();
+    const controller = createUC6OperationController();
+    try {
+      const raw = await uc6State.api.bindFreshSyntheticScenario(uc6State.jobId, option.scenario_key, { signal: controller.signal });
+      const projected = projectUc6FreshSyntheticScenarioBinding(raw, {
+        expectedJobId: uc6State.jobId,
+        expectedScenarioKey: option.scenario_key,
+        expectedSourceSha: uc6State.source?.sha256
+      });
+      uc6State.syntheticSelectionState = 'bound';
+      uc6State.boundSyntheticScenario = projected.bound_scenario;
+      uc6State.selectedSyntheticScenarioKey = projected.bound_scenario.scenario_key;
+      uc6State.syntheticBindingSubmissionAmbiguous = false;
+      uc6State.jobState = 'synthetic_scenario_bound';
+      uc6State.stageMessage = '샘플 컨텍스트 선택 완료. 다음 render 단계는 R6E-D에서 연결됩니다.';
+      stopUC6Polling();
+      saveUC6LocalState();
+      setUC6LiveMessage(uc6State.stageMessage);
+    } catch (error) {
+      if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
+        uc6State.syntheticBindingSubmissionAmbiguous = true;
+        uc6State.stageMessage = '선택 요청 결과가 불명확하여 GET으로 서버 상태를 확인합니다. 다른 선택은 전송하지 않습니다.';
+        saveUC6LocalState();
+        try {
+          await loadUC6FreshSyntheticScenarios(controller.signal);
+        } catch (readError) {
+          if (handleUC6AuthorizationFailure(readError)) return;
+          if (readError?.name !== 'AbortError') uc6State.stageMessage = '선택 결과를 확인하지 못했습니다. 작업 상태를 새로고침하세요.';
+        }
+      } else if (Number(error?.status) === 409) {
+        try {
+          await loadUC6FreshSyntheticScenarios(controller.signal);
+        } catch (readError) {
+          if (handleUC6AuthorizationFailure(readError)) return;
+          if (readError?.name !== 'AbortError') uc6State.stageMessage = '서버에 고정된 선택을 확인하지 못했습니다. 작업 상태를 새로고침하세요.';
+        }
+      } else if (!handleUC6AuthorizationFailure(error) && error?.name !== 'AbortError') {
+        uc6State.stageMessage = uc6MessageFromError(error);
+        setUC6LiveMessage(uc6State.stageMessage);
+      }
+    } finally {
+      uc6State.operationInFlight = false;
+      saveUC6LocalState();
+      renderUC6All();
+    }
+  }
+
   async function loadUC6PackageOptions(signal) {
     if (!isUc6Authorized() || uc6State.flowLane !== 'dummy_render' || !uc6State.jobId) return;
     try {
@@ -6255,6 +6482,20 @@ Customer: Thank you. Goodbye.`
       && uc6State.jobState === 'source_ready';
   }
 
+  function isUC6FreshSyntheticPollingPending() {
+    return uc6State.flowLane === 'dummy_render'
+      && uc6State.freshSyntheticExpected === true
+      && (
+        uc6State.syntheticGenerationState === 'generation_queued'
+        || uc6State.syntheticGenerationState === 'generation_running'
+        || (
+          uc6State.syntheticGenerationState === 'not_started'
+          && uc6State.syntheticGenerationSubmitted
+          && !uc6State.syntheticGenerationSubmissionAmbiguous
+        )
+      );
+  }
+
   async function pollUC6JobStatus() {
     if (uc6State.statusRequestActive || !uc6State.pollingAbortController) return;
     uc6State.statusRequestActive = true;
@@ -6263,8 +6504,9 @@ Customer: Thank you. Goodbye.`
       uc6State.consecutivePollErrors = 0;
       const mapped = mapUc6StateToView(uc6State.jobState);
       const isPollable = isUC6FreshSourceReconciliationPending()
+        || isUC6FreshSyntheticPollingPending()
         || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
-        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && mapped.onboardingPollable))
+        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
         : mapped.pollable);
       if (isPollable) scheduleUC6Poll();
       else stopUC6Polling();
@@ -6308,11 +6550,19 @@ Customer: Thank you. Goodbye.`
         || rawJob.state === 'onboarding_running'
         || rawJob.state === 'onboarding_ready'
         || rawJob.state === 'onboarding_blocked'
+        || rawJob.state === 'synthetic_scenarios_queued'
+        || rawJob.state === 'synthetic_scenarios_running'
+        || rawJob.state === 'synthetic_scenarios_ready'
+        || rawJob.state === 'synthetic_scenario_bound'
+        || rawJob.state === 'synthetic_scenarios_failed'
       );
 
     if (authoritativeFreshOnboardingLane && uc6State.flowLane !== 'asset_render') {
       uc6State.flowLane = 'dummy_render';
       uc6State.freshOnboardingExpected = true;
+      if (rawJob.state === 'onboarding_ready' || String(rawJob.state || '').startsWith('synthetic_')) {
+        uc6State.freshSyntheticExpected = true;
+      }
       uc6State.review = null;
       uc6State.decision = null;
       uc6State.decisionMode = false;
@@ -6359,16 +6609,18 @@ Customer: Thank you. Goodbye.`
         uc6State.renderStatus = null;
         uc6State.onboardingSubmissionAmbiguous = false;
         if (projected.state === 'onboarding_ready') {
-          stopUC6Polling();
-          uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 호환 데이터 그룹을 확인하고 있습니다.';
+          uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 합성 샘플 컨텍스트 상태를 확인하고 있습니다.';
           saveUC6LocalState();
-          await loadUC6PackageOptions(options.signal);
+          await reconcileUC6FreshSyntheticScenarios({ signal: options.signal, allowSubmit: true });
         } else if (projected.state === 'onboarding_blocked') {
           stopUC6Polling();
           uc6State.packageOptions = null;
+          resetUC6FreshSyntheticState();
           uc6State.stageMessage = 'Fresh onboarding을 완료할 수 없습니다. 새 PPTX를 선택하거나 작업 상태를 다시 확인하세요.';
           saveUC6LocalState();
           renderUC6All();
+        } else if (String(projected.state).startsWith('synthetic_')) {
+          await reconcileUC6FreshSyntheticScenarios({ signal: options.signal, allowSubmit: false });
         } else {
           uc6State.packageOptions = null;
           uc6State.stageMessage = 'Fresh onboarding이 진행 중입니다. 준비 상태를 계속 확인합니다.';
@@ -7150,7 +7402,88 @@ Customer: Thank you. Goodbye.`
     root.replaceChildren(card);
   }
 
+  function formatUC6SyntheticDifferentiationBasis(value) {
+    if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try { return JSON.stringify(value); } catch (_) { return ''; }
+  }
+
+  function renderUC6FreshSyntheticScenarioStage(root) {
+    const card = createUc6Node('section', 'uc6-stage-card uc6-fresh-synthetic-stage');
+    card.append(createUc6Node('h2', '', '합성 샘플 컨텍스트 선택'));
+    card.append(createUc6Node(
+      'p',
+      'uc6-stage-copy',
+      '소스 PPTX 분석을 바탕으로 템플릿과 호환되는 세 가지 가상 샘플 컨텍스트를 생성합니다. 하나를 선택하면 Admin render/review 흐름의 샘플 데이터가 고정됩니다. 실제 고객 정보가 아닙니다.'
+    ));
+
+    const isBound = uc6State.syntheticSelectionState === 'bound' && !!uc6State.boundSyntheticScenario;
+    const isReady = uc6State.syntheticGenerationState === 'generation_ready' && uc6State.syntheticScenarioOptions.length === 3;
+    if (!isReady) {
+      const failed = uc6State.syntheticGenerationState === 'generation_failed';
+      const ambiguous = uc6State.syntheticGenerationSubmissionAmbiguous;
+      card.append(createUc6Node('p', failed || ambiguous ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.stageMessage || '합성 샘플 컨텍스트 상태를 확인하고 있습니다.'));
+      const actions = createUc6Node('div', 'uc6-action-row');
+      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '작업 상태 새로고침', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+      actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
+      card.append(actions);
+      root.replaceChildren(card);
+      return;
+    }
+
+    if (isBound) {
+      const bound = uc6State.boundSyntheticScenario;
+      const boundPanel = createUc6Node('section', 'uc6-selection-layer uc6-bound-selection');
+      boundPanel.append(createUc6Node('h3', 'uc6-selection-layer-title', '샘플 컨텍스트 선택 완료'));
+      boundPanel.append(createUc6Node('strong', 'uc6-package-title', bound.label));
+      boundPanel.append(createUc6Node('p', 'uc6-package-desc', bound.scenario_summary));
+      const basis = formatUC6SyntheticDifferentiationBasis(bound.differentiation_basis);
+      if (basis) boundPanel.append(createUc6Node('p', 'uc6-help-text', basis));
+      card.append(boundPanel);
+    }
+
+    const grid = createUc6Node('div', 'uc6-package-grid uc6-synthetic-scenario-grid');
+    uc6State.syntheticScenarioOptions.forEach((scenario) => {
+      const selected = isBound && scenario.scenario_key === uc6State.boundSyntheticScenario.scenario_key;
+      const scenarioCard = createUc6Node('article', `uc6-package-card uc6-synthetic-scenario-card${selected ? ' is-selected is-bound' : ''}`);
+      scenarioCard.dataset.uc6SyntheticScenarioKey = scenario.scenario_key;
+      const header = createUc6Node('div', 'uc6-package-header');
+      header.append(createUc6Node('strong', 'uc6-package-title', scenario.label));
+      if (selected) header.append(createUc6Node('span', 'uc6-admin-chip is-ready', '선택 완료'));
+      scenarioCard.append(header, createUc6Node('p', 'uc6-package-desc', scenario.scenario_summary));
+      const basis = formatUC6SyntheticDifferentiationBasis(scenario.differentiation_basis);
+      if (basis) scenarioCard.append(createUc6Node('p', 'uc6-help-text', basis));
+      const action = createUC6ActionButton(
+        '',
+        selected ? '선택 완료' : isBound ? '선택 불가' : uc6State.selectedSyntheticScenarioKey === scenario.scenario_key && uc6State.operationInFlight ? '선택 처리 중...' : '이 시나리오 선택',
+        selected ? 'btn btn-primary' : 'btn btn-outline',
+        isBound || uc6State.operationInFlight || uc6State.syntheticBindingSubmissionAmbiguous
+      );
+      action.removeAttribute('id');
+      action.dataset.uc6SyntheticScenario = scenario.scenario_key;
+      scenarioCard.append(action);
+      grid.append(scenarioCard);
+    });
+    card.append(grid);
+    card.append(createUc6Node(
+      'p',
+      isBound ? 'uc6-stage-message' : uc6State.syntheticBindingSubmissionAmbiguous ? 'uc6-inline-error' : 'uc6-stage-message',
+      uc6State.stageMessage || (isBound ? '선택이 서버에 고정되었습니다. 이 C2 단계에서는 render를 시작하지 않습니다.' : '정확히 하나의 합성 샘플 컨텍스트를 선택하세요.')
+    ));
+    const actions = createUc6Node('div', 'uc6-action-row');
+    if (uc6State.syntheticBindingSubmissionAmbiguous) {
+      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '선택 상태 새로고침', 'btn btn-outline', uc6State.operationInFlight));
+    }
+    actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
+    card.append(actions);
+    root.replaceChildren(card);
+  }
+
   function renderUC6PackageStage(root) {
+    if (uc6State.freshSyntheticExpected) {
+      renderUC6FreshSyntheticScenarioStage(root);
+      return;
+    }
     const card = createUc6Node('section', 'uc6-stage-card');
     const onboardingInProgress = uc6State.jobState === 'source_ready' || uc6State.jobState === 'onboarding_queued' || uc6State.jobState === 'onboarding_running';
     card.append(createUc6Node('h2', '', onboardingInProgress && uc6State.freshOnboardingExpected ? 'Fresh onboarding · 데이터 준비' : 'Template Profile · 데이터 선택'));
@@ -7669,18 +8002,23 @@ Customer: Thank you. Goodbye.`
         rows.push(['게시 상태', uc6State.renderStatus.publication_state]);
       }
     } else if (uc6State.flowLane === 'dummy_render') {
-      const profile = uc6State.packageOptions?.template_profile;
-      const family = getSelectedUC6PackageFamily();
-      const variant = getSelectedUC6PackageVariant();
-      if (profile?.profile_origin === 'fresh_same_job') {
-        rows.push(['Template/Profile', `Fresh same-job R1 · ${profile.generation_unit_count} Generation Units · ${profile.fillable_slot_count} Slots`]);
-      } else if (profile) {
-        rows.push(['Template Profile', `${profile.profile_id}:${profile.profile_version}`]);
+      if (uc6State.freshSyntheticExpected) {
+        rows.push(['합성 샘플 상태', uc6State.syntheticSelectionState === 'bound' ? '선택 완료' : uc6State.syntheticGenerationState]);
+        if (uc6State.boundSyntheticScenario) rows.push(['선택된 샘플 컨텍스트', uc6State.boundSyntheticScenario.label]);
+      } else {
+        const profile = uc6State.packageOptions?.template_profile;
+        const family = getSelectedUC6PackageFamily();
+        const variant = getSelectedUC6PackageVariant();
+        if (profile?.profile_origin === 'fresh_same_job') {
+          rows.push(['Template/Profile', `Fresh same-job R1 · ${profile.generation_unit_count} Generation Units · ${profile.fillable_slot_count} Slots`]);
+        } else if (profile) {
+          rows.push(['Template Profile', `${profile.profile_id}:${profile.profile_version}`]);
+        }
+        if (family) rows.push(['데이터 그룹', family.title || family.package_family_id]);
+        const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.packageOptions?.bound_package?.title || variant?.title || '';
+        if (packageTitle) rows.push(['데이터 시나리오', packageTitle]);
+        if (uc6State.selectedPackageId) rows.push(['선택 패키지', `${uc6State.selectedPackageId}:${uc6State.selectedPackageVersion}`]);
       }
-      if (family) rows.push(['데이터 그룹', family.title || family.package_family_id]);
-      const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.packageOptions?.bound_package?.title || variant?.title || '';
-      if (packageTitle) rows.push(['데이터 시나리오', packageTitle]);
-      if (uc6State.selectedPackageId) rows.push(['선택 패키지', `${uc6State.selectedPackageId}:${uc6State.selectedPackageVersion}`]);
       if (uc6State.renderStatus) {
         rows.push(['검토 상태', uc6State.publication?.review_state || uc6State.renderStatus.review_state || 'review_pending']);
         rows.push(['게시 상태', uc6State.publication?.publication_state || uc6State.renderStatus.publication_state || 'unpublished']);
@@ -8043,6 +8381,7 @@ Customer: Thank you. Goodbye.`
       else if (target.id === 'uc6-submitAssetRenderBtn') submitUC6ReusableAssetRender();
       else if (target.id === 'uc6-restartAssetRenderBtn') restartUC6AssetRenderSelection();
       else if (target.id === 'uc6-uploadBtn') uploadUC6PptxJob();
+      else if (target.dataset.uc6SyntheticScenario) bindUC6FreshSyntheticScenario(target.dataset.uc6SyntheticScenario);
       else if (target.id === 'uc6-submitRenderBtn') submitUC6DummyRender(false);
       else if (target.id === 'uc6-retryRenderBtn') {
         if (uc6State.flowLane === 'asset_render') {

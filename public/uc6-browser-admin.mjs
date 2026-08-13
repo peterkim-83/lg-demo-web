@@ -5,6 +5,8 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   jobs: '/fetchdoc/browser-admin/uc6/jobs',
   analysis: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/analysis`,
   onboarding: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/onboarding`,
+  syntheticScenarios: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/synthetic-scenarios`,
+  syntheticScenarioBinding: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/synthetic-scenarios/binding`,
   job: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}`,
   review: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review`,
   reviewDecision: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-decision`,
@@ -47,6 +49,10 @@ export const UC6_PUBLIC_ERROR_MESSAGES = Object.freeze({
   browser_admin_uc6_dummy_databag_package_invalid: '선택한 데이터 패키지가 유효하지 않습니다.',
   browser_admin_uc6_dummy_databag_binding_conflict: '이 작업에 이미 다른 데이터 패키지가 고정되어 있습니다. 작업 상태를 새로고침하세요.',
   browser_admin_uc6_dummy_databag_unavailable: '데이터 패키지 서비스를 일시적으로 사용할 수 없습니다.',
+  browser_admin_uc6_synthetic_scenarios_not_ready: '합성 샘플 컨텍스트가 아직 준비되지 않았습니다.',
+  browser_admin_uc6_synthetic_scenarios_failed: '합성 샘플 컨텍스트 생성에 실패했습니다.',
+  browser_admin_uc6_synthetic_scenario_invalid: '선택한 합성 샘플 컨텍스트가 유효하지 않습니다.',
+  browser_admin_uc6_synthetic_scenario_binding_conflict: '이 작업에는 이미 다른 합성 샘플 컨텍스트가 고정되어 있습니다. 작업 상태를 새로고침하세요.',
   browser_admin_uc6_render_conflict: '이미 처리 중인 생성 작업이 있습니다.',
   browser_admin_uc6_render_not_ready: '생성 요청을 처리할 준비가 되지 않았습니다.',
   browser_admin_uc6_render_failed: '문서 생성 작업이 실패했습니다.',
@@ -63,6 +69,15 @@ const POLLABLE_STATES = new Set(['analysis_queued', 'analysis_running']);
 const RENDER_POLLABLE_STATES = new Set(['render_queued', 'render_running']);
 const ONBOARDING_POLLABLE_STATES = new Set(['onboarding_queued', 'onboarding_running']);
 const KNOWN_ONBOARDING_STATES = new Set(['onboarding_queued', 'onboarding_running', 'onboarding_ready', 'onboarding_blocked']);
+const SYNTHETIC_POLLABLE_STATES = new Set(['synthetic_scenarios_queued', 'synthetic_scenarios_running']);
+const KNOWN_SYNTHETIC_JOB_STATES = new Set([
+  'synthetic_scenarios_queued',
+  'synthetic_scenarios_running',
+  'synthetic_scenarios_ready',
+  'synthetic_scenario_bound',
+  'synthetic_scenarios_failed'
+]);
+const KNOWN_FRESH_JOB_STATES = new Set([...KNOWN_ONBOARDING_STATES, ...KNOWN_SYNTHETIC_JOB_STATES]);
 const KNOWN_RENDER_STATES = new Set(['render_queued', 'render_running', 'render_completed', 'failed']);
 const KNOWN_COMPATIBILITY_STATES = new Set(['compatible', 'incompatible_source_pptx']);
 const KNOWN_SELECTION_STATES = new Set(['unbound', 'bound']);
@@ -188,6 +203,12 @@ export function mapUc6StateToView(state) {
   if (ONBOARDING_POLLABLE_STATES.has(normalized)) {
     return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, onboardingPollable: true };
   }
+  if (SYNTHETIC_POLLABLE_STATES.has(normalized)) {
+    return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, syntheticScenariosPollable: true };
+  }
+  if (KNOWN_SYNTHETIC_JOB_STATES.has(normalized)) {
+    return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, syntheticScenariosPollable: false };
+  }
   if (normalized === 'onboarding_ready' || normalized === 'onboarding_blocked') {
     return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, onboardingPollable: false };
   }
@@ -223,6 +244,14 @@ export function projectUc6PersistedState(value) {
   if (typeof input.selected_panel === 'string' && /^[a-z_]{3,32}$/.test(input.selected_panel)) projected.selected_panel = input.selected_panel;
   if (typeof input.flow_lane === 'string' && KNOWN_FLOW_LANES.has(input.flow_lane)) projected.flow_lane = input.flow_lane;
   if (typeof input.fresh_onboarding_expected === 'boolean') projected.fresh_onboarding_expected = input.fresh_onboarding_expected;
+  if (typeof input.fresh_synthetic_expected === 'boolean') projected.fresh_synthetic_expected = input.fresh_synthetic_expected;
+  if (typeof input.synthetic_generation_submitted === 'boolean') projected.synthetic_generation_submitted = input.synthetic_generation_submitted;
+  if (typeof input.synthetic_generation_submission_ambiguous === 'boolean') {
+    projected.synthetic_generation_submission_ambiguous = input.synthetic_generation_submission_ambiguous;
+  }
+  if (typeof input.synthetic_binding_submission_ambiguous === 'boolean') {
+    projected.synthetic_binding_submission_ambiguous = input.synthetic_binding_submission_ambiguous;
+  }
   try {
     if (typeof input.selected_asset_id === 'string') projected.selected_asset_id = normalizeUc6ReusableAssetId(input.selected_asset_id);
   } catch (_) {
@@ -678,12 +707,283 @@ export function projectUc6FreshTemplateOnboardingJobStatus(payload, options = {}
   if (!isPlainObject(payload)) throw new TypeError('invalid_onboarding_job_status_payload');
   const expectedJobId = normalizeUc6JobId(options.expectedJobId);
   if (payload.job_id !== expectedJobId) throw new TypeError('invalid_onboarding_job_status_job_id');
-  if (!KNOWN_ONBOARDING_STATES.has(payload.state)) throw new TypeError('invalid_onboarding_job_status_state');
+  if (!KNOWN_FRESH_JOB_STATES.has(payload.state)) throw new TypeError('invalid_onboarding_job_status_state');
   return {
     job_id: payload.job_id,
     state: payload.state,
     source: projectUc6FreshOnboardingSource(payload.source),
     control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version)
+  };
+}
+
+const UC6_SYNTHETIC_GENERATION_TASK_TYPE = 'fetchdoc_browser_admin_uc6_fresh_synthetic_scenario_generation';
+const UC6_SYNTHETIC_SCENARIO_KEYS = Object.freeze(['scenario_000', 'scenario_001', 'scenario_002']);
+const UC6_SYNTHETIC_SUBMISSION_STATES = new Set([
+  'synthetic_scenarios_queued',
+  'synthetic_scenarios_running',
+  'synthetic_scenarios_ready',
+  'synthetic_scenarios_failed'
+]);
+const UC6_SYNTHETIC_GENERATION_STATES = new Set([
+  'not_started',
+  'generation_queued',
+  'generation_running',
+  'generation_ready',
+  'generation_failed'
+]);
+
+function validateUc6OpaqueSchemaVersion(value) {
+  // R6E-C1 is versioned independently; C2 treats only this new schema literal as opaque and bounded.
+  if (typeof value !== 'string' || value.length < 1 || value.length > 128 || !BOUNDED_ID_PATTERN.test(value)) {
+    throw new TypeError('invalid_synthetic_schema_version');
+  }
+  return value;
+}
+
+function assertUc6AllowedFields(value, allowed, code) {
+  if (Object.keys(value).some((key) => !allowed.has(key))) throw new TypeError(code);
+}
+
+function projectUc6SyntheticDifferentiationBasis(value, depth = 0) {
+  if (value === null) return null;
+  if (depth > 3) throw new TypeError('invalid_synthetic_differentiation_basis');
+  if (typeof value === 'string') {
+    return validateUc6SafePublicText(value, { maxLength: 1024, code: 'invalid_synthetic_differentiation_basis' });
+  }
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) {
+    if (value.length > 20) throw new TypeError('invalid_synthetic_differentiation_basis');
+    return value.map((entry) => projectUc6SyntheticDifferentiationBasis(entry, depth + 1));
+  }
+  if (!isPlainObject(value) || Object.keys(value).length > 20) {
+    throw new TypeError('invalid_synthetic_differentiation_basis');
+  }
+  const projected = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(key)
+      || /(?:path|token|secret|provider|receipt|fingerprint|source_context|internal)/i.test(key)
+    ) {
+      throw new TypeError('invalid_synthetic_differentiation_basis');
+    }
+    projected[key] = projectUc6SyntheticDifferentiationBasis(entry, depth + 1);
+  }
+  return projected;
+}
+
+function projectUc6SyntheticScenarioOption(value) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_synthetic_scenario_option');
+  const allowed = new Set([
+    'scenario_key', 'label', 'scenario_summary', 'differentiation_basis',
+    'synthetic_scenario_family_id', 'package_id', 'package_version', 'template_family_id'
+  ]);
+  assertUc6AllowedFields(value, allowed, 'invalid_synthetic_scenario_option_fields');
+  if (!UC6_SYNTHETIC_SCENARIO_KEYS.includes(value.scenario_key)) throw new TypeError('invalid_synthetic_scenario_key');
+  for (const field of ['synthetic_scenario_family_id', 'package_id', 'package_version', 'template_family_id']) {
+    if (typeof value[field] !== 'string' || !BOUNDED_ID_PATTERN.test(value[field])) {
+      throw new TypeError(`invalid_synthetic_scenario_${field}`);
+    }
+  }
+  const projected = {
+    scenario_key: value.scenario_key,
+    label: validateUc6SafePublicText(value.label, { maxLength: 256, code: 'invalid_synthetic_scenario_label' }),
+    scenario_summary: validateUc6SafePublicText(value.scenario_summary, { maxLength: 2048, code: 'invalid_synthetic_scenario_summary' }),
+    synthetic_scenario_family_id: value.synthetic_scenario_family_id,
+    package_id: value.package_id,
+    package_version: value.package_version,
+    template_family_id: value.template_family_id
+  };
+  if (Object.prototype.hasOwnProperty.call(value, 'differentiation_basis')) {
+    projected.differentiation_basis = projectUc6SyntheticDifferentiationBasis(value.differentiation_basis);
+  }
+  return projected;
+}
+
+function assertUc6SyntheticScenarioFamilyCoherence(options) {
+  if (!options.length) return;
+  const familyId = options[0].synthetic_scenario_family_id;
+  const templateFamilyId = options[0].template_family_id;
+  if (options.some((option) => option.synthetic_scenario_family_id !== familyId)) {
+    throw new TypeError('synthetic_scenario_family_mismatch');
+  }
+  if (options.some((option) => option.template_family_id !== templateFamilyId)) {
+    throw new TypeError('synthetic_template_family_mismatch');
+  }
+}
+
+export function projectUc6FreshSyntheticGenerationSubmission(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_synthetic_generation_submission_payload');
+  const allowed = new Set([
+    'schema_version', 'job_id', 'task_type', 'task_id', 'queue_status', 'created', 'state',
+    'control_plane_contract_version', 'public_safety', 'source_pptx_sha256',
+    'synthetic_scenario_family_id', 'scenario_count', 'package_count', 'network_call_count',
+    'replayed', 'provider_attempt_count'
+  ]);
+  assertUc6AllowedFields(payload, allowed, 'invalid_synthetic_generation_submission_fields');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.job_id !== expectedJobId) throw new TypeError('invalid_synthetic_generation_submission_job_id');
+  if (
+    Object.prototype.hasOwnProperty.call(payload, 'task_type')
+    && payload.task_type !== UC6_SYNTHETIC_GENERATION_TASK_TYPE
+  ) throw new TypeError('invalid_synthetic_generation_submission_task_type');
+  if (!UC6_SYNTHETIC_SUBMISSION_STATES.has(payload.state)) throw new TypeError('invalid_synthetic_generation_submission_state');
+  if (typeof payload.created !== 'boolean') throw new TypeError('invalid_synthetic_generation_submission_created');
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_generation_submission_public_safety');
+
+  const readyFields = [
+    'source_pptx_sha256', 'synthetic_scenario_family_id', 'scenario_count', 'package_count',
+    'network_call_count', 'replayed', 'provider_attempt_count'
+  ];
+  const readyFieldCount = readyFields.filter((field) => Object.prototype.hasOwnProperty.call(payload, field)).length;
+  const isReadyReplay = payload.state === 'synthetic_scenarios_ready';
+  if (isReadyReplay) {
+    if (payload.queue_status !== 'ready') throw new TypeError('invalid_synthetic_generation_submission_queue_status');
+    if (payload.task_id !== null) throw new TypeError('invalid_synthetic_generation_submission_task_id');
+    if (payload.created !== false) throw new TypeError('invalid_synthetic_generation_submission_created');
+    if (readyFieldCount !== readyFields.length) throw new TypeError('invalid_synthetic_generation_ready_metadata');
+    if (!SHA256_PATTERN.test(payload.source_pptx_sha256)) throw new TypeError('invalid_synthetic_generation_source_sha');
+    if (!BOUNDED_ID_PATTERN.test(payload.synthetic_scenario_family_id)) throw new TypeError('invalid_synthetic_generation_family_id');
+    if (payload.scenario_count !== 3 || payload.package_count !== 3) throw new TypeError('invalid_synthetic_generation_ready_counts');
+    if (payload.network_call_count !== 0 || payload.replayed !== true || payload.provider_attempt_count !== 1) {
+      throw new TypeError('invalid_synthetic_generation_replay_metadata');
+    }
+  } else {
+    const expectedQueueStatus = {
+      synthetic_scenarios_queued: 'pending',
+      synthetic_scenarios_running: 'processing',
+      synthetic_scenarios_failed: 'failed'
+    }[payload.state];
+    if (!KNOWN_QUEUE_STATUSES.has(payload.queue_status) || payload.queue_status !== expectedQueueStatus) {
+      throw new TypeError('invalid_synthetic_generation_submission_queue_status');
+    }
+    if (!Number.isInteger(payload.task_id) || payload.task_id <= 0 || payload.task_id > Number.MAX_SAFE_INTEGER) {
+      throw new TypeError('invalid_synthetic_generation_submission_task_id');
+    }
+    if (readyFieldCount !== 0) throw new TypeError('invalid_synthetic_generation_ready_metadata');
+  }
+  return {
+    schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version),
+    job_id: payload.job_id,
+    ...(Object.prototype.hasOwnProperty.call(payload, 'task_type') ? { task_type: payload.task_type } : {}),
+    task_id: payload.task_id,
+    queue_status: payload.queue_status,
+    created: payload.created,
+    state: payload.state,
+    control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
+    public_safety: payload.public_safety,
+    ...(isReadyReplay ? {
+      source_pptx_sha256: payload.source_pptx_sha256,
+      synthetic_scenario_family_id: payload.synthetic_scenario_family_id,
+      scenario_count: payload.scenario_count,
+      package_count: payload.package_count,
+      network_call_count: payload.network_call_count,
+      replayed: payload.replayed,
+      provider_attempt_count: payload.provider_attempt_count
+    } : {})
+  };
+}
+
+export const projectUc6FreshSyntheticScenarioGenerationSubmission = projectUc6FreshSyntheticGenerationSubmission;
+
+export function projectUc6FreshSyntheticScenarios(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_synthetic_scenarios_payload');
+  const allowed = new Set([
+    'schema_version', 'job_id', 'source_pptx_sha256', 'onboarding_state', 'generation_state',
+    'scenario_options', 'selection_state', 'bound_scenario', 'control_plane_contract_version', 'public_safety'
+  ]);
+  assertUc6AllowedFields(payload, allowed, 'invalid_synthetic_scenarios_fields');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.job_id !== expectedJobId) throw new TypeError('invalid_synthetic_scenarios_job_id');
+  if (!SHA256_PATTERN.test(payload.source_pptx_sha256)) throw new TypeError('invalid_synthetic_scenarios_source_sha');
+  if (options.expectedSourceSha && payload.source_pptx_sha256 !== options.expectedSourceSha) {
+    throw new TypeError('synthetic_scenarios_source_sha_mismatch');
+  }
+  if (!KNOWN_ONBOARDING_STATES.has(payload.onboarding_state)) throw new TypeError('invalid_synthetic_scenarios_onboarding_state');
+  if (!UC6_SYNTHETIC_GENERATION_STATES.has(payload.generation_state)) throw new TypeError('invalid_synthetic_scenarios_generation_state');
+  if (!KNOWN_SELECTION_STATES.has(payload.selection_state)) throw new TypeError('invalid_synthetic_scenarios_selection_state');
+  if (!Array.isArray(payload.scenario_options)) throw new TypeError('invalid_synthetic_scenario_options');
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_scenarios_public_safety');
+  if (payload.generation_state !== 'generation_ready') {
+    if (payload.scenario_options.length !== 0 || payload.selection_state !== 'unbound' || payload.bound_scenario !== null) {
+      throw new TypeError('invalid_synthetic_scenarios_not_ready_shape');
+    }
+  }
+  if (payload.generation_state === 'generation_ready' && payload.onboarding_state !== 'onboarding_ready') {
+    throw new TypeError('invalid_synthetic_scenarios_ready_onboarding_state');
+  }
+  const scenarioOptions = payload.scenario_options.map(projectUc6SyntheticScenarioOption);
+  if (payload.generation_state === 'generation_ready') {
+    if (scenarioOptions.length !== 3) throw new TypeError('invalid_synthetic_scenario_count');
+    scenarioOptions.forEach((option, index) => {
+      if (option.scenario_key !== UC6_SYNTHETIC_SCENARIO_KEYS[index]) throw new TypeError('invalid_synthetic_scenario_order');
+    });
+    if (new Set(scenarioOptions.map((option) => option.scenario_key)).size !== 3) throw new TypeError('duplicate_synthetic_scenario_key');
+    assertUc6SyntheticScenarioFamilyCoherence(scenarioOptions);
+  }
+  let boundScenario = null;
+  if (payload.selection_state === 'bound') {
+    if (payload.generation_state !== 'generation_ready') throw new TypeError('invalid_synthetic_bound_generation_state');
+    boundScenario = projectUc6SyntheticScenarioOption(payload.bound_scenario);
+    const authoritative = scenarioOptions.find((option) => option.scenario_key === boundScenario.scenario_key);
+    if (!authoritative || JSON.stringify(authoritative) !== JSON.stringify(boundScenario)) {
+      throw new TypeError('invalid_synthetic_bound_scenario_identity');
+    }
+  } else if (payload.bound_scenario !== null) {
+    throw new TypeError('invalid_synthetic_unbound_scenario');
+  }
+  return {
+    schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version),
+    job_id: payload.job_id,
+    source_pptx_sha256: payload.source_pptx_sha256,
+    onboarding_state: payload.onboarding_state,
+    generation_state: payload.generation_state,
+    scenario_options: scenarioOptions,
+    selection_state: payload.selection_state,
+    bound_scenario: boundScenario,
+    control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
+    public_safety: payload.public_safety
+  };
+}
+
+export function validateUc6SyntheticScenarioBindingCommand(scenarioKey) {
+  const normalized = typeof scenarioKey === 'string' ? scenarioKey.trim() : '';
+  if (!UC6_SYNTHETIC_SCENARIO_KEYS.includes(normalized)) {
+    return { ok: false, code: 'synthetic_scenario_key_invalid', message: '합성 샘플 컨텍스트 선택값을 확인하세요.' };
+  }
+  return { ok: true, body: { scenario_key: normalized } };
+}
+
+export function projectUc6FreshSyntheticScenarioBinding(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_synthetic_binding_payload');
+  const allowed = new Set([
+    'schema_version', 'job_id', 'source_pptx_sha256', 'selection_state',
+    'bound_scenario', 'disposition', 'public_safety'
+  ]);
+  assertUc6AllowedFields(payload, allowed, 'invalid_synthetic_binding_fields');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  const expectedScenarioKey = validateUc6SyntheticScenarioBindingCommand(options.expectedScenarioKey);
+  if (!expectedScenarioKey.ok) throw new TypeError('invalid_synthetic_binding_expected_scenario');
+  if (payload.job_id !== expectedJobId) throw new TypeError('invalid_synthetic_binding_job_id');
+  if (!SHA256_PATTERN.test(payload.source_pptx_sha256)) throw new TypeError('invalid_synthetic_binding_source_sha');
+  if (options.expectedSourceSha && payload.source_pptx_sha256 !== options.expectedSourceSha) {
+    throw new TypeError('synthetic_binding_source_sha_mismatch');
+  }
+  if (payload.selection_state !== 'bound') throw new TypeError('invalid_synthetic_binding_selection_state');
+  if (payload.disposition !== 'created' && payload.disposition !== 'replayed') throw new TypeError('invalid_synthetic_binding_disposition');
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_binding_public_safety');
+  const boundScenario = projectUc6SyntheticScenarioOption(payload.bound_scenario);
+  if (boundScenario.scenario_key !== expectedScenarioKey.body.scenario_key) {
+    throw new TypeError('invalid_synthetic_binding_scenario_key');
+  }
+  return {
+    schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version),
+    job_id: payload.job_id,
+    source_pptx_sha256: payload.source_pptx_sha256,
+    selection_state: 'bound',
+    bound_scenario: boundScenario,
+    disposition: payload.disposition,
+    public_safety: payload.public_safety
   };
 }
 
@@ -1987,6 +2287,34 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
         signal: options.signal,
         ambiguousMessage: 'Network failure during fresh onboarding submission; outcome is ambiguous.',
         ambiguousPublicMessage: 'Fresh onboarding 요청의 접수 여부를 확인할 수 없습니다. 작업 상태를 새로고침하세요.'
+      });
+    },
+    submitFreshSyntheticScenarios(jobId, options = {}) {
+      return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarios(jobId), {
+        method: 'POST',
+        signal: options.signal,
+        ambiguousMessage: 'Network failure during synthetic scenario generation submission; outcome is ambiguous.',
+        ambiguousPublicMessage: '합성 샘플 컨텍스트 생성 요청의 접수 여부를 확인할 수 없습니다. 작업 상태를 새로고침하세요.'
+      });
+    },
+    getFreshSyntheticScenarios(jobId, options = {}) {
+      return request(UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarios(jobId), { method: 'GET', signal: options.signal });
+    },
+    bindFreshSyntheticScenario(jobId, scenarioKey, options = {}) {
+      const validation = validateUc6SyntheticScenarioBindingCommand(scenarioKey);
+      if (!validation.ok) {
+        const err = new Error(validation.message);
+        err.name = 'Uc6SyntheticScenarioBindingValidationError';
+        err.code = validation.code;
+        err.publicMessage = validation.message;
+        throw err;
+      }
+      return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarioBinding(jobId), {
+        method: 'POST',
+        json: validation.body,
+        signal: options.signal,
+        ambiguousMessage: 'Network failure during synthetic scenario binding; outcome is ambiguous.',
+        ambiguousPublicMessage: '합성 샘플 컨텍스트 선택 요청의 접수 여부를 확인할 수 없습니다. 작업 상태를 새로고침하세요.'
       });
     },
     getJob(jobId, options = {}) {
