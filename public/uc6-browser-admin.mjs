@@ -1185,6 +1185,25 @@ export function projectUc6FreshSyntheticRenderControl(input = {}) {
   };
 }
 
+export function projectUc6FreshRenderDeliveryControl(input = {}) {
+  const publicState = typeof input.publicState === 'string' ? input.publicState : '';
+  const deliveryStatus = ['idle', 'loading', 'ready', 'error'].includes(input.deliveryStatus)
+    ? input.deliveryStatus
+    : 'idle';
+  const explicitRetry = input.explicitRetry === true;
+  const executionPollable = publicState === 'render_queued' || publicState === 'render_running';
+  const executionTerminal = publicState === 'render_completed' || publicState === 'failed';
+  return {
+    publicState,
+    deliveryStatus,
+    executionPollable,
+    executionTerminal,
+    shouldResolveCapabilities: publicState === 'render_completed'
+      && (deliveryStatus === 'idle' || (explicitRetry && deliveryStatus !== 'loading')),
+    deliveryReconciliationRequired: publicState === 'render_completed' && deliveryStatus === 'error'
+  };
+}
+
 function projectUc6ReusableAssetRow(row) {
   if (!isPlainObject(row)) throw new TypeError('invalid_reusable_asset_item');
   const allowed = new Set([

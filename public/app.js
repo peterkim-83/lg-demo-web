@@ -15,6 +15,7 @@ import {
   projectUc6FreshSyntheticRenderJobStatus,
   projectUc6FreshSyntheticRenderSubmission,
   projectUc6FreshSyntheticRenderControl,
+  projectUc6FreshRenderDeliveryControl,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
   projectUc6ReusableAssetPackageOptions,
@@ -58,7 +59,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6e-c2-synthetic-scenario-binding-2026-08-13-v1';
+const APP_VERSION = 'app.uc6-r6e-d2-fresh-render-delivery-bounded-stop-2026-08-13-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6119,14 +6120,19 @@ Customer: Thank you. Goodbye.`
     ));
   }
 
-  async function loadUC6FreshRenderDeliveryState(signal) {
+  async function loadUC6FreshRenderDeliveryState(signal, options = {}) {
+    const deliveryControl = projectUc6FreshRenderDeliveryControl({
+      publicState: uc6State.jobState,
+      deliveryStatus: uc6State.reviewArtifactsStatus,
+      explicitRetry: options.explicitRetry === true
+    });
     if (
       !isUc6Authorized()
       || uc6State.flowLane !== 'dummy_render'
       || !uc6State.freshSyntheticExpected
       || !uc6State.jobId
-      || uc6State.jobState !== 'render_completed'
       || !uc6State.renderStatus
+      || !deliveryControl.shouldResolveCapabilities
     ) return;
     uc6State.reviewArtifactsStatus = 'loading';
     uc6State.reviewArtifactsMessage = '최종 PPTX/PDF 접근 권한을 준비하고 있습니다.';
@@ -6148,7 +6154,7 @@ Customer: Thank you. Goodbye.`
       if (error?.name === 'AbortError') return;
       uc6State.reviewArtifacts = null;
       uc6State.reviewArtifactsStatus = 'error';
-      uc6State.reviewArtifactsMessage = uc6MessageFromError(error);
+      uc6State.reviewArtifactsMessage = '문서 생성은 완료되었지만 결과 파일 접근 정보를 확인하지 못했습니다. 새로고침 후 다시 확인할 수 있습니다.';
       setUC6LiveMessage(uc6State.reviewArtifactsMessage);
     } finally {
       renderUC6All();
@@ -6776,7 +6782,12 @@ Customer: Thank you. Goodbye.`
         uc6State.freshRenderSubmitted = true;
         uc6State.freshRenderSubmissionAmbiguous = false;
         uc6State.renderStatus = projected.state === 'render_completed' ? projected : null;
-        clearUC6A8FReviewState({ keepDecisionIdentity: false });
+        const deliveryControl = projectUc6FreshRenderDeliveryControl({
+          publicState: projected.state,
+          deliveryStatus: uc6State.reviewArtifactsStatus
+        });
+        if (deliveryControl.executionTerminal) stopUC6Polling();
+        if (!deliveryControl.executionTerminal) clearUC6A8FReviewState({ keepDecisionIdentity: false });
         if (projected.state === 'render_queued') {
           uc6State.stageMessage = '샘플 문서 생성 요청이 대기열에 있습니다.';
         } else if (projected.state === 'render_running') {
@@ -6790,7 +6801,7 @@ Customer: Thank you. Goodbye.`
         }
         saveUC6LocalState();
         renderUC6All();
-        if (projected.state === 'render_completed' && uc6State.reviewArtifactsStatus !== 'ready') {
+        if (deliveryControl.shouldResolveCapabilities) {
           await loadUC6FreshRenderDeliveryState(options.signal);
         }
         return;
@@ -8163,6 +8174,14 @@ Customer: Thank you. Goodbye.`
     downloadStatus.hidden = !uc6State.reviewArtifactDownloadMessage;
     card.append(downloadStatus);
     const actions = createUc6Node('div', 'uc6-action-row');
+    if (uc6State.reviewArtifactsStatus === 'error') {
+      actions.append(createUC6ActionButton(
+        'uc6-retryFreshDeliveryBtn',
+        '결과 파일 접근 정보 다시 확인',
+        'btn btn-outline',
+        uc6State.operationInFlight
+      ));
+    }
     actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 시작', 'btn btn-primary', uc6State.operationInFlight));
     card.append(actions);
     root.replaceChildren(card);
@@ -8698,6 +8717,10 @@ Customer: Thank you. Goodbye.`
       else if (target.id === 'uc6-uploadBtn') uploadUC6PptxJob();
       else if (target.dataset.uc6SyntheticScenario) bindUC6FreshSyntheticScenario(target.dataset.uc6SyntheticScenario);
       else if (target.id === 'uc6-submitFreshRenderBtn') submitUC6FreshSyntheticRender();
+      else if (target.id === 'uc6-retryFreshDeliveryBtn') {
+        const controller = createUC6OperationController();
+        loadUC6FreshRenderDeliveryState(controller.signal, { explicitRetry: true });
+      }
       else if (target.id === 'uc6-submitRenderBtn') submitUC6DummyRender(false);
       else if (target.id === 'uc6-retryRenderBtn') {
         if (uc6State.flowLane === 'asset_render') {

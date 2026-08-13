@@ -18,6 +18,7 @@ import {
   projectUc6FreshSyntheticScenarios,
   projectUc6FreshSyntheticScenarioBinding,
   projectUc6FreshSyntheticRenderControl,
+  projectUc6FreshRenderDeliveryControl,
   projectUc6FreshSyntheticRenderJobStatus,
   projectUc6FreshSyntheticRenderSubmission,
   projectUc6DummyDatabagPackageOptions,
@@ -1253,7 +1254,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6e-c2-synthetic-scenario-binding-2026-08-13-v1'), true);
+  assert.equal(app.includes('app.uc6-r6e-d2-fresh-render-delivery-bounded-stop-2026-08-13-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2266,7 +2267,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('uc6-r6e-c2-synthetic-scenario-binding'), true);
+  assert.equal(app.includes('uc6-r6e-d2-fresh-render-delivery-bounded-stop'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -3199,4 +3200,111 @@ test('R6E-D2 app continuation reuses polling and capabilities, reconciles ambigu
   assert.equal(staticRender.includes('submitFreshSyntheticScenarioRender'), false);
   assert.equal(assetRender.includes('submitReusableAssetRender'), true, 'reusable Asset render remains on its endpoint');
   assert.equal(assetRender.includes('submitFreshSyntheticScenarioRender'), false);
+});
+
+test('R6E-D2 bounded delivery control separates execution polling from terminal capability resolution', () => {
+  for (const publicState of ['render_queued', 'render_running']) {
+    const control = projectUc6FreshRenderDeliveryControl({ publicState, deliveryStatus: 'idle' });
+    assert.equal(control.executionPollable, true);
+    assert.equal(control.executionTerminal, false);
+    assert.equal(control.shouldResolveCapabilities, false);
+  }
+
+  const firstCompletion = projectUc6FreshRenderDeliveryControl({
+    publicState: 'render_completed',
+    deliveryStatus: 'idle'
+  });
+  assert.equal(firstCompletion.executionPollable, false);
+  assert.equal(firstCompletion.executionTerminal, true);
+  assert.equal(firstCompletion.shouldResolveCapabilities, true);
+
+  for (const deliveryStatus of ['loading', 'ready', 'error']) {
+    const repeatedTick = projectUc6FreshRenderDeliveryControl({ publicState: 'render_completed', deliveryStatus });
+    assert.equal(repeatedTick.executionPollable, false);
+    assert.equal(repeatedTick.executionTerminal, true);
+    assert.equal(repeatedTick.shouldResolveCapabilities, false);
+  }
+
+  const bounded409 = projectUc6FreshRenderDeliveryControl({ publicState: 'render_completed', deliveryStatus: 'error' });
+  assert.equal(bounded409.deliveryReconciliationRequired, true);
+  assert.equal(projectUc6FreshRenderDeliveryControl({
+    publicState: 'render_completed',
+    deliveryStatus: 'error',
+    explicitRetry: true
+  }).shouldResolveCapabilities, true);
+  assert.equal(projectUc6FreshRenderDeliveryControl({
+    publicState: 'render_completed',
+    deliveryStatus: 'loading',
+    explicitRetry: true
+  }).shouldResolveCapabilities, false, 'double-click cannot duplicate a capability GET');
+});
+
+test('R6E-D2 completed capability failure is a bounded delivery error with explicit read-only retry', () => {
+  const app = readSource('../public/app.js');
+  const loadFreshDelivery = extractFunctionBody(app, 'loadUC6FreshRenderDeliveryState');
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const result = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
+  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
+  const init = extractFunctionBody(app, 'initUC6');
+  const freshBranchStart = refresh.indexOf('if (authoritativeFreshRenderLane)');
+  const freshBranchEnd = refresh.indexOf('if (authoritativeFreshOnboardingLane)', freshBranchStart);
+  const freshBranch = refresh.slice(freshBranchStart, freshBranchEnd);
+
+  assert.equal(loadFreshDelivery.includes('projectUc6FreshRenderDeliveryControl'), true);
+  assert.equal(loadFreshDelivery.includes('deliveryControl.shouldResolveCapabilities'), true);
+  assert.equal((loadFreshDelivery.match(/getRenderArtifactCapabilities/g) || []).length, 1);
+  assert.equal(loadFreshDelivery.includes("uc6State.reviewArtifactsStatus = 'error'"), true);
+  assert.equal(loadFreshDelivery.includes('문서 생성은 완료되었지만 결과 파일 접근 정보를 확인하지 못했습니다'), true);
+  assert.equal(loadFreshDelivery.includes('submitFreshSyntheticScenarioRender'), false);
+  assert.equal(loadFreshDelivery.includes('startUC6Polling'), false);
+
+  assert.equal(refresh.includes('if (deliveryControl.executionTerminal) stopUC6Polling()'), true);
+  assert.equal(refresh.includes('if (!deliveryControl.executionTerminal) clearUC6A8FReviewState'), true);
+  assert.equal(refresh.includes('if (deliveryControl.shouldResolveCapabilities)'), true);
+  assert.equal(freshBranch.includes("reviewArtifactsStatus !== 'ready'"), false, 'Fresh error cannot be reset into automatic retry eligibility');
+  assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false);
+  assert.equal(poll.includes('submitFreshSyntheticScenarioRender'), false);
+
+  assert.equal(result.includes('uc6-retryFreshDeliveryBtn'), true);
+  assert.equal(result.includes('결과 파일 접근 정보 다시 확인'), true);
+  assert.equal(result.includes('uc6-retryRenderBtn'), false);
+  assert.equal(init.includes("target.id === 'uc6-retryFreshDeliveryBtn'"), true);
+  assert.equal(init.includes('loadUC6FreshRenderDeliveryState(controller.signal, { explicitRetry: true })'), true);
+  assert.equal(init.includes('submitFreshSyntheticScenarioRender'), false);
+
+  assert.equal(resume.includes('await refreshUC6JobStatus'), true);
+  assert.equal(resume.includes('submitFreshSyntheticScenarioRender'), false);
+  assert.equal(resume.includes('submitFreshSyntheticScenarios'), false);
+  assert.equal(resume.includes('bindFreshSyntheticScenario'), false);
+});
+
+test('R6E-D2 capability 409, 5xx, and network failures stay single-attempt and read-only', async () => {
+  for (const failure of [
+    { label: '409', invoke: async () => response(409, { detail: { code: 'browser_admin_uc6_render_not_ready' } }), expectedStatus: 409 },
+    { label: '5xx', invoke: async () => response(503, { detail: { code: 'browser_admin_uc6_service_unavailable' } }), expectedStatus: 503 },
+    { label: 'network', invoke: async () => { throw new Error('network unavailable'); }, expectedStatus: undefined }
+  ]) {
+    const calls = [];
+    const api = createUc6BrowserAdminApi({
+      apiBaseUrl: API_BASE,
+      getIdToken: async () => 'firebase-delivery-token',
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return failure.invoke();
+      }
+    });
+    let rejection;
+    try {
+      await api.getRenderArtifactCapabilities(JOB_ID);
+      assert.fail(`${failure.label} capability GET must reject`);
+    } catch (error) {
+      rejection = error;
+    }
+    if (failure.expectedStatus !== undefined) assert.equal(rejection.status, failure.expectedStatus, failure.label);
+    assert.equal(calls.length, 1, `${failure.label} capability GET must not auto-retry`);
+    assert.equal(calls[0].init.method, 'GET');
+    assert.equal(calls[0].url.endsWith(`/jobs/${JOB_ID}/render-artifact-capabilities`), true);
+    assert.equal(calls.some((call) => call.url.endsWith(`/jobs/${JOB_ID}/synthetic-scenarios/render`)), false);
+  }
 });
