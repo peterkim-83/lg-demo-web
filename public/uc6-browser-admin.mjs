@@ -7,6 +7,7 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   onboarding: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/onboarding`,
   syntheticScenarios: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/synthetic-scenarios`,
   syntheticScenarioBinding: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/synthetic-scenarios/binding`,
+  syntheticScenarioRender: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/synthetic-scenarios/render`,
   job: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}`,
   review: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review`,
   reviewDecision: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-decision`,
@@ -251,6 +252,10 @@ export function projectUc6PersistedState(value) {
   }
   if (typeof input.synthetic_binding_submission_ambiguous === 'boolean') {
     projected.synthetic_binding_submission_ambiguous = input.synthetic_binding_submission_ambiguous;
+  }
+  if (typeof input.fresh_render_submitted === 'boolean') projected.fresh_render_submitted = input.fresh_render_submitted;
+  if (typeof input.fresh_render_submission_ambiguous === 'boolean') {
+    projected.fresh_render_submission_ambiguous = input.fresh_render_submission_ambiguous;
   }
   try {
     if (typeof input.selected_asset_id === 'string') projected.selected_asset_id = normalizeUc6ReusableAssetId(input.selected_asset_id);
@@ -717,6 +722,7 @@ export function projectUc6FreshTemplateOnboardingJobStatus(payload, options = {}
 }
 
 const UC6_SYNTHETIC_GENERATION_TASK_TYPE = 'fetchdoc_browser_admin_uc6_fresh_synthetic_scenario_generation';
+const UC6_SYNTHETIC_RENDER_TASK_TYPE = 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario';
 const UC6_SYNTHETIC_SCENARIO_KEYS = Object.freeze(['scenario_000', 'scenario_001', 'scenario_002']);
 const UC6_SYNTHETIC_SUBMISSION_STATES = new Set([
   'synthetic_scenarios_queued',
@@ -984,6 +990,198 @@ export function projectUc6FreshSyntheticScenarioBinding(payload, options = {}) {
     bound_scenario: boundScenario,
     disposition: payload.disposition,
     public_safety: payload.public_safety
+  };
+}
+
+const UC6_FRESH_RENDER_STATES = new Set(['render_queued', 'render_running', 'render_completed', 'failed']);
+const UC6_FRESH_RENDER_QUEUE_STATUSES = Object.freeze({
+  render_queued: new Set(['pending']),
+  render_running: new Set(['processing']),
+  render_completed: new Set(['done', 'ready', 'completed']),
+  failed: new Set(['failed'])
+});
+const UC6_FRESH_RENDER_UNSAFE_FIELD = /(?:^|_)(?:absolute_?path|internal|locator|provider|request_?id|secret|token|fallback_?text|slot_?id|generation_?unit_?id)(?:_|$)/i;
+
+function assertUc6FreshRenderPublicFields(value, code) {
+  if (!isPlainObject(value)) throw new TypeError(code);
+  if (Object.keys(value).some((key) => UC6_FRESH_RENDER_UNSAFE_FIELD.test(key))) throw new TypeError(code);
+}
+
+function projectUc6FreshRenderOptionalCount(value, code) {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) throw new TypeError(code);
+  return value;
+}
+
+function projectUc6FreshRenderDisposition(value) {
+  const source = isPlainObject(value?.disposition_summary)
+    ? value.disposition_summary
+    : isPlainObject(value?.validation_summary)
+      ? value.validation_summary
+      : value;
+  assertUc6FreshRenderPublicFields(source, 'invalid_fresh_render_disposition_fields');
+  const statusValue = source.validation_status ?? source.review_status;
+  const validationStatus = statusValue === undefined
+    ? undefined
+    : validateUc6SafePublicText(statusValue, { maxLength: 64, code: 'invalid_fresh_render_validation_status' });
+  const finalValidationStatus = source.final_validation_status === undefined
+    ? undefined
+    : validateUc6SafePublicText(source.final_validation_status, { maxLength: 64, code: 'invalid_fresh_render_final_validation_status' });
+  const generatedCount = projectUc6FreshRenderOptionalCount(source.generated_count, 'invalid_fresh_render_generated_count');
+  const privateFallbackCount = projectUc6FreshRenderOptionalCount(source.private_fallback_count, 'invalid_fresh_render_private_fallback_count');
+  const expectedCount = projectUc6FreshRenderOptionalCount(
+    source.expected_slot_count ?? source.expected_count,
+    'invalid_fresh_render_expected_count'
+  );
+  const blockingIssueCount = projectUc6FreshRenderOptionalCount(source.blocking_issue_count, 'invalid_fresh_render_blocking_count');
+  const redMarkerCount = projectUc6FreshRenderOptionalCount(source.red_marker_count, 'invalid_fresh_render_red_marker_count');
+  if (source.review_required !== undefined && typeof source.review_required !== 'boolean') {
+    throw new TypeError('invalid_fresh_render_review_required');
+  }
+  if (expectedCount !== undefined && generatedCount !== undefined && privateFallbackCount !== undefined
+      && generatedCount + privateFallbackCount !== expectedCount) {
+    throw new TypeError('fresh_render_disposition_count_mismatch');
+  }
+  return {
+    ...(validationStatus !== undefined ? { validation_status: validationStatus } : {}),
+    ...(finalValidationStatus !== undefined ? { final_validation_status: finalValidationStatus } : {}),
+    ...(generatedCount !== undefined ? { generated_count: generatedCount } : {}),
+    ...(privateFallbackCount !== undefined ? { private_fallback_count: privateFallbackCount } : {}),
+    ...(expectedCount !== undefined ? { expected_count: expectedCount } : {}),
+    ...(blockingIssueCount !== undefined ? { blocking_issue_count: blockingIssueCount } : {}),
+    ...(redMarkerCount !== undefined ? { red_marker_count: redMarkerCount } : {}),
+    review_required: source.review_required === true || validationStatus === 'ready_with_review' || privateFallbackCount > 0
+  };
+}
+
+function projectUc6FreshRenderArtifact(value, expectedAlias) {
+  if (!isPlainObject(value) || value.alias !== expectedAlias) throw new TypeError('invalid_fresh_render_artifact');
+  if (typeof value.sha256 !== 'string' || !SHA256_PATTERN.test(value.sha256)) throw new TypeError('invalid_fresh_render_artifact_sha');
+  if (!Number.isSafeInteger(value.size_bytes) || value.size_bytes <= 0) throw new TypeError('invalid_fresh_render_artifact_size');
+  return { alias: expectedAlias, sha256: value.sha256, size_bytes: value.size_bytes };
+}
+
+function projectUc6FreshCompletedRender(value, expectedJobId, expectedSourceSha) {
+  assertUc6FreshRenderPublicFields(value, 'invalid_fresh_render_result');
+  if (value.job_id !== expectedJobId) throw new TypeError('fresh_render_result_job_id_mismatch');
+  if (value.state !== 'render_completed' || value.render_state !== 'render_completed') throw new TypeError('invalid_fresh_render_result_state');
+  if (value.public_safety !== 'PASS') throw new TypeError('invalid_fresh_render_result_public_safety');
+  if (value.source_pptx_sha256 !== undefined && value.source_pptx_sha256 !== expectedSourceSha) {
+    throw new TypeError('fresh_render_result_source_mismatch');
+  }
+  if (!isPlainObject(value.final_artifacts)) throw new TypeError('invalid_fresh_render_final_artifacts');
+  const finalArtifacts = {
+    pptx: projectUc6FreshRenderArtifact(value.final_artifacts.pptx, 'final_render_output_pptx'),
+    pdf: projectUc6FreshRenderArtifact(value.final_artifacts.pdf, 'final_render_output_pdf')
+  };
+  const disposition = projectUc6FreshRenderDisposition(value);
+  return {
+    schema_version: validateUc6OpaqueSchemaVersion(value.schema_version),
+    job_id: value.job_id,
+    state: 'render_completed',
+    render_state: 'render_completed',
+    final_artifacts: finalArtifacts,
+    disposition,
+    review_required: disposition.review_required,
+    control_plane_contract_version: validateUc6ControlPlaneVersion(value.control_plane_contract_version),
+    public_safety: value.public_safety
+  };
+}
+
+export function projectUc6FreshSyntheticRenderSubmission(payload, options = {}) {
+  assertUc6FreshRenderPublicFields(payload, 'invalid_fresh_render_submission_payload');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.job_id !== expectedJobId) throw new TypeError('invalid_fresh_render_submission_job_id');
+  if (!UC6_FRESH_RENDER_STATES.has(payload.state)) throw new TypeError('invalid_fresh_render_submission_state');
+  if (payload.task_type !== undefined && payload.task_type !== UC6_SYNTHETIC_RENDER_TASK_TYPE) {
+    throw new TypeError('invalid_fresh_render_submission_task_type');
+  }
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_fresh_render_submission_public_safety');
+  if (payload.created !== undefined && typeof payload.created !== 'boolean') throw new TypeError('invalid_fresh_render_submission_created');
+  if (payload.created === true && payload.state === 'render_completed') throw new TypeError('invalid_fresh_render_submission_created_completed');
+  if (payload.queue_status !== undefined && !UC6_FRESH_RENDER_QUEUE_STATUSES[payload.state].has(payload.queue_status)) {
+    throw new TypeError('invalid_fresh_render_submission_queue_status');
+  }
+  if (payload.task_id !== undefined && payload.task_id !== null
+      && (!Number.isSafeInteger(payload.task_id) || payload.task_id <= 0)) {
+    throw new TypeError('invalid_fresh_render_submission_task_id');
+  }
+  if ((payload.state === 'render_queued' || payload.state === 'render_running') && payload.task_id === null) {
+    throw new TypeError('invalid_fresh_render_submission_task_id');
+  }
+  if (payload.selection_state !== undefined && payload.selection_state !== 'bound') {
+    throw new TypeError('invalid_fresh_render_submission_selection_state');
+  }
+  let boundScenario;
+  if (payload.bound_scenario !== undefined) {
+    boundScenario = projectUc6SyntheticScenarioOption(payload.bound_scenario);
+    if (options.expectedScenarioKey && boundScenario.scenario_key !== options.expectedScenarioKey) {
+      throw new TypeError('fresh_render_submission_scenario_mismatch');
+    }
+  }
+  return {
+    schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version),
+    job_id: payload.job_id,
+    ...(payload.task_type !== undefined ? { task_type: payload.task_type } : {}),
+    ...(payload.task_id !== undefined ? { task_id: payload.task_id } : {}),
+    ...(payload.queue_status !== undefined ? { queue_status: payload.queue_status } : {}),
+    ...(payload.created !== undefined ? { created: payload.created } : {}),
+    state: payload.state,
+    ...(payload.selection_state !== undefined ? { selection_state: 'bound' } : {}),
+    ...(boundScenario ? { bound_scenario: boundScenario } : {}),
+    control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
+    public_safety: payload.public_safety
+  };
+}
+
+export function projectUc6FreshSyntheticRenderJobStatus(payload, options = {}) {
+  assertUc6FreshRenderPublicFields(payload, 'invalid_fresh_render_job_payload');
+  const expectedJobId = normalizeUc6JobId(options.expectedJobId);
+  if (payload.job_id !== expectedJobId) throw new TypeError('fresh_render_job_id_mismatch');
+  if (!UC6_FRESH_RENDER_STATES.has(payload.state)) throw new TypeError('invalid_fresh_render_job_state');
+  const source = projectUc6FreshOnboardingSource(payload.source);
+  const controlPlaneContractVersion = validateUc6ControlPlaneVersion(payload.control_plane_contract_version);
+  if (payload.state !== 'render_completed') {
+    if (payload.render !== undefined) throw new TypeError('non_completed_fresh_render_must_not_have_result');
+    return { job_id: payload.job_id, state: payload.state, source, render: null, control_plane_contract_version: controlPlaneContractVersion };
+  }
+  const render = projectUc6FreshCompletedRender(payload.render, expectedJobId, source.sha256);
+  if (render.control_plane_contract_version !== controlPlaneContractVersion) {
+    throw new TypeError('fresh_render_control_plane_mismatch');
+  }
+  return {
+    job_id: payload.job_id,
+    state: 'render_completed',
+    source,
+    render,
+    render_state: render.render_state,
+    final_artifacts: render.final_artifacts,
+    disposition: render.disposition,
+    review_required: render.review_required,
+    control_plane_contract_version: controlPlaneContractVersion,
+    public_safety: render.public_safety
+  };
+}
+
+export function projectUc6FreshSyntheticRenderControl(input = {}) {
+  const authoritativeBound = input.selectionState === 'bound'
+    && isPlainObject(input.boundScenario)
+    && UC6_SYNTHETIC_SCENARIO_KEYS.includes(input.boundScenario.scenario_key);
+  const publicState = typeof input.publicState === 'string' ? input.publicState : '';
+  const submitted = input.submitted === true;
+  const ambiguous = input.ambiguous === true;
+  const inFlight = input.inFlight === true;
+  const submissionLocked = submitted || ambiguous || inFlight;
+  return {
+    authoritativeBound,
+    canSubmit: authoritativeBound && publicState === 'synthetic_scenario_bound' && !submissionLocked,
+    submissionLocked,
+    reconciliationRequired: ambiguous || publicState === 'render_unknown',
+    renderPollable: publicState === 'render_queued'
+      || publicState === 'render_running'
+      || (authoritativeBound && submitted && !ambiguous && publicState === 'synthetic_scenario_bound'),
+    completed: publicState === 'render_completed',
+    failed: publicState === 'failed'
   };
 }
 
@@ -2315,6 +2513,14 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
         signal: options.signal,
         ambiguousMessage: 'Network failure during synthetic scenario binding; outcome is ambiguous.',
         ambiguousPublicMessage: '합성 샘플 컨텍스트 선택 요청의 접수 여부를 확인할 수 없습니다. 작업 상태를 새로고침하세요.'
+      });
+    },
+    submitFreshSyntheticScenarioRender(jobId, options = {}) {
+      return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarioRender(jobId), {
+        method: 'POST',
+        signal: options.signal,
+        ambiguousMessage: 'Network failure during fresh synthetic scenario render submission; outcome is ambiguous.',
+        ambiguousPublicMessage: '샘플 문서 생성 요청의 접수 여부를 확인할 수 없습니다. 작업 상태를 확인하고 있습니다.'
       });
     },
     getJob(jobId, options = {}) {

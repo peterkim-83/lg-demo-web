@@ -17,6 +17,9 @@ import {
   projectUc6FreshSyntheticGenerationSubmission,
   projectUc6FreshSyntheticScenarios,
   projectUc6FreshSyntheticScenarioBinding,
+  projectUc6FreshSyntheticRenderControl,
+  projectUc6FreshSyntheticRenderJobStatus,
+  projectUc6FreshSyntheticRenderSubmission,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
   projectUc6ReusableAssetPackageOptions,
@@ -2945,4 +2948,255 @@ test('R6E-C2 persistence and app source enforce GET-first one-shot generation, t
   assert.equal(bind.includes('startUC6Polling'), false);
   assert.equal(loadLegacy.includes('getDummyDatabagPackageFamilies'), true, 'static/curated package family flow remains');
   assert.equal(loadAsset.includes('getReusableAssetPackages'), true, 'reusable Asset flow remains');
+});
+
+function r6eD2RenderSubmission(state = 'render_queued') {
+  return {
+    schema_version: 'backend_owned_r6e_d2_render_submission_v1',
+    job_id: JOB_ID,
+    task_type: 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario',
+    task_id: state === 'render_completed' ? null : 913,
+    queue_status: {
+      render_queued: 'pending',
+      render_running: 'processing',
+      render_completed: 'ready',
+      failed: 'failed'
+    }[state],
+    created: state === 'render_queued',
+    state,
+    selection_state: 'bound',
+    bound_scenario: r6eSyntheticScenario(1),
+    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
+    public_safety: 'PASS'
+  };
+}
+
+function r6eD2RenderJob(state = 'render_completed', disposition = {}) {
+  const payload = {
+    job_id: JOB_ID,
+    state,
+    source: {
+      sha256: R6C_SOURCE_SHA,
+      size_bytes: 4096,
+      slide_count: 12,
+      filename: 'fresh-source.pptx'
+    },
+    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION
+  };
+  if (state === 'render_completed') {
+    payload.render = {
+      schema_version: 'backend_owned_r6e_d2_render_result_v1',
+      job_id: JOB_ID,
+      state: 'render_completed',
+      render_state: 'render_completed',
+      source_pptx_sha256: R6C_SOURCE_SHA,
+      final_artifacts: {
+        pptx: { alias: 'final_render_output_pptx', sha256: 'b'.repeat(64), size_bytes: 8192 },
+        pdf: { alias: 'final_render_output_pdf', sha256: 'c'.repeat(64), size_bytes: 6144 }
+      },
+      disposition_summary: {
+        validation_status: 'ready_with_review',
+        final_validation_status: 'ready',
+        generated_count: 44,
+        private_fallback_count: 15,
+        expected_slot_count: 59,
+        blocking_issue_count: 0,
+        red_marker_count: 0,
+        ...disposition
+      },
+      control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
+      public_safety: 'PASS'
+    };
+  }
+  return payload;
+}
+
+test('R6E-D2 render endpoint is normalized and submits one Firebase-only bodyless POST', async () => {
+  assert.equal(
+    UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarioRender(`  ${JOB_ID}  `),
+    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/synthetic-scenarios/render`
+  );
+  const calls = [];
+  const refreshes = [];
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async (forceRefresh) => { refreshes.push(forceRefresh); return 'firebase-r6e-d2-token'; },
+    fetchImpl: async (url, init) => { calls.push({ url, init }); return response(200, r6eD2RenderSubmission()); }
+  });
+  await api.submitFreshSyntheticScenarioRender(JOB_ID);
+  assert.deepEqual(refreshes, [true]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/synthetic-scenarios/render`);
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[0].init.body, undefined);
+  assert.equal(calls[0].init.headers['Content-Type'], undefined);
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-r6e-d2-token');
+  assert.equal(calls[0].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
+  assert.equal(calls[0].init.cache, 'no-store');
+  assert.equal(calls[0].init.credentials, 'omit');
+
+  let attempts = 0;
+  const ambiguousApi = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async () => 'firebase-token',
+    fetchImpl: async () => { attempts += 1; throw new Error('network unavailable'); }
+  });
+  await assert.rejects(() => ambiguousApi.submitFreshSyntheticScenarioRender(JOB_ID), {
+    name: 'Uc6AmbiguousSubmissionError',
+    code: 'ambiguous_submission'
+  });
+  assert.equal(attempts, 1, 'ambiguous POST is never replayed');
+});
+
+test('R6E-D2 submission projection validates public identity and state-specific retained completion', () => {
+  for (const state of ['render_queued', 'render_running', 'failed']) {
+    const projected = projectUc6FreshSyntheticRenderSubmission(r6eD2RenderSubmission(state), {
+      expectedJobId: JOB_ID,
+      expectedScenarioKey: 'scenario_001'
+    });
+    assert.equal(projected.state, state);
+    assert.equal(projected.selection_state, 'bound');
+    assert.equal(projected.bound_scenario.package_id, 'synthetic_package_001');
+  }
+  const retained = projectUc6FreshSyntheticRenderSubmission(r6eD2RenderSubmission('render_completed'), {
+    expectedJobId: JOB_ID,
+    expectedScenarioKey: 'scenario_001'
+  });
+  assert.equal(retained.state, 'render_completed');
+  assert.equal(retained.task_id, null);
+  assert.equal(retained.created, false);
+
+  for (const mutate of [
+    (v) => { v.job_id = 'fd_uc6_admin_other_12345'; },
+    (v) => { v.task_type = 'fetchdoc_browser_admin_uc6_render_dummy_databag'; },
+    (v) => { v.selection_state = 'unbound'; },
+    (v) => { v.public_safety = 'FAIL'; },
+    (v) => { v.provider_request_id = 'private'; },
+    (v) => { v.bound_scenario.package_id = ''; }
+  ]) {
+    const payload = r6eD2RenderSubmission();
+    mutate(payload);
+    assert.throws(() => projectUc6FreshSyntheticRenderSubmission(payload, {
+      expectedJobId: JOB_ID,
+      expectedScenarioKey: 'scenario_001'
+    }), TypeError);
+  }
+});
+
+test('R6E-D2 job projection resumes queued/running/failed without a submission and exposes completed artifacts', () => {
+  for (const state of ['render_queued', 'render_running', 'failed']) {
+    const projected = projectUc6FreshSyntheticRenderJobStatus(r6eD2RenderJob(state), { expectedJobId: JOB_ID });
+    assert.equal(projected.state, state);
+    assert.equal(projected.render, null);
+  }
+  const completed = projectUc6FreshSyntheticRenderJobStatus(r6eD2RenderJob(), { expectedJobId: JOB_ID });
+  assert.equal(completed.state, 'render_completed');
+  assert.equal(completed.final_artifacts.pptx.alias, 'final_render_output_pptx');
+  assert.equal(completed.final_artifacts.pdf.alias, 'final_render_output_pdf');
+  assert.equal(completed.disposition.generated_count, 44);
+  assert.equal(completed.disposition.private_fallback_count, 15);
+  assert.equal(completed.review_required, true);
+
+  const noFallback = r6eD2RenderJob('render_completed', {
+    validation_status: 'ready',
+    generated_count: 59,
+    private_fallback_count: 0
+  });
+  assert.equal(projectUc6FreshSyntheticRenderJobStatus(noFallback, { expectedJobId: JOB_ID }).review_required, false);
+
+  const mismatched = r6eD2RenderJob();
+  mismatched.render.disposition_summary.generated_count = 43;
+  assert.throws(() => projectUc6FreshSyntheticRenderJobStatus(mismatched, { expectedJobId: JOB_ID }), /count_mismatch/);
+  const unsafe = r6eD2RenderJob();
+  unsafe.render.provider_request_id = 'private';
+  assert.throws(() => projectUc6FreshSyntheticRenderJobStatus(unsafe, { expectedJobId: JOB_ID }), TypeError);
+});
+
+test('R6E-D2 render control enables only authoritative bound selection and locks exactly once', () => {
+  const base = {
+    selectionState: 'bound',
+    boundScenario: r6eSyntheticScenario(1),
+    publicState: 'synthetic_scenario_bound',
+    submitted: false,
+    ambiguous: false,
+    inFlight: false
+  };
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, selectionState: 'unbound' }).canSubmit, false);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, boundScenario: null }).canSubmit, false);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'synthetic_scenarios_ready' }).canSubmit, false);
+  assert.equal(projectUc6FreshSyntheticRenderControl(base).canSubmit, true);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, inFlight: true }).canSubmit, false);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, submitted: true }).canSubmit, false);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, submitted: true }).renderPollable, true);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'render_queued' }).renderPollable, true);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'render_running' }).renderPollable, true);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'render_completed' }).completed, true);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, ambiguous: true }).reconciliationRequired, true);
+});
+
+test('R6E-D2 persisted submission flags survive refresh without storing scenario or authority payloads', () => {
+  assert.deepEqual(projectUc6PersistedState({
+    job_id: JOB_ID,
+    fresh_onboarding_expected: true,
+    fresh_synthetic_expected: true,
+    fresh_render_submitted: true,
+    fresh_render_submission_ambiguous: true,
+    scenario_key: 'scenario_001',
+    package_id: 'synthetic_package_001',
+    provider_profile: 'private',
+    internal_path: 'C:\\private'
+  }), {
+    job_id: JOB_ID,
+    fresh_onboarding_expected: true,
+    fresh_synthetic_expected: true,
+    fresh_render_submitted: true,
+    fresh_render_submission_ambiguous: true
+  });
+});
+
+test('R6E-D2 app continuation reuses polling and capabilities, reconciles ambiguity, and stops before review/publication', () => {
+  const app = readSource('../public/app.js');
+  const admin = readSource('../public/uc6-browser-admin.mjs');
+  const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const renderSelection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
+  const renderProgress = extractFunctionBody(app, 'renderUC6RenderStage');
+  const renderResult = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
+  const loadFreshDelivery = extractFunctionBody(app, 'loadUC6FreshRenderDeliveryState');
+  const download = extractFunctionBody(app, 'downloadUC6ReviewArtifact');
+  const staticRender = extractFunctionBody(app, 'submitUC6DummyRender');
+  const assetRender = extractFunctionBody(app, 'submitUC6ReusableAssetRender');
+
+  assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
+  assert.ok(submit.indexOf('uc6State.freshRenderSubmitted = true') < submit.indexOf('api.submitFreshSyntheticScenarioRender'));
+  assert.equal(submit.includes('projectUc6FreshSyntheticRenderControl'), true);
+  assert.equal(submit.includes('renderSubmissionReconciliation: true'), true);
+  assert.equal(submit.includes("uc6State.jobState === 'render_queued' || uc6State.jobState === 'render_running'"), true);
+  assert.equal(submit.includes('startUC6Polling()'), true, 'accepted ambiguous submission resumes the shared poller');
+  assert.equal(submit.includes('submitDummyDatabagRender'), false);
+  assert.equal(submit.includes('submitReusableAssetRender'), false);
+  assert.equal(refresh.includes('projectUc6FreshSyntheticRenderJobStatus'), true);
+  assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false, 'GET reconciliation cannot replay POST');
+  assert.equal(poll.includes('isUC6FreshRenderReconciliationPending()'), true);
+  assert.equal(renderSelection.includes('uc6-submitFreshRenderBtn'), true);
+  assert.equal(renderSelection.includes("selectionState: uc6State.syntheticSelectionState"), true);
+  assert.equal(renderProgress.includes('uc6State.freshSyntheticExpected'), true);
+  assert.equal(renderResult.includes('final_render_output_pdf'), true);
+  assert.equal(renderResult.includes('최종 PDF'), true);
+  assert.equal(renderResult.includes('생성된 PPTX'), true);
+  assert.equal(renderResult.includes('private_fallback_count'), true);
+  assert.equal(renderResult.includes('근거 데이터가 부족'), true);
+  assert.equal(renderResult.includes('submitUC6ReusableAssetPublication'), false);
+  assert.equal(renderResult.includes('loadUC6A8FReviewState'), false);
+  assert.equal(renderResult.includes('uc6-submitPublicationBtn'), false);
+  assert.equal(loadFreshDelivery.includes('getRenderArtifactCapabilities'), true);
+  assert.equal(loadFreshDelivery.includes('getReviewArtifactCapabilities'), false);
+  assert.equal(download.includes("uc6State.flowLane === 'asset_render' || uc6State.freshSyntheticExpected"), true);
+  assert.equal(admin.includes('X-Internal-Token'), false);
+  assert.equal(admin.includes('/data/'), false);
+  assert.equal(staticRender.includes('submitDummyDatabagRender'), true, 'static/curated render remains on its endpoint');
+  assert.equal(staticRender.includes('submitFreshSyntheticScenarioRender'), false);
+  assert.equal(assetRender.includes('submitReusableAssetRender'), true, 'reusable Asset render remains on its endpoint');
+  assert.equal(assetRender.includes('submitFreshSyntheticScenarioRender'), false);
 });
