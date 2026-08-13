@@ -413,6 +413,13 @@ function readSource(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 }
 
+function executeExtractedFunction(source, name, scope = {}) {
+  const entries = Object.entries(scope);
+  return Function(...entries.map(([key]) => key), extractFunctionBody(source, name))(
+    ...entries.map(([, value]) => value)
+  );
+}
+
 test('API base validation accepts only production HTTPS and explicit loopback HTTP', () => {
   assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org'), API_BASE);
   assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org/'), API_BASE);
@@ -1254,7 +1261,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6e-d2-fresh-render-delivery-bounded-stop-2026-08-13-v1'), true);
+  assert.equal(app.includes('app.uc6-r6e-d2-fresh-terminal-polling-2026-08-13-v2'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2267,7 +2274,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('uc6-r6e-d2-fresh-render-delivery-bounded-stop'), true);
+  assert.equal(app.includes('uc6-r6e-d2-fresh-terminal-polling'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -2551,6 +2558,7 @@ test('R6D3 onboarding protection remains intact while fresh continuation uses th
   const upload = extractFunctionBody(app, 'uploadUC6PptxJob');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
   const submit = extractFunctionBody(app, 'submitUC6DummyRender');
   const render = extractFunctionBody(app, 'renderUC6PackageStage');
   const context = extractFunctionBody(app, 'renderUC6ContextSummary');
@@ -2569,7 +2577,7 @@ test('R6D3 onboarding protection remains intact while fresh continuation uses th
   assert.equal(refresh.includes("projected.state === 'source_ready' && uc6State.freshOnboardingExpected"), true);
   assert.equal(refresh.includes("projected.state === 'onboarding_ready'"), true);
   assert.equal(refresh.includes('reconcileUC6FreshSyntheticScenarios'), true);
-  assert.equal(poll.includes('mapped.onboardingPollable'), true);
+  assert.equal(pollingDecision.includes('mapped.onboardingPollable'), true);
   assert.equal(save.includes('fresh_onboarding_expected: uc6State.freshOnboardingExpected'), true);
   assert.equal(resume.includes('persisted.fresh_onboarding_expected === true'), true);
   assert.equal(reset.includes('uc6State.freshOnboardingExpected = false'), true);
@@ -2584,6 +2592,7 @@ test('R6D3 onboarding protection remains intact while fresh continuation uses th
 test('R6D3 fresh source-ready reconciliation remains contextually GET-pollable across polling and resume', () => {
   const app = readSource('../public/app.js');
   const eligibility = extractFunctionBody(app, 'isUC6FreshSourceReconciliationPending');
+  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
   const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
   const poll = extractFunctionBody(app, 'pollUC6JobStatus');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
@@ -2596,10 +2605,9 @@ test('R6D3 fresh source-ready reconciliation remains contextually GET-pollable a
   assert.equal(mapUc6StateToView('source_ready').onboardingPollable, undefined);
 
   assert.equal(resume.includes('persisted.fresh_onboarding_expected === true'), true);
-  assert.equal(resume.includes('isUC6FreshSourceReconciliationPending()'), true);
-  assert.ok(resume.indexOf('isUC6FreshSourceReconciliationPending()') < resume.indexOf('if (shouldPoll) startUC6Polling()'));
-  assert.equal(poll.includes('isUC6FreshSourceReconciliationPending()'), true);
-  assert.ok(poll.indexOf('isUC6FreshSourceReconciliationPending()') < poll.indexOf('if (isPollable) scheduleUC6Poll()'));
+  assert.equal(pollingDecision.includes('isUC6FreshSourceReconciliationPending()'), true);
+  assert.equal(resume.includes('if (isUC6JobPollingPending()) startUC6Polling()'), true);
+  assert.equal(poll.includes('if (isUC6JobPollingPending()) scheduleUC6Poll()'), true);
 
   assert.equal(eligibility.includes('submitFreshTemplateOnboarding'), false);
   assert.equal(resume.includes('submitFreshTemplateOnboarding'), false);
@@ -2920,6 +2928,7 @@ test('R6E-C2 persistence and app source enforce GET-first one-shot generation, t
   const loadAsset = extractFunctionBody(app, 'loadUC6ReusableAssetPackages');
   const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
   const polling = extractFunctionBody(app, 'pollUC6JobStatus');
+  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
 
   assert.equal(upload.includes('loadUC6PackageOptions'), false);
   assert.equal(upload.includes('reconcileUC6FreshSyntheticScenarios'), true);
@@ -2931,7 +2940,8 @@ test('R6E-C2 persistence and app source enforce GET-first one-shot generation, t
   assert.equal(submitGeneration.includes('submitDummyDatabagRender'), false);
   assert.equal(resume.includes('refreshUC6JobStatus'), true);
   assert.equal(resume.includes('submitFreshSyntheticScenarios'), false);
-  assert.equal(polling.includes('syntheticScenariosPollable'), true);
+  assert.equal(polling.includes('isUC6JobPollingPending()'), true);
+  assert.equal(pollingDecision.includes('syntheticScenariosPollable'), true);
 
   assert.equal(renderSynthetic.includes('uc6State.syntheticScenarioOptions.length === 3'), true);
   assert.equal(renderSynthetic.includes("data.uc6SyntheticScenario"), false);
@@ -3161,6 +3171,7 @@ test('R6E-D2 app continuation reuses polling and capabilities, reconciles ambigu
   const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
   const renderSelection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
   const renderProgress = extractFunctionBody(app, 'renderUC6RenderStage');
   const renderResult = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
@@ -3179,7 +3190,8 @@ test('R6E-D2 app continuation reuses polling and capabilities, reconciles ambigu
   assert.equal(submit.includes('submitReusableAssetRender'), false);
   assert.equal(refresh.includes('projectUc6FreshSyntheticRenderJobStatus'), true);
   assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false, 'GET reconciliation cannot replay POST');
-  assert.equal(poll.includes('isUC6FreshRenderReconciliationPending()'), true);
+  assert.equal(poll.includes('isUC6JobPollingPending()'), true);
+  assert.equal(pollingDecision.includes('isUC6FreshRenderReconciliationPending()'), true);
   assert.equal(renderSelection.includes('uc6-submitFreshRenderBtn'), true);
   assert.equal(renderSelection.includes("selectionState: uc6State.syntheticSelectionState"), true);
   assert.equal(renderProgress.includes('uc6State.freshSyntheticExpected'), true);
@@ -3237,6 +3249,180 @@ test('R6E-D2 bounded delivery control separates execution polling from terminal 
     deliveryStatus: 'loading',
     explicitRetry: true
   }).shouldResolveCapabilities, false, 'double-click cannot duplicate a capability GET');
+});
+
+test('R6E-D2 shared Fresh terminal override dominates stale upstream state without breaking active lanes', () => {
+  const app = readSource('../public/app.js');
+  const terminalFor = (state) => executeExtractedFunction(app, 'isUC6FreshExecutionTerminal', {
+    uc6State: state,
+    projectUc6FreshRenderDeliveryControl
+  });
+  const syntheticPendingFor = (state) => executeExtractedFunction(app, 'isUC6FreshSyntheticPollingPending', {
+    uc6State: state
+  });
+  const sourcePendingFor = (state) => executeExtractedFunction(app, 'isUC6FreshSourceReconciliationPending', {
+    uc6State: state
+  });
+  const pollingFor = (state, pending = {}) => executeExtractedFunction(app, 'isUC6JobPollingPending', {
+    uc6State: state,
+    isUC6FreshExecutionTerminal: () => terminalFor(state),
+    mapUc6StateToView,
+    isUC6FreshSourceReconciliationPending: pending.source || (() => false),
+    isUC6FreshSyntheticPollingPending: pending.synthetic || (() => false),
+    isUC6FreshRenderReconciliationPending: pending.render || (() => false)
+  });
+
+  const completedBase = {
+    flowLane: 'dummy_render',
+    freshOnboardingExpected: true,
+    freshSyntheticExpected: true,
+    jobState: 'render_completed',
+    reviewArtifactsStatus: 'idle',
+    syntheticGenerationSubmitted: true,
+    syntheticGenerationSubmissionAmbiguous: false
+  };
+  for (const syntheticGenerationState of ['not_started', 'generation_queued', 'generation_running']) {
+    const state = { ...completedBase, syntheticGenerationState };
+    assert.equal(syntheticPendingFor(state), true, `${syntheticGenerationState} is the reproduced stale upstream signal`);
+    assert.equal(terminalFor(state), true);
+    assert.equal(pollingFor(state, { synthetic: () => true }), false, `${syntheticGenerationState} cannot keep completion pollable`);
+  }
+
+  let staleSourceChecks = 0;
+  assert.equal(pollingFor(completedBase, {
+    source: () => { staleSourceChecks += 1; return true; },
+    synthetic: () => true,
+    render: () => true
+  }), false, 'terminal authority overrides every stale source/synthetic/render signal');
+  assert.equal(staleSourceChecks, 0, 'terminal override runs before stale upstream predicates');
+
+  for (const deliveryStatus of ['ready', 'error']) {
+    assert.equal(pollingFor({ ...completedBase, reviewArtifactsStatus: deliveryStatus }, {
+      source: () => true,
+      synthetic: () => true,
+      render: () => true
+    }), false, `capability ${deliveryStatus} cannot reactivate completed execution polling`);
+  }
+  assert.equal(pollingFor({ ...completedBase, jobState: 'failed' }, {
+    source: () => true,
+    synthetic: () => true,
+    render: () => true
+  }), false, 'failed Fresh render is terminal');
+
+  for (const jobState of ['render_queued', 'render_running']) {
+    assert.equal(pollingFor({ ...completedBase, jobState }), true, `${jobState} remains mapped as pollable`);
+  }
+  const syntheticActive = {
+    ...completedBase,
+    jobState: 'synthetic_scenarios_queued',
+    syntheticGenerationState: 'generation_queued'
+  };
+  assert.equal(pollingFor(syntheticActive, { synthetic: () => syntheticPendingFor(syntheticActive) }), true);
+  const submittedUnobserved = {
+    ...completedBase,
+    jobState: 'onboarding_ready',
+    syntheticGenerationState: 'not_started'
+  };
+  assert.equal(pollingFor(submittedUnobserved, { synthetic: () => syntheticPendingFor(submittedUnobserved) }), true);
+  const sourceReady = { ...completedBase, jobState: 'source_ready', syntheticGenerationSubmitted: false };
+  assert.equal(pollingFor(sourceReady, { source: () => sourcePendingFor(sourceReady) }), true);
+
+  assert.equal(pollingFor({ ...completedBase, freshSyntheticExpected: false, jobState: 'render_queued' }), true, 'Static curated render polling is unchanged');
+  assert.equal(pollingFor({ ...completedBase, flowLane: 'asset_render', jobState: 'render_running' }), true, 'Reusable Asset polling is unchanged');
+
+  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
+  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  assert.equal((resume.match(/isUC6JobPollingPending/g) || []).length, 1);
+  assert.equal((poll.match(/isUC6JobPollingPending/g) || []).length, 1);
+  assert.equal(resume.includes('isUC6FreshSyntheticPollingPending'), false, 'resume cannot bypass the shared terminal override');
+  assert.equal(poll.includes('isUC6FreshSyntheticPollingPending'), false, 'timer ticks cannot bypass the shared terminal override');
+});
+
+test('R6E-D2 persisted stale not_started resume completes delivery once and leaves no polling timer', () => {
+  const persisted = projectUc6PersistedState({
+    job_id: JOB_ID,
+    fresh_onboarding_expected: true,
+    fresh_synthetic_expected: true,
+    synthetic_generation_submitted: true,
+    fresh_render_submitted: true
+  });
+  assert.deepEqual(persisted, {
+    job_id: JOB_ID,
+    fresh_onboarding_expected: true,
+    fresh_synthetic_expected: true,
+    synthetic_generation_submitted: true,
+    fresh_render_submitted: true
+  });
+
+  const app = readSource('../public/app.js');
+  const state = {
+    flowLane: 'dummy_render',
+    freshOnboardingExpected: persisted.fresh_onboarding_expected,
+    freshSyntheticExpected: persisted.fresh_synthetic_expected,
+    syntheticGenerationSubmitted: persisted.synthetic_generation_submitted,
+    syntheticGenerationSubmissionAmbiguous: false,
+    syntheticGenerationState: 'not_started',
+    freshRenderSubmitted: persisted.fresh_render_submitted,
+    jobState: 'render_completed',
+    reviewArtifactsStatus: 'idle'
+  };
+  const terminal = () => executeExtractedFunction(app, 'isUC6FreshExecutionTerminal', {
+    uc6State: state,
+    projectUc6FreshRenderDeliveryControl
+  });
+  const staleSyntheticPending = () => executeExtractedFunction(app, 'isUC6FreshSyntheticPollingPending', {
+    uc6State: state
+  });
+  const shouldPoll = () => executeExtractedFunction(app, 'isUC6JobPollingPending', {
+    uc6State: state,
+    isUC6FreshExecutionTerminal: terminal,
+    mapUc6StateToView,
+    isUC6FreshSourceReconciliationPending: () => true,
+    isUC6FreshSyntheticPollingPending: staleSyntheticPending,
+    isUC6FreshRenderReconciliationPending: () => true
+  });
+
+  let jobGetCount = 0;
+  let capabilityGetCount = 0;
+  let resultReconstructionCount = 0;
+  let syntheticScenarioRenderPostCount = 0;
+  let scheduledTick = null;
+  const acceptAuthoritativeCompletion = () => {
+    jobGetCount += 1;
+    state.jobState = 'render_completed';
+    resultReconstructionCount += 1;
+    const delivery = projectUc6FreshRenderDeliveryControl({
+      publicState: state.jobState,
+      deliveryStatus: state.reviewArtifactsStatus
+    });
+    if (delivery.shouldResolveCapabilities) {
+      capabilityGetCount += 1;
+      state.reviewArtifactsStatus = 'ready';
+    }
+    if (shouldPoll()) scheduledTick = acceptAuthoritativeCompletion;
+  };
+
+  assert.equal(staleSyntheticPending(), true, 'resume begins with the exact stale not_started + submitted state');
+  acceptAuthoritativeCompletion();
+  assert.equal(terminal(), true);
+  assert.equal(shouldPoll(), false);
+  assert.equal(scheduledTick, null, 'no polling timer remains scheduled');
+  if (scheduledTick) scheduledTick();
+  assert.equal(jobGetCount, 1, 'a later timer simulation cannot GET the job again');
+  assert.equal(capabilityGetCount, 1, 'artifact capabilities resolve exactly once from idle');
+  assert.equal(resultReconstructionCount, 1, 'the completed PDF/result surface is not rebuilt by a poll tick');
+  assert.equal(syntheticScenarioRenderPostCount, 0, 'resume never replays the render POST');
+  assert.equal(projectUc6FreshRenderDeliveryControl({
+    publicState: state.jobState,
+    deliveryStatus: state.reviewArtifactsStatus
+  }).shouldResolveCapabilities, false, 'successful capability resolution is bounded');
+
+  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
+  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  assert.equal(resume.includes('submitFreshSyntheticScenarioRender'), false);
+  assert.equal(poll.includes('submitFreshSyntheticScenarioRender'), false);
+  assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false);
 });
 
 test('R6E-D2 completed capability failure is a bounded delivery error with explicit read-only retry', () => {

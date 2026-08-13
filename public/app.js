@@ -59,7 +59,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6e-d2-fresh-render-delivery-bounded-stop-2026-08-13-v1';
+const APP_VERSION = 'app.uc6-r6e-d2-fresh-terminal-polling-2026-08-13-v2';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5828,14 +5828,7 @@ Customer: Thank you. Goodbye.`
       uc6State.jobId = persistedJobId;
       await refreshUC6JobStatus({ fetchReview: uc6State.flowLane === 'legacy_analysis' });
 
-      const mapped = mapUc6StateToView(uc6State.jobState);
-      const shouldPoll = isUC6FreshSourceReconciliationPending()
-        || isUC6FreshSyntheticPollingPending()
-        || isUC6FreshRenderReconciliationPending()
-        || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
-        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
-        : mapped.pollable);
-      if (shouldPoll) startUC6Polling();
+      if (isUC6JobPollingPending()) startUC6Polling();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
       clearUC6LocalState();
@@ -6659,20 +6652,32 @@ Customer: Thank you. Goodbye.`
       && control.renderPollable;
   }
 
+  function isUC6FreshExecutionTerminal() {
+    if (uc6State.flowLane !== 'dummy_render' || uc6State.freshSyntheticExpected !== true) return false;
+    return projectUc6FreshRenderDeliveryControl({
+      publicState: uc6State.jobState,
+      deliveryStatus: uc6State.reviewArtifactsStatus
+    }).executionTerminal;
+  }
+
+  function isUC6JobPollingPending() {
+    if (isUC6FreshExecutionTerminal()) return false;
+    const mapped = mapUc6StateToView(uc6State.jobState);
+    return isUC6FreshSourceReconciliationPending()
+      || isUC6FreshSyntheticPollingPending()
+      || isUC6FreshRenderReconciliationPending()
+      || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
+        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
+        : mapped.pollable);
+  }
+
   async function pollUC6JobStatus() {
     if (uc6State.statusRequestActive || !uc6State.pollingAbortController) return;
     uc6State.statusRequestActive = true;
     try {
       await refreshUC6JobStatus({ signal: uc6State.pollingAbortController.signal, fetchReview: uc6State.flowLane === 'legacy_analysis' });
       uc6State.consecutivePollErrors = 0;
-      const mapped = mapUc6StateToView(uc6State.jobState);
-      const isPollable = isUC6FreshSourceReconciliationPending()
-        || isUC6FreshSyntheticPollingPending()
-        || isUC6FreshRenderReconciliationPending()
-        || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
-        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
-        : mapped.pollable);
-      if (isPollable) scheduleUC6Poll();
+      if (isUC6JobPollingPending()) scheduleUC6Poll();
       else stopUC6Polling();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) {
