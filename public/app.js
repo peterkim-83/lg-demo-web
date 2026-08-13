@@ -26,6 +26,7 @@ import {
   projectUc6FinalDeliveryCapabilities,
   projectUc6PersistedState,
   projectUc6ReviewIssuePresentation,
+  projectUc6FreshReusableAssetPublication,
   projectUc6ReusableAssetPublication,
   runUc6CreateJobAndSubmitInitialAnalysis,
   splitDecisionTextLines,
@@ -59,7 +60,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6e-d2-fresh-terminal-polling-2026-08-13-v2';
+const APP_VERSION = 'app.uc6-r6f-b-fresh-review-publication-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6809,6 +6810,9 @@ Customer: Thank you. Goodbye.`
         if (deliveryControl.shouldResolveCapabilities) {
           await loadUC6FreshRenderDeliveryState(options.signal);
         }
+        if (deliveryControl.executionTerminal && projected.state === 'render_completed' && uc6State.publicationStatus === 'idle') {
+          await loadUC6FreshPublicationState(options.signal);
+        }
         return;
       }
       if (authoritativeFreshOnboardingLane) {
@@ -7046,11 +7050,15 @@ Customer: Thank you. Goodbye.`
     }
   }
 
-  function assertUC6ReviewArtifactParity(capabilities, publication) {
+  function projectUC6Publication(payload) {
+    return uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected
+      ? projectUc6FreshReusableAssetPublication(payload, { expectedJobId: uc6State.jobId })
+      : projectUc6ReusableAssetPublication(payload, { expectedJobId: uc6State.jobId });
+  }
+
+  function assertUC6PublicationArtifactParity(publication) {
     const renderStatus = uc6State.renderStatus;
-    const pdf = capabilities?.artifacts?.find((artifact) => artifact.alias === 'final_render_output_pdf');
-    const pptx = capabilities?.artifacts?.find((artifact) => artifact.alias === 'final_render_output_pptx');
-    if (!renderStatus || !pdf?.ready || !pptx?.ready) throw new TypeError('review_artifacts_not_ready');
+    if (!renderStatus) throw new TypeError('review_artifacts_not_ready');
     const expectedPdf = renderStatus.final_artifacts?.pdf?.sha256;
     const expectedPptx = renderStatus.final_artifacts?.pptx?.sha256;
     const publicationPdf = publication.publication_state === 'published'
@@ -7061,6 +7069,70 @@ Customer: Thank you. Goodbye.`
       : publication.reviewed_final_pptx_sha256;
     if (expectedPdf !== publicationPdf || expectedPptx !== publicationPptx) {
       throw new TypeError('review_artifact_sha_mismatch');
+    }
+  }
+
+  function assertUC6ReviewArtifactParity(capabilities, publication) {
+    const pdf = capabilities?.artifacts?.find((artifact) => artifact.alias === 'final_render_output_pdf');
+    const pptx = capabilities?.artifacts?.find((artifact) => artifact.alias === 'final_render_output_pptx');
+    if (!pdf?.ready || !pptx?.ready) throw new TypeError('review_artifacts_not_ready');
+    assertUC6PublicationArtifactParity(publication);
+  }
+
+  function hasUC6PublicationArtifactParity(publication) {
+    try {
+      assertUC6PublicationArtifactParity(publication);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function loadUC6FreshPublicationState(signal, options = {}) {
+    if (
+      !isUc6Authorized()
+      || uc6State.flowLane !== 'dummy_render'
+      || !uc6State.freshSyntheticExpected
+      || !uc6State.jobId
+      || uc6State.jobState !== 'render_completed'
+      || !uc6State.renderStatus
+      || uc6State.reviewSurfaceRequestActive
+      || (!options.explicitRefresh && uc6State.publicationStatus !== 'idle')
+    ) return;
+    uc6State.reviewSurfaceRequestActive = true;
+    uc6State.publicationStatus = 'loading';
+    uc6State.publicationMessage = 'Fresh 관리자 게시 준비 상태를 확인하고 있습니다.';
+    renderUC6FreshPublicationSurfaceOnly();
+    try {
+      const payload = await uc6State.api.getReusableAssetPublication(uc6State.jobId, { signal });
+      const publication = projectUc6FreshReusableAssetPublication(payload, { expectedJobId: uc6State.jobId });
+      assertUC6PublicationArtifactParity(publication);
+      uc6State.publication = publication;
+      uc6State.publicationStatus = publication.publication_state === 'published' ? 'published' : 'review_pending';
+      uc6State.publicationMessage = publication.publication_state === 'published'
+        ? '재사용 Asset과 연결된 Scenario Family 게시가 완료되었습니다.'
+        : '표시된 최종 PPTX/PDF를 검토한 뒤 명시적으로 게시하세요.';
+      if (publication.publication_state === 'published') {
+        uc6State.publicationReviewConfirmed = true;
+        if (publication.published_asset?.decision_identity) {
+          uc6State.publicationDecisionIdentity = publication.published_asset.decision_identity;
+        }
+      }
+      saveUC6LocalState();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      if (error?.name === 'AbortError') return;
+      uc6State.publication = null;
+      uc6State.publicationStatus = error?.message === 'review_artifact_sha_mismatch'
+        ? 'reconciliation_required'
+        : 'error';
+      uc6State.publicationMessage = error?.message === 'review_artifact_sha_mismatch'
+        ? '게시 준비 정보와 표시된 최종 산출물 SHA-256이 일치하지 않아 게시할 수 없습니다.'
+        : uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.publicationMessage);
+    } finally {
+      uc6State.reviewSurfaceRequestActive = false;
+      renderUC6FreshPublicationSurfaceOnly();
     }
   }
 
@@ -7186,17 +7258,31 @@ Customer: Thank you. Goodbye.`
 
   async function reconcileUC6PublicationState(signal) {
     const payload = await uc6State.api.getReusableAssetPublication(uc6State.jobId, { signal });
-    const publication = projectUc6ReusableAssetPublication(payload, { expectedJobId: uc6State.jobId });
-    assertUC6ReviewArtifactParity(uc6State.reviewArtifacts, publication);
+    const publication = projectUC6Publication(payload);
+    if (uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected) {
+      assertUC6PublicationArtifactParity(publication);
+    } else {
+      assertUC6ReviewArtifactParity(uc6State.reviewArtifacts, publication);
+    }
     uc6State.publication = publication;
-    uc6State.publicationStatus = 'ready';
+    uc6State.publicationStatus = uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected
+      ? (publication.publication_state === 'published' ? 'published' : 'review_pending')
+      : 'ready';
     uc6State.publicationMessage = publication.publication_state === 'published'
       ? '서버 상태 확인 결과 승인 및 게시가 완료되었습니다.'
       : '서버 상태는 아직 미게시입니다. 동일한 승인 식별자로 다시 시도할 수 있습니다.';
     if (publication.publication_state === 'published') uc6State.publicationReviewConfirmed = true;
     saveUC6LocalState();
-    renderUC6A8FReviewSurfaceOnly();
+    renderUC6PublicationSurfaceOnly();
     return publication;
+  }
+
+  function renderUC6PublicationSurfaceOnly() {
+    if (uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected) {
+      renderUC6FreshPublicationSurfaceOnly();
+    } else {
+      renderUC6A8FReviewSurfaceOnly();
+    }
   }
 
   async function submitUC6ReusableAssetPublication() {
@@ -7207,9 +7293,15 @@ Customer: Thank you. Goodbye.`
       || uc6State.publicationRequestActive
       || uc6State.publication?.publication_state === 'published'
     ) return;
+    if (!uc6State.publication || !hasUC6PublicationArtifactParity(uc6State.publication)) {
+      uc6State.publicationStatus = 'reconciliation_required';
+      uc6State.publicationMessage = '게시 준비 정보와 표시된 최종 산출물 SHA-256 일치를 먼저 확인하세요.';
+      renderUC6PublicationSurfaceOnly();
+      return;
+    }
     if (!uc6State.publicationReviewConfirmed) {
       uc6State.publicationMessage = 'PDF 검토 완료 확인이 필요합니다.';
-      renderUC6A8FReviewSurfaceOnly();
+      renderUC6PublicationSurfaceOnly();
       return;
     }
     const command = {
@@ -7222,14 +7314,14 @@ Customer: Thank you. Goodbye.`
     const validation = validateUc6ReusableAssetPublicationCommand(command);
     if (!validation.ok) {
       uc6State.publicationMessage = validation.message;
-      renderUC6A8FReviewSurfaceOnly();
+      renderUC6PublicationSurfaceOnly();
       return;
     }
     uc6State.publicationRequestActive = true;
     uc6State.publicationStatus = 'submitting';
     uc6State.publicationMessage = '검토한 산출물을 승인하고 게시하고 있습니다.';
     saveUC6LocalState();
-    renderUC6A8FReviewSurfaceOnly();
+    renderUC6PublicationSurfaceOnly();
     if (uc6State.publicationAbortController) uc6State.publicationAbortController.abort();
     uc6State.publicationAbortController = new AbortController();
     try {
@@ -7238,11 +7330,15 @@ Customer: Thank you. Goodbye.`
         validation.body,
         { signal: uc6State.publicationAbortController.signal }
       );
-      const publication = projectUc6ReusableAssetPublication(payload, { expectedJobId: uc6State.jobId });
-      assertUC6ReviewArtifactParity(uc6State.reviewArtifacts, publication);
+      const publication = projectUC6Publication(payload);
+      if (uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected) {
+        assertUC6PublicationArtifactParity(publication);
+      } else {
+        assertUC6ReviewArtifactParity(uc6State.reviewArtifacts, publication);
+      }
       if (publication.publication_state !== 'published') throw new TypeError('publication_not_completed');
       uc6State.publication = publication;
-      uc6State.publicationStatus = 'ready';
+      uc6State.publicationStatus = uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected ? 'published' : 'ready';
       uc6State.publicationMessage = publication.idempotent_replay === true
         ? '기존 승인·게시 결과를 안전하게 복원했습니다.'
         : '승인 및 게시가 완료되었습니다.';
@@ -7252,13 +7348,13 @@ Customer: Thank you. Goodbye.`
       if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
         uc6State.publicationStatus = 'reconciling';
         uc6State.publicationMessage = '승인 요청 결과가 불명확하여 서버 상태를 확인하고 있습니다.';
-        renderUC6A8FReviewSurfaceOnly();
+        renderUC6PublicationSurfaceOnly();
         try {
           await reconcileUC6PublicationState(uc6State.publicationAbortController.signal);
         } catch (readError) {
           if (handleUC6AuthorizationFailure(readError)) return;
           if (readError?.name !== 'AbortError') {
-            uc6State.publicationStatus = 'error';
+            uc6State.publicationStatus = 'reconciliation_required';
             uc6State.publicationMessage = '승인 요청 결과를 확인하지 못했습니다. 상태를 새로고침하세요.';
           }
         }
@@ -7269,7 +7365,7 @@ Customer: Thank you. Goodbye.`
       }
     } finally {
       uc6State.publicationRequestActive = false;
-      renderUC6A8FReviewSurfaceOnly();
+      renderUC6PublicationSurfaceOnly();
     }
   }
 
@@ -8111,6 +8207,131 @@ Customer: Thank you. Goodbye.`
     if (uc6State.liveMessage) setUc6Text(uc6Els.liveStatus, uc6State.liveMessage, '');
   }
 
+  function createUC6FreshPublicationPanel(renderStatus, publication) {
+    const panel = createUc6Node('aside', 'uc6-a8f-review-panel uc6-r6f-b-publication-panel');
+    const isPublished = publication?.publication_state === 'published';
+    const hashMatch = Boolean(publication) && hasUC6PublicationArtifactParity(publication);
+    panel.append(createUc6Node('h3', '', isPublished ? '재사용 게시 완료' : '관리자 검토 및 재사용 게시'));
+    panel.append(createUc6Node('p', 'uc6-stage-copy', '승인하면 생성된 최종 PPTX가 아니라 원본 업로드 PPTX와 검증된 템플릿 지능이 재사용 Asset mold로 게시됩니다.'));
+
+    const hashes = createUc6Node('dl', 'uc6-a8f-review-facts');
+    const publicationPptx = publication?.publication_state === 'published'
+      ? publication.published_asset?.reviewed_final_pptx_sha256
+      : publication?.reviewed_final_pptx_sha256;
+    const publicationPdf = publication?.publication_state === 'published'
+      ? publication.published_asset?.reviewed_final_pdf_sha256
+      : publication?.reviewed_final_pdf_sha256;
+    for (const [label, value] of [
+      ['검토 대상 PPTX SHA-256', publicationPptx || renderStatus.final_artifacts.pptx.sha256],
+      ['검토 대상 PDF SHA-256', publicationPdf || renderStatus.final_artifacts.pdf.sha256]
+    ]) hashes.append(createUc6Node('dt', '', label), createUc6Node('dd', 'uc6-hash-display', value));
+    panel.append(hashes);
+
+    const family = publication?.linked_scenario_family;
+    if (family) {
+      const familySection = createUc6Node('section', 'uc6-detail-group');
+      familySection.append(createUc6Node('h3', '', '연결된 Scenario Family'));
+      familySection.append(createUc6Node('p', '', '이번 검토에 선택한 하나뿐 아니라 검증된 합성 시나리오 3개 전체가 순서대로 연결되어 이후 재사용됩니다.'));
+      const familyFacts = createUc6Node('dl', 'uc6-a8f-review-facts');
+      const familyRows = [
+        ['원본 Family ID', family.synthetic_scenario_family_id],
+        ['시나리오 수', family.scenario_count],
+        ['정렬된 시나리오', family.ordered_scenario_keys.join(' · ')],
+        ['Family artifact SHA-256', family.scenario_family_artifact_sha256],
+        ['게시 Family ID', family.published_scenario_family_id],
+        ['게시 manifest SHA-256', family.publication_manifest_sha256],
+        ['불변 연결 ID', family.immutable_link_identity]
+      ].filter(([, value]) => hasUC6Value(value));
+      familyRows.forEach(([label, value]) => familyFacts.append(
+        createUc6Node('dt', '', label),
+        createUc6Node('dd', label.includes('SHA-256') ? 'uc6-hash-display' : '', value)
+      ));
+      familySection.append(familyFacts);
+      panel.append(familySection);
+    }
+
+    if (isPublished) {
+      const asset = publication.published_asset;
+      const receipt = createUc6Node('section', 'uc6-a8f-publication-receipt');
+      receipt.append(createUc6Node('strong', '', 'Published Reusable Asset'));
+      const rows = [
+        ['Asset ID', asset.asset_id],
+        ['원본 PPTX SHA-256', asset.source_pptx_sha256],
+        ['Generation units', asset.generation_unit_count],
+        ['Slots', asset.slot_count],
+        ['Slides', asset.slide_count],
+        ['Asset manifest SHA-256', asset.asset_manifest_sha256],
+        ['Catalog entry SHA-256', asset.catalog_entry_sha256],
+        ['Approval receipt SHA-256', asset.approval_receipt_sha256]
+      ];
+      const facts = createUc6Node('dl', 'uc6-a8f-review-facts');
+      rows.forEach(([label, value]) => facts.append(
+        createUc6Node('dt', '', label),
+        createUc6Node('dd', label.includes('SHA-256') ? 'uc6-hash-display' : '', value)
+      ));
+      receipt.append(facts);
+      panel.append(receipt);
+    } else if (publication?.publication_state === 'unpublished' && hashMatch) {
+      if (renderStatus.review_required) {
+        panel.append(createUc6Node('p', 'uc6-stage-message', '근거 데이터 부족으로 원본 유지된 항목이 있으나, 백엔드 게시 준비 검증을 통과했으므로 관리자 검토 후 게시할 수 있습니다.'));
+      }
+      const confirmLabel = createUc6Node('label', 'uc6-a8f-confirm');
+      const confirm = document.createElement('input');
+      confirm.type = 'checkbox';
+      confirm.id = 'uc6-publicationReviewConfirmed';
+      confirm.checked = uc6State.publicationReviewConfirmed;
+      confirm.disabled = uc6State.publicationStatus !== 'review_pending' || uc6State.publicationRequestActive;
+      confirmLabel.append(confirm, createUc6Node('span', '', '표시된 최종 PPTX/PDF SHA-256과 전체 Scenario Family를 검토했습니다.'));
+      panel.append(confirmLabel);
+
+      const note = document.createElement('textarea');
+      note.id = 'uc6-publicationNote';
+      note.rows = 4;
+      note.maxLength = 1000;
+      note.value = uc6State.publicationNoteDraft;
+      note.placeholder = '선택 사항 · 공개 가능한 관리자 검토 메모';
+      note.disabled = uc6State.publicationRequestActive;
+      panel.append(createUC6Field('관리자 메모', note));
+
+      const canPublish = uc6State.publicationStatus === 'review_pending'
+        && uc6State.publicationReviewConfirmed
+        && !uc6State.publicationRequestActive;
+      panel.append(createUC6ActionButton(
+        'uc6-submitPublicationBtn',
+        uc6State.publicationRequestActive ? '게시 확인 중...' : '검토 완료 및 재사용 Asset 게시',
+        'btn btn-primary uc6-a8f-publish-button',
+        !canPublish
+      ));
+    }
+
+    const errorState = uc6State.publicationStatus === 'error' || uc6State.publicationStatus === 'reconciliation_required';
+    panel.append(createUc6Node(
+      'p',
+      `uc6-a8f-publication-message${errorState ? ' is-error' : ''}`,
+      uc6State.publicationMessage || '게시 준비 상태를 확인하고 있습니다.'
+    ));
+    const actions = createUc6Node('div', 'uc6-action-row');
+    actions.append(createUC6ActionButton(
+      'uc6-refreshReviewSurfaceBtn',
+      '게시 상태 새로고침',
+      'btn btn-outline',
+      uc6State.reviewSurfaceRequestActive || uc6State.publicationRequestActive
+    ));
+    panel.append(actions);
+    return panel;
+  }
+
+  function renderUC6FreshPublicationSurfaceOnly() {
+    const root = uc6Els.activeStageRoot;
+    const currentPanel = root?.querySelector('.uc6-r6f-b-publication-panel');
+    if (!root || !uc6State.renderStatus || !currentPanel) {
+      renderUC6All();
+      return;
+    }
+    currentPanel.replaceWith(createUC6FreshPublicationPanel(uc6State.renderStatus, uc6State.publication));
+    if (uc6State.liveMessage) setUc6Text(uc6Els.liveStatus, uc6State.liveMessage, '');
+  }
+
   function renderUC6FreshSyntheticRenderResultStage(root) {
     const status = uc6State.renderStatus;
     if (
@@ -8126,7 +8347,7 @@ Customer: Thank you. Goodbye.`
 
     const card = createUc6Node('section', 'uc6-stage-card uc6-r6e-d2-result-stage');
     card.append(createUc6Node('h2', '', '샘플 문서 생성 완료'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '선택한 합성 샘플 컨텍스트로 생성된 최종 PPTX와 PDF가 준비되었습니다. 이 단계에서는 검토나 게시를 시작하지 않습니다.'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', '선택한 합성 샘플 컨텍스트로 생성된 최종 PPTX와 PDF가 준비되었습니다. 결과를 검토한 뒤 재사용 게시 여부를 명시적으로 결정하세요.'));
 
     const summary = createUc6Node('div', 'uc6-compact-facts');
     if (uc6State.boundSyntheticScenario?.label) summary.append(createUC6SummaryItem('샘플 컨텍스트', uc6State.boundSyntheticScenario.label));
@@ -8178,6 +8399,7 @@ Customer: Thank you. Goodbye.`
     downloadStatus.id = 'uc6-reviewArtifactDownloadStatus';
     downloadStatus.hidden = !uc6State.reviewArtifactDownloadMessage;
     card.append(downloadStatus);
+    card.append(createUC6FreshPublicationPanel(status, uc6State.publication));
     const actions = createUc6Node('div', 'uc6-action-row');
     if (uc6State.reviewArtifactsStatus === 'error') {
       actions.append(createUC6ActionButton(
@@ -8739,8 +8961,12 @@ Customer: Thank you. Goodbye.`
       else if (target.id === 'uc6-refreshReviewSurfaceBtn') {
         if (uc6State.reviewSurfaceAbortController) uc6State.reviewSurfaceAbortController.abort();
         uc6State.reviewSurfaceAbortController = new AbortController();
-        clearUC6A8FReviewState({ keepDecisionIdentity: true });
-        loadUC6A8FReviewState(uc6State.reviewSurfaceAbortController.signal);
+        if (uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected) {
+          loadUC6FreshPublicationState(uc6State.reviewSurfaceAbortController.signal, { explicitRefresh: true });
+        } else {
+          clearUC6A8FReviewState({ keepDecisionIdentity: true });
+          loadUC6A8FReviewState(uc6State.reviewSurfaceAbortController.signal);
+        }
       } else if (target.id === 'uc6-submitPublicationBtn') submitUC6ReusableAssetPublication();
       else if (target.id === 'uc6-clearBtn') resetUC6JobState(true);
       else if (target.id === 'uc6-retryAnalysisBtn') submitUC6Analysis(true);
@@ -8777,7 +9003,7 @@ Customer: Thank you. Goodbye.`
         uc6State.publicationMessage = uc6State.publicationReviewConfirmed
           ? '검토 확인이 기록되었습니다. 승인·게시를 실행할 수 있습니다.'
           : 'PDF와 PPTX 검토 완료를 확인하세요.';
-        renderUC6A8FReviewSurfaceOnly();
+        renderUC6PublicationSurfaceOnly();
       } else if (target.id === 'uc6-decisionChoice') {
         uc6State.decisionChoiceValue = target.value;
         if (target.value !== 'request_revision') uc6State.requestedRevisionsDraft = '';

@@ -19,6 +19,7 @@ import {
   projectUc6FreshSyntheticScenarioBinding,
   projectUc6FreshSyntheticRenderControl,
   projectUc6FreshRenderDeliveryControl,
+  projectUc6FreshReusableAssetPublication,
   projectUc6FreshSyntheticRenderJobStatus,
   projectUc6FreshSyntheticRenderSubmission,
   projectUc6DummyDatabagPackageOptions,
@@ -364,6 +365,31 @@ function publishedPublicationPayload(overrides = {}) {
     idempotent_replay: false,
     control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
     public_safety: 'PASS'
+  }, overrides);
+}
+
+function freshLinkedScenarioFamily(overrides = {}) {
+  return Object.assign({
+    synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
+    scenario_count: 3,
+    ordered_scenario_keys: ['scenario_000', 'scenario_001', 'scenario_002'],
+    scenario_family_artifact_sha256: '1'.repeat(64)
+  }, overrides);
+}
+
+function freshUnpublishedPublicationPayload(overrides = {}) {
+  return Object.assign(unpublishedPublicationPayload(), {
+    linked_scenario_family: freshLinkedScenarioFamily()
+  }, overrides);
+}
+
+function freshPublishedPublicationPayload(overrides = {}) {
+  return Object.assign(publishedPublicationPayload(), {
+    linked_scenario_family: freshLinkedScenarioFamily({
+      published_scenario_family_id: 'scenario_family_publication_8290144ea5219754',
+      publication_manifest_sha256: '2'.repeat(64),
+      immutable_link_identity: 'asset_scenario_family_link_8290144ea5219754'
+    })
   }, overrides);
 }
 
@@ -1261,7 +1287,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6e-d2-fresh-terminal-polling-2026-08-13-v2'), true);
+  assert.equal(app.includes('app.uc6-r6f-b-fresh-review-publication-2026-08-14-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -1673,6 +1699,7 @@ test('A8-F publication interactions preserve the mounted PDF viewer', () => {
   const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
   const submitBody = extractFunctionBody(appSource, 'submitUC6ReusableAssetPublication');
   const reconcileBody = extractFunctionBody(appSource, 'reconcileUC6PublicationState');
+  const publicationSurfaceBody = extractFunctionBody(appSource, 'renderUC6PublicationSurfaceOnly');
   const changeHandler = appSource.slice(
     appSource.indexOf("target.id === 'uc6-publicationReviewConfirmed'"),
     appSource.indexOf("target.id === 'uc6-decisionChoice'")
@@ -1682,12 +1709,13 @@ test('A8-F publication interactions preserve the mounted PDF viewer', () => {
   assert.equal(surfaceBody.includes('currentPanel.replaceWith(createUC6A8FReviewPanel'), true);
   assert.equal(surfaceBody.includes('root.replaceChildren'), false);
   assert.equal(surfaceBody.includes('uc6-a8f-viewer-column'), false);
-  assert.equal(changeHandler.includes('renderUC6A8FReviewSurfaceOnly()'), true);
+  assert.equal(changeHandler.includes('renderUC6PublicationSurfaceOnly()'), true);
   assert.equal(changeHandler.includes('renderUC6All()'), false);
-  assert.equal(submitBody.includes('renderUC6A8FReviewSurfaceOnly()'), true);
+  assert.equal(submitBody.includes('renderUC6PublicationSurfaceOnly()'), true);
   assert.equal(submitBody.includes('renderUC6All()'), false);
-  assert.equal(reconcileBody.includes('renderUC6A8FReviewSurfaceOnly()'), true);
+  assert.equal(reconcileBody.includes('renderUC6PublicationSurfaceOnly()'), true);
   assert.equal(reconcileBody.includes('renderUC6All()'), false);
+  assert.equal(publicationSurfaceBody.includes('renderUC6A8FReviewSurfaceOnly()'), true, 'legacy A8 retains its mounted-viewer update path');
 });
 
 test('A8-F artifact downloads refresh signed capabilities and never navigate to expired JSON', () => {
@@ -2274,7 +2302,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('uc6-r6e-d2-fresh-terminal-polling'), true);
+  assert.equal(app.includes('uc6-r6f-b-fresh-review-publication'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -3492,5 +3520,229 @@ test('R6E-D2 capability 409, 5xx, and network failures stay single-attempt and r
     assert.equal(calls[0].init.method, 'GET');
     assert.equal(calls[0].url.endsWith(`/jobs/${JOB_ID}/render-artifact-capabilities`), true);
     assert.equal(calls.some((call) => call.url.endsWith(`/jobs/${JOB_ID}/synthetic-scenarios/render`)), false);
+  }
+});
+
+test('R6F-B Fresh publication projection requires a safe coherent linked three-scenario family', () => {
+  const unpublished = projectUc6FreshReusableAssetPublication(freshUnpublishedPublicationPayload(), { expectedJobId: JOB_ID });
+  assert.equal(unpublished.publication_state, 'unpublished');
+  assert.equal(unpublished.linked_scenario_family.scenario_count, 3);
+  assert.deepEqual(unpublished.linked_scenario_family.ordered_scenario_keys, ['scenario_000', 'scenario_001', 'scenario_002']);
+  assert.equal(unpublished.linked_scenario_family.published_scenario_family_id, undefined);
+
+  const created = projectUc6FreshReusableAssetPublication(freshPublishedPublicationPayload(), { expectedJobId: JOB_ID });
+  assert.equal(created.publication_state, 'published');
+  assert.equal(created.idempotent_replay, false);
+  assert.equal(created.linked_scenario_family.published_scenario_family_id, 'scenario_family_publication_8290144ea5219754');
+  assert.equal(created.linked_scenario_family.publication_manifest_sha256, '2'.repeat(64));
+
+  const replayed = projectUc6FreshReusableAssetPublication(
+    freshPublishedPublicationPayload({ idempotent_replay: true }),
+    { expectedJobId: JOB_ID }
+  );
+  assert.equal(replayed.idempotent_replay, true, 'HTTP 200 exact replay projects the same published identities');
+  assert.deepEqual(replayed.published_asset, created.published_asset);
+  assert.deepEqual(replayed.linked_scenario_family, created.linked_scenario_family);
+
+  for (const linkedScenarioFamily of [
+    freshLinkedScenarioFamily({ scenario_count: 1, ordered_scenario_keys: ['scenario_000'] }),
+    freshLinkedScenarioFamily({ ordered_scenario_keys: ['scenario_000', 'scenario_002', 'scenario_001'] }),
+    freshLinkedScenarioFamily({ ordered_scenario_keys: ['scenario_000'] }),
+    freshLinkedScenarioFamily({ scenario_family_artifact_sha256: 'BAD' }),
+    freshLinkedScenarioFamily({ source_context: { secret: true } })
+  ]) {
+    assert.throws(() => projectUc6FreshReusableAssetPublication(
+      freshUnpublishedPublicationPayload({ linked_scenario_family: linkedScenarioFamily }),
+      { expectedJobId: JOB_ID }
+    ));
+  }
+  assert.doesNotThrow(() => projectUc6ReusableAssetPublication(unpublishedPublicationPayload(), { expectedJobId: JOB_ID }), 'legacy A8 projection is unchanged');
+});
+
+test('R6F-B Fresh publication GET and explicit POST reuse the Firebase-only one-shot route', async () => {
+  const calls = [];
+  const command = {
+    decision: 'approve_for_reuse_and_publish',
+    decision_identity: 'a8f-r6f-b-stable-001',
+    reviewed_final_pptx_sha256: 'a'.repeat(64),
+    reviewed_final_pdf_sha256: 'b'.repeat(64),
+    administrator_note: 'Fresh final artifacts and linked family reviewed.'
+  };
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async () => 'firebase-r6f-b-token',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return init.method === 'GET'
+        ? response(200, freshUnpublishedPublicationPayload())
+        : response(201, freshPublishedPublicationPayload());
+    }
+  });
+  const readiness = projectUc6FreshReusableAssetPublication(
+    await api.getReusableAssetPublication(JOB_ID),
+    { expectedJobId: JOB_ID }
+  );
+  assert.equal(readiness.review_state, 'review_pending');
+  const published = projectUc6FreshReusableAssetPublication(
+    await api.submitReusableAssetPublication(JOB_ID, command),
+    { expectedJobId: JOB_ID }
+  );
+  assert.equal(published.publication_state, 'published');
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[1].init.method, 'POST');
+  assert.equal(calls[1].init.headers.Authorization, 'Bearer firebase-r6f-b-token');
+  assert.equal(calls[1].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
+  assert.deepEqual(Object.keys(JSON.parse(calls[1].init.body)).sort(), Object.keys(command).sort());
+  assert.deepEqual(JSON.parse(calls[1].init.body), command);
+  assert.equal(JSON.stringify(calls).includes('principal'), false);
+});
+
+test('R6F-B exact artifact hash binding fails closed before publication', () => {
+  const app = readSource('../public/app.js');
+  const assertParity = (publication, renderStatus) => executeExtractedFunction(app, 'assertUC6PublicationArtifactParity', {
+    uc6State: { renderStatus },
+    publication
+  });
+  const renderStatus = {
+    final_artifacts: {
+      pptx: { sha256: 'a'.repeat(64) },
+      pdf: { sha256: 'b'.repeat(64) }
+    }
+  };
+  const publication = projectUc6FreshReusableAssetPublication(freshUnpublishedPublicationPayload(), { expectedJobId: JOB_ID });
+  assert.doesNotThrow(() => assertParity(publication, renderStatus));
+  assert.throws(
+    () => assertParity({ ...publication, reviewed_final_pdf_sha256: 'c'.repeat(64) }, renderStatus),
+    /review_artifact_sha_mismatch/
+  );
+
+  const submit = extractFunctionBody(app, 'submitUC6ReusableAssetPublication');
+  assert.ok(submit.indexOf('hasUC6PublicationArtifactParity') < submit.indexOf('ensureUC6PublicationDecisionIdentity()'));
+  assert.ok(submit.indexOf('publicationRequestActive = true') < submit.indexOf('submitReusableAssetPublication'));
+  assert.equal((submit.match(/submitReusableAssetPublication/g) || []).length, 1);
+  assert.equal(submit.includes('submitFreshSyntheticScenarioRender'), false);
+  assert.equal(submit.includes('submitFreshSyntheticScenarios'), false);
+  assert.equal(submit.includes('bindFreshSyntheticScenario'), false);
+});
+
+test('R6F-B Fresh completion loads delivery and publication independently without execution polling', () => {
+  const app = readSource('../public/app.js');
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const freshStart = refresh.indexOf('if (authoritativeFreshRenderLane)');
+  const freshEnd = refresh.indexOf('if (authoritativeFreshOnboardingLane)', freshStart);
+  const freshBranch = refresh.slice(freshStart, freshEnd);
+  const loadPublication = extractFunctionBody(app, 'loadUC6FreshPublicationState');
+  const loadDelivery = extractFunctionBody(app, 'loadUC6FreshRenderDeliveryState');
+  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
+
+  assert.equal(freshBranch.includes("projected.state === 'render_completed'"), true);
+  assert.equal(freshBranch.includes('loadUC6FreshRenderDeliveryState'), true);
+  assert.equal(freshBranch.includes('loadUC6FreshPublicationState'), true);
+  assert.ok(freshBranch.indexOf('loadUC6FreshRenderDeliveryState') < freshBranch.indexOf('loadUC6FreshPublicationState'));
+  assert.equal(loadPublication.includes('getReusableAssetPublication'), true);
+  assert.equal(loadPublication.includes('projectUc6FreshReusableAssetPublication'), true);
+  assert.equal(loadPublication.includes('assertUC6PublicationArtifactParity'), true);
+  assert.equal(loadPublication.includes('getReviewArtifactCapabilities'), false);
+  assert.equal(loadPublication.includes('getRenderArtifactCapabilities'), false);
+  assert.equal(loadPublication.includes('submitReusableAssetPublication'), false);
+  assert.equal(loadPublication.includes('startUC6Polling'), false);
+  assert.equal(loadDelivery.includes('getRenderArtifactCapabilities'), true);
+  assert.equal(pollingDecision.includes('publicationStatus'), false, 'publication state cannot restart execution polling');
+  assert.ok(freshBranch.indexOf('stopUC6Polling()') < freshBranch.indexOf('loadUC6FreshPublicationState'));
+
+  for (const state of ['render_queued', 'render_running']) {
+    const control = projectUc6FreshRenderDeliveryControl({ publicState: state, deliveryStatus: 'idle' });
+    assert.equal(control.executionPollable, true);
+    assert.equal(control.executionTerminal, false, `${state} cannot enter terminal publication loading`);
+  }
+});
+
+test('R6F-B Fresh administrator surface presents both outputs and requires the explicit final action', () => {
+  const app = readSource('../public/app.js');
+  const panel = extractFunctionBody(app, 'createUC6FreshPublicationPanel');
+  const result = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
+  const surface = extractFunctionBody(app, 'renderUC6FreshPublicationSurfaceOnly');
+  const init = extractFunctionBody(app, 'initUC6');
+
+  assert.equal(panel.includes('원본 업로드 PPTX'), true);
+  assert.equal(panel.includes('생성된 최종 PPTX가 아니라'), true);
+  assert.equal(panel.includes('Scenario Family'), true);
+  assert.equal(panel.includes("family.ordered_scenario_keys.join(' · ')"), true);
+  assert.equal(panel.includes('selectedSyntheticScenarioKey'), false, 'selected scenario alone is never presented as the family');
+  assert.equal(panel.includes('uc6-publicationReviewConfirmed'), true);
+  assert.equal(panel.includes('uc6-submitPublicationBtn'), true);
+  assert.equal(panel.includes('검토 완료 및 재사용 Asset 게시'), true);
+  assert.equal(panel.includes("publicationStatus === 'review_pending'"), true);
+  assert.equal(panel.includes('private_fallback_count > 0'), false, 'grounded fallback never blocks the button');
+  assert.equal(panel.includes('백엔드 게시 준비 검증을 통과'), true);
+  assert.equal(result.includes('createUC6FreshPublicationPanel'), true);
+  assert.equal(surface.includes('currentPanel.replaceWith'), true, 'publication updates preserve the mounted PDF viewer');
+  assert.equal(surface.includes('root.replaceChildren'), false);
+  assert.equal((init.match(/uc6-submitPublicationBtn/g) || []).length, 1, 'one delegated publication click path');
+});
+
+test('R6F-B resume and ambiguity paths are GET-first, stable-identity, and never regenerate Fresh work', () => {
+  const app = readSource('../public/app.js');
+  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const reconcile = extractFunctionBody(app, 'reconcileUC6PublicationState');
+  const submit = extractFunctionBody(app, 'submitUC6ReusableAssetPublication');
+  const identity = extractFunctionBody(app, 'ensureUC6PublicationDecisionIdentity');
+
+  assert.equal(resume.includes('await refreshUC6JobStatus'), true);
+  for (const body of [resume, refresh, reconcile]) {
+    assert.equal(body.includes('submitReusableAssetPublication'), false, 'resume/reconciliation remains GET-only');
+    assert.equal(body.includes('submitFreshSyntheticScenarioRender'), false);
+    assert.equal(body.includes('submitFreshSyntheticScenarios'), false);
+    assert.equal(body.includes('bindFreshSyntheticScenario'), false);
+  }
+  assert.equal(reconcile.includes('getReusableAssetPublication'), true);
+  assert.equal(submit.includes('reconcileUC6PublicationState'), true);
+  assert.equal((submit.match(/submitReusableAssetPublication/g) || []).length, 1, 'ambiguous outcome never replays POST automatically');
+  assert.equal(identity.includes('if (uc6State.publicationDecisionIdentity) return'), true);
+  assert.equal(submit.includes('ensureUC6PublicationDecisionIdentity()'), true);
+  assert.equal(submit.includes("publication.idempotent_replay === true"), true);
+  assert.equal(refresh.includes('loadUC6A8FReviewState'), true, 'legacy A8 review/publication remains available');
+  assert.equal(extractFunctionBody(app, 'submitUC6DummyRender').includes('submitDummyDatabagRender'), true);
+  assert.equal(extractFunctionBody(app, 'submitUC6ReusableAssetRender').includes('submitReusableAssetRender'), true);
+});
+
+test('R6F-B unpublished and already-published Fresh resume perform three GETs and zero POSTs', async () => {
+  for (const publicationPayload of [freshUnpublishedPublicationPayload(), freshPublishedPublicationPayload()]) {
+    const calls = [];
+    const api = createUc6BrowserAdminApi({
+      apiBaseUrl: API_BASE,
+      getIdToken: async () => 'firebase-resume-token',
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        if (url.endsWith(`/jobs/${JOB_ID}`)) return response(200, { job_id: JOB_ID, state: 'render_completed' });
+        if (url.endsWith('/render-artifact-capabilities')) return response(200, validFinalDeliveryPayload());
+        if (url.endsWith('/reusable-asset-publication')) return response(200, publicationPayload);
+        throw new Error('unexpected resume request');
+      }
+    });
+
+    const job = await api.getJob(JOB_ID);
+    assert.equal(job.state, 'render_completed');
+    const capabilities = projectUc6FinalDeliveryCapabilities(
+      await api.getRenderArtifactCapabilities(JOB_ID),
+      { expectedJobId: JOB_ID, apiBaseUrl: API_BASE }
+    );
+    const publication = projectUc6FreshReusableAssetPublication(
+      await api.getReusableAssetPublication(JOB_ID),
+      { expectedJobId: JOB_ID }
+    );
+    assert.equal(capabilities.readyCount, 2);
+    assert.equal(publication.publication_state, publicationPayload.publication_state);
+    if (publicationPayload.publication_state === 'published') {
+      assert.equal(publication.published_asset.asset_id, publicationPayload.published_asset.asset_id);
+      assert.deepEqual(publication.linked_scenario_family, publicationPayload.linked_scenario_family);
+    }
+    assert.equal(calls.length, 3);
+    assert.deepEqual(calls.map((call) => call.init.method), ['GET', 'GET', 'GET']);
+    assert.equal(calls.some((call) => call.url.endsWith('/review-artifact-capabilities')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/synthetic-scenarios/render')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/synthetic-scenarios')), false);
   }
 });

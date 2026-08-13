@@ -592,6 +592,61 @@ export function projectUc6ReusableAssetPublication(payload, options = {}) {
   };
 }
 
+function projectUc6FreshLinkedScenarioFamily(value) {
+  if (!isPlainObject(value)) invalidReusablePublicationContract();
+  const allowed = new Set([
+    'synthetic_scenario_family_id', 'scenario_count', 'ordered_scenario_keys',
+    'scenario_family_artifact_sha256', 'published_scenario_family_id',
+    'publication_manifest_sha256', 'immutable_link_identity'
+  ]);
+  assertUc6AllowedFields(value, allowed, 'invalid_fresh_linked_scenario_family_fields');
+  if (!BOUNDED_ID_PATTERN.test(value.synthetic_scenario_family_id)) invalidReusablePublicationContract();
+  if (value.scenario_count !== 3) invalidReusablePublicationContract();
+  if (
+    !Array.isArray(value.ordered_scenario_keys)
+    || value.ordered_scenario_keys.length !== UC6_SYNTHETIC_SCENARIO_KEYS.length
+    || value.ordered_scenario_keys.some((key, index) => key !== UC6_SYNTHETIC_SCENARIO_KEYS[index])
+  ) invalidReusablePublicationContract();
+  if (!SHA256_PATTERN.test(value.scenario_family_artifact_sha256)) invalidReusablePublicationContract();
+
+  const optionalIdFields = ['published_scenario_family_id', 'immutable_link_identity'];
+  for (const field of optionalIdFields) {
+    if (Object.prototype.hasOwnProperty.call(value, field) && !BOUNDED_ID_PATTERN.test(value[field])) {
+      invalidReusablePublicationContract();
+    }
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, 'publication_manifest_sha256')
+    && !SHA256_PATTERN.test(value.publication_manifest_sha256)
+  ) invalidReusablePublicationContract();
+
+  return {
+    synthetic_scenario_family_id: value.synthetic_scenario_family_id,
+    scenario_count: 3,
+    ordered_scenario_keys: [...UC6_SYNTHETIC_SCENARIO_KEYS],
+    scenario_family_artifact_sha256: value.scenario_family_artifact_sha256,
+    ...(value.published_scenario_family_id ? { published_scenario_family_id: value.published_scenario_family_id } : {}),
+    ...(value.publication_manifest_sha256 ? { publication_manifest_sha256: value.publication_manifest_sha256 } : {}),
+    ...(value.immutable_link_identity ? { immutable_link_identity: value.immutable_link_identity } : {})
+  };
+}
+
+export function projectUc6FreshReusableAssetPublication(payload, options = {}) {
+  const publication = projectUc6ReusableAssetPublication(payload, options);
+  const linkedScenarioFamily = projectUc6FreshLinkedScenarioFamily(payload?.linked_scenario_family);
+  if (publication.publication_state === 'unpublished') {
+    if (
+      Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'published_scenario_family_id')
+      || Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'publication_manifest_sha256')
+      || Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'immutable_link_identity')
+    ) invalidReusablePublicationContract();
+  }
+  return {
+    ...publication,
+    linked_scenario_family: linkedScenarioFamily
+  };
+}
+
 export function validateUc6ReusableAssetPublicationCommand(command) {
   const decision = String(command?.decision || '').trim();
   const decisionIdentity = String(command?.decision_identity || '').trim();
