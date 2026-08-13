@@ -60,7 +60,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6f-b-fresh-review-publication-2026-08-14-v2';
+const APP_VERSION = 'app.uc6-r6f-b-fresh-review-publication-2026-08-14-v3';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -8240,7 +8240,7 @@ Customer: Thank you. Goodbye.`
         ['Family artifact SHA-256', family.scenario_family_artifact_sha256],
         ['게시 Family ID', family.published_scenario_family_id],
         ['게시 manifest SHA-256', family.publication_manifest_sha256],
-        ['불변 연결 ID', family.immutable_link_identity]
+        ['불변 연결 ID', family.link_identity]
       ].filter(([, value]) => hasUC6Value(value));
       familyRows.forEach(([label, value]) => familyFacts.append(
         createUc6Node('dt', '', label),

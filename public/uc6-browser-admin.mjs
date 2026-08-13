@@ -602,7 +602,7 @@ function projectUc6FreshLinkedScenarioFamily(value) {
   const allowed = new Set([
     'synthetic_scenario_family_id', 'scenario_count', 'ordered_scenario_keys',
     'scenario_family_artifact_sha256', 'published_scenario_family_id',
-    'publication_manifest_sha256', 'immutable_link_identity'
+    'publication_manifest_sha256', 'link_identity'
   ]);
   assertUc6AllowedFields(value, allowed, 'invalid_fresh_linked_scenario_family_fields');
   if (!BOUNDED_ID_PATTERN.test(value.synthetic_scenario_family_id)) invalidReusablePublicationContract();
@@ -614,7 +614,7 @@ function projectUc6FreshLinkedScenarioFamily(value) {
   ) invalidReusablePublicationContract();
   if (!SHA256_PATTERN.test(value.scenario_family_artifact_sha256)) invalidReusablePublicationContract();
 
-  const optionalIdFields = ['published_scenario_family_id', 'immutable_link_identity'];
+  const optionalIdFields = ['published_scenario_family_id', 'link_identity'];
   for (const field of optionalIdFields) {
     if (Object.prototype.hasOwnProperty.call(value, field) && !BOUNDED_ID_PATTERN.test(value[field])) {
       invalidReusablePublicationContract();
@@ -632,7 +632,7 @@ function projectUc6FreshLinkedScenarioFamily(value) {
     scenario_family_artifact_sha256: value.scenario_family_artifact_sha256,
     ...(value.published_scenario_family_id ? { published_scenario_family_id: value.published_scenario_family_id } : {}),
     ...(value.publication_manifest_sha256 ? { publication_manifest_sha256: value.publication_manifest_sha256 } : {}),
-    ...(value.immutable_link_identity ? { immutable_link_identity: value.immutable_link_identity } : {})
+    ...(value.link_identity ? { link_identity: value.link_identity } : {})
   };
 }
 
@@ -643,8 +643,14 @@ export function projectUc6FreshReusableAssetPublication(payload, options = {}) {
     if (
       Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'published_scenario_family_id')
       || Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'publication_manifest_sha256')
-      || Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'immutable_link_identity')
+      || Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'link_identity')
     ) invalidReusablePublicationContract();
+  } else if (
+    !linkedScenarioFamily.published_scenario_family_id
+    || !linkedScenarioFamily.publication_manifest_sha256
+    || !linkedScenarioFamily.link_identity
+  ) {
+    invalidReusablePublicationContract();
   }
   return {
     ...publication,

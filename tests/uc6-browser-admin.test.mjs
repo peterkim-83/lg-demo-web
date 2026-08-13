@@ -391,7 +391,7 @@ function freshPublishedPublicationPayload(overrides = {}) {
     linked_scenario_family: freshLinkedScenarioFamily({
       published_scenario_family_id: 'scenario_family_publication_8290144ea5219754',
       publication_manifest_sha256: '2'.repeat(64),
-      immutable_link_identity: 'asset_scenario_family_link_8290144ea5219754'
+      link_identity: 'asset_scenario_family_link_8290144ea5219754'
     })
   }, overrides);
 }
@@ -404,6 +404,36 @@ function liveFreshUnpublishedPublicationPayload(overrides = {}) {
     linked_scenario_family: freshLinkedScenarioFamily({
       synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
       scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3'
+    })
+  }, overrides);
+}
+
+function liveFreshPublishedPublicationPayload(overrides = {}) {
+  return Object.assign(freshPublishedPublicationPayload(), {
+    job_id: LIVE_FRESH_JOB_ID,
+    published_asset: {
+      asset_id: 'reusable_template_asset__b1cdbd6ca2ff94b40e90b5cf55cbd596a224aca1',
+      template_job_id: LIVE_FRESH_JOB_ID,
+      decision: 'approve_for_reuse_and_publish',
+      decision_identity: 'a8f-50fdd541629f450199a43a6dbf7772e4',
+      approved_at: '2026-08-13T16:16:48.254988Z',
+      reviewed_final_pptx_sha256: '7eec8e9cf43d379561f7a6c7dcd63fc934159100d4a1deccd209ac268a06d2fc',
+      reviewed_final_pdf_sha256: 'a6b1298ceca55203e8f4c5520aa7c7df0ceb95f3ac8abbdf9ac8007bf086b9b3',
+      source_pptx_sha256: 'c7f6aa39870873fce264bafe69c452741f3f08044835f99e504ddf2b02022b08',
+      generation_unit_count: 28,
+      slot_count: 59,
+      slide_count: 5,
+      asset_manifest_sha256: '4484e41ad1880c7d091340fa95562ca354440510ac2d334fc7cc03f393da6c62',
+      catalog_entry_sha256: '8ee77664e07fa5eff2e303cd2041ce08fa7aeb47be191bf143273ade999bd3c0',
+      approval_receipt_sha256: '13d5f398c900fd487477fa9f1c3d4e1c7bc02268fecac5b5a919030abb7a8076'
+    },
+    idempotent_replay: false,
+    linked_scenario_family: freshLinkedScenarioFamily({
+      published_scenario_family_id: 'published_scenario_family__95e6dc2b2aa7044913c50a0b6355d28a3fb139e5',
+      synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
+      scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3',
+      publication_manifest_sha256: '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12',
+      link_identity: 'reusable_asset_scenario_family_link__eeff53ae3e65cea12e9d61e31af56f2bad1580d5'
     })
   }, overrides);
 }
@@ -1302,7 +1332,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6f-b-fresh-review-publication-2026-08-14-v2'), true);
+  assert.equal(app.includes('app.uc6-r6f-b-fresh-review-publication-2026-08-14-v3'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -3562,7 +3592,7 @@ test('R6F-B Fresh publication projection requires a safe coherent linked three-s
   for (const forbiddenBeforePublication of [
     { published_scenario_family_id: 'scenario_family_publication_8290144ea5219754' },
     { publication_manifest_sha256: '2'.repeat(64) },
-    { immutable_link_identity: 'asset_scenario_family_link_8290144ea5219754' }
+    { link_identity: 'asset_scenario_family_link_8290144ea5219754' }
   ]) {
     assert.throws(() => projectUc6FreshReusableAssetPublication(
       freshUnpublishedPublicationPayload({
@@ -3620,7 +3650,43 @@ test('R6F-B known live-shaped Fresh unpublished HTTP 200 projection reaches revi
   });
   assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'published_scenario_family_id'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'publication_manifest_sha256'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'link_identity'), false);
+});
+
+test('R6F-B exact live HTTP 201 published response projects canonical link_identity', () => {
+  const payload = liveFreshPublishedPublicationPayload();
+  const projected = projectUc6FreshReusableAssetPublication(payload, { expectedJobId: LIVE_FRESH_JOB_ID });
+  assert.equal(projected.publication_state, 'published');
+  assert.equal(projected.idempotent_replay, false);
+  assert.equal(projected.published_asset.asset_id, 'reusable_template_asset__b1cdbd6ca2ff94b40e90b5cf55cbd596a224aca1');
+  assert.equal(projected.published_asset.source_pptx_sha256, 'c7f6aa39870873fce264bafe69c452741f3f08044835f99e504ddf2b02022b08');
+  assert.equal(projected.linked_scenario_family.published_scenario_family_id, 'published_scenario_family__95e6dc2b2aa7044913c50a0b6355d28a3fb139e5');
+  assert.equal(projected.linked_scenario_family.publication_manifest_sha256, '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12');
+  assert.equal(projected.linked_scenario_family.link_identity, 'reusable_asset_scenario_family_link__eeff53ae3e65cea12e9d61e31af56f2bad1580d5');
   assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'immutable_link_identity'), false);
+
+  const publishedFamily = payload.linked_scenario_family;
+  const { link_identity: _linkIdentity, ...withoutLinkIdentity } = publishedFamily;
+  const { publication_manifest_sha256: _manifestSha, ...withoutManifest } = publishedFamily;
+  const { published_scenario_family_id: _publishedFamilyId, ...withoutPublishedFamilyId } = publishedFamily;
+  for (const linked_scenario_family of [withoutLinkIdentity, withoutManifest, withoutPublishedFamilyId]) {
+    assert.throws(() => projectUc6FreshReusableAssetPublication(
+      liveFreshPublishedPublicationPayload({ linked_scenario_family }),
+      { expectedJobId: LIVE_FRESH_JOB_ID }
+    ), /invalid_uc6_reusable_asset_publication/);
+  }
+  assert.throws(() => projectUc6FreshReusableAssetPublication(
+    liveFreshPublishedPublicationPayload({
+      linked_scenario_family: { ...publishedFamily, immutable_link_identity: publishedFamily.link_identity }
+    }),
+    { expectedJobId: LIVE_FRESH_JOB_ID }
+  ), /invalid_fresh_linked_scenario_family_fields/, 'old invented field remains strictly rejected');
+  assert.throws(() => projectUc6FreshReusableAssetPublication(
+    liveFreshPublishedPublicationPayload({
+      linked_scenario_family: { ...publishedFamily, link_identity: '../unsafe-link' }
+    }),
+    { expectedJobId: LIVE_FRESH_JOB_ID }
+  ), /invalid_uc6_reusable_asset_publication/);
 });
 
 test('R6F-B Fresh publication GET and explicit POST reuse the Firebase-only one-shot route', async () => {
@@ -3733,6 +3799,9 @@ test('R6F-B Fresh administrator surface presents both outputs and requires the e
   assert.equal(panel.includes('생성된 최종 PPTX가 아니라'), true);
   assert.equal(panel.includes('Scenario Family'), true);
   assert.equal(panel.includes("family.ordered_scenario_keys.join(' · ')"), true);
+  assert.equal(panel.includes('family.link_identity'), true);
+  assert.equal(panel.includes('family.immutable_link_identity'), false);
+  assert.equal(panel.includes('불변 연결 ID'), true);
   assert.equal(panel.includes('selectedSyntheticScenarioKey'), false, 'selected scenario alone is never presented as the family');
   assert.equal(panel.includes('uc6-publicationReviewConfirmed'), true);
   assert.equal(panel.includes('uc6-submitPublicationBtn'), true);
@@ -3773,29 +3842,32 @@ test('R6F-B resume and ambiguity paths are GET-first, stable-identity, and never
 });
 
 test('R6F-B unpublished and already-published Fresh resume perform three GETs and zero POSTs', async () => {
-  for (const publicationPayload of [freshUnpublishedPublicationPayload(), freshPublishedPublicationPayload()]) {
+  for (const { jobId, publicationPayload } of [
+    { jobId: JOB_ID, publicationPayload: freshUnpublishedPublicationPayload() },
+    { jobId: LIVE_FRESH_JOB_ID, publicationPayload: liveFreshPublishedPublicationPayload() }
+  ]) {
     const calls = [];
     const api = createUc6BrowserAdminApi({
       apiBaseUrl: API_BASE,
       getIdToken: async () => 'firebase-resume-token',
       fetchImpl: async (url, init) => {
         calls.push({ url, init });
-        if (url.endsWith(`/jobs/${JOB_ID}`)) return response(200, { job_id: JOB_ID, state: 'render_completed' });
-        if (url.endsWith('/render-artifact-capabilities')) return response(200, validFinalDeliveryPayload());
+        if (url.endsWith(`/jobs/${jobId}`)) return response(200, { job_id: jobId, state: 'render_completed' });
+        if (url.endsWith('/render-artifact-capabilities')) return response(200, validFinalDeliveryPayload({ job_id: jobId }));
         if (url.endsWith('/reusable-asset-publication')) return response(200, publicationPayload);
         throw new Error('unexpected resume request');
       }
     });
 
-    const job = await api.getJob(JOB_ID);
+    const job = await api.getJob(jobId);
     assert.equal(job.state, 'render_completed');
     const capabilities = projectUc6FinalDeliveryCapabilities(
-      await api.getRenderArtifactCapabilities(JOB_ID),
-      { expectedJobId: JOB_ID, apiBaseUrl: API_BASE }
+      await api.getRenderArtifactCapabilities(jobId),
+      { expectedJobId: jobId, apiBaseUrl: API_BASE }
     );
     const publication = projectUc6FreshReusableAssetPublication(
-      await api.getReusableAssetPublication(JOB_ID),
-      { expectedJobId: JOB_ID }
+      await api.getReusableAssetPublication(jobId),
+      { expectedJobId: jobId }
     );
     assert.equal(capabilities.readyCount, 2);
     assert.equal(publication.publication_state, publicationPayload.publication_state);
