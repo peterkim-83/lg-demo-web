@@ -63,7 +63,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6g-b1-publication-layout-repair-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-r6g-b2-linked-family-schema-alignment-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6034,7 +6034,7 @@ Customer: Thank you. Goodbye.`
       uc6State.linkedScenarioFamilyStatus = 'ready';
       uc6State.linkedScenarioFamilyMessage = '세 가지 reusable source-data 시나리오 중 하나를 선택할 수 있습니다.';
       uc6State.selectedPublishedScenarioFamilyId = projected.linked_scenario_family.published_scenario_family_id;
-      if (!projected.scenario_options.some((option) => option.scenario_key === uc6State.selectedPublishedScenarioKey)) {
+      if (!projected.linked_scenario_family.scenarios.some((scenario) => scenario.scenario_key === uc6State.selectedPublishedScenarioKey)) {
         uc6State.selectedPublishedScenarioKey = '';
       }
       saveUC6LocalState();
@@ -7842,7 +7842,7 @@ Customer: Thank you. Goodbye.`
       familyMeta.append(metaList);
       scenarioLane.append(familyMeta);
       const grid = createUc6Node('div', 'uc6-r6g-scenario-grid');
-      linked.scenario_options.forEach((scenario) => {
+      linked.linked_scenario_family.scenarios.forEach((scenario) => {
         const selected = uc6State.assetSourceLane === 'published_scenario_family' && uc6State.selectedPublishedScenarioKey === scenario.scenario_key;
         const scenarioCard = createUc6Node('article', `uc6-package-card uc6-r6g-scenario-card${selected ? ' is-selected' : ''}`);
         const radio = document.createElement('input');
@@ -7853,11 +7853,10 @@ Customer: Thank you. Goodbye.`
         radio.disabled = uc6State.operationInFlight;
         const label = document.createElement('label');
         label.htmlFor = radio.id;
-        label.append(createUc6Node('strong', 'uc6-package-title', scenario.title || scenario.label));
+        label.append(createUc6Node('strong', 'uc6-package-title', scenario.label));
         const header = createUc6Node('div', 'uc6-package-header');
         header.append(radio, label, createUc6Node('code', 'uc6-r6g-scenario-key', scenario.scenario_key));
         scenarioCard.append(header);
-        if (scenario.description) scenarioCard.append(createUc6Node('p', 'uc6-package-desc', scenario.description));
         if (scenario.package_id) scenarioCard.append(createUc6Node('small', 'uc6-r6g-package-hint', `서버 연결 패키지: ${scenario.package_id}:${scenario.package_version}`));
         scenarioCard.addEventListener('click', (event) => {
           if (uc6State.operationInFlight) return;
@@ -7873,7 +7872,7 @@ Customer: Thank you. Goodbye.`
       scenarioLane.append(grid);
       const actions = createUc6Node('div', 'uc6-action-row');
       const canSubmit = uc6State.assetSourceLane === 'published_scenario_family'
-        && linked.scenario_options.some((scenario) => scenario.scenario_key === uc6State.selectedPublishedScenarioKey)
+        && linked.linked_scenario_family.scenarios.some((scenario) => scenario.scenario_key === uc6State.selectedPublishedScenarioKey)
         && !uc6State.operationInFlight;
       actions.append(createUC6ActionButton('uc6-submitPublishedScenarioRenderBtn', '선택한 시나리오로 새 문서 생성', 'btn btn-primary', !canSubmit));
       scenarioLane.append(actions);
@@ -7903,7 +7902,7 @@ Customer: Thank you. Goodbye.`
     summary.append(createUC6SummaryItem('Asset', status.asset.asset_id));
     if (isPublishedScenarioRender) {
       const scenarioKey = status.linked_scenario_family.scenario_key;
-      const scenario = uc6State.linkedScenarioFamily?.scenario_options?.find((option) => option.scenario_key === scenarioKey);
+      const scenario = uc6State.linkedScenarioFamily?.linked_scenario_family?.scenarios?.find((option) => option.scenario_key === scenarioKey);
       summary.append(createUC6SummaryItem('선택 시나리오', scenario?.label || scenarioKey));
       summary.append(createUC6SummaryItem('Scenario key', scenarioKey));
       summary.append(createUC6SummaryItem('Bound package', `${status.bound_package.package_id}:${status.bound_package.package_version}`));
@@ -8807,7 +8806,7 @@ Customer: Thank you. Goodbye.`
     if (uc6State.flowLane === 'asset_render') {
       if (uc6State.selectedAssetId) rows.push(['Reusable Asset', uc6State.selectedAssetId]);
       if (uc6State.assetSourceLane === 'published_scenario_family') {
-        const scenario = uc6State.linkedScenarioFamily?.scenario_options?.find((option) => option.scenario_key === uc6State.selectedPublishedScenarioKey);
+        const scenario = uc6State.linkedScenarioFamily?.linked_scenario_family?.scenarios?.find((option) => option.scenario_key === uc6State.selectedPublishedScenarioKey);
         rows.push(['Source Context', 'Linked Published Scenario Family']);
         if (uc6State.selectedPublishedScenarioFamilyId) rows.push(['Scenario Family', uc6State.selectedPublishedScenarioFamilyId]);
         if (uc6State.selectedPublishedScenarioKey) rows.push(['선택 시나리오', scenario?.label || uc6State.selectedPublishedScenarioKey]);

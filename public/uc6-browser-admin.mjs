@@ -1587,7 +1587,7 @@ export function projectUc6ReusableAssetRenderJobStatus(payload, options = {}) {
   };
 }
 
-export const UC6_R6G_LINKED_FAMILY_SCHEMA = 'uc6_a9_0g2a_r6g_a_published_asset_linked_scenario_family_projection_v1';
+export const UC6_R6G_LINKED_FAMILY_SCHEMA = 'uc6_a9_0g2a_r6g_a_published_asset_scenario_options_v1';
 export const UC6_R6G_SUBMISSION_SCHEMA = 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_submission_v1';
 export const UC6_R6G_RESULT_SCHEMA = 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_result_v1';
 export const UC6_R6G_TASK_TYPE = 'fetchdoc_browser_admin_uc6_render_published_asset_scenario';
@@ -1639,58 +1639,86 @@ function projectUc6R6gLinkedFamilyIdentity(value, { requireScenarioKey = false }
   };
 }
 
-function projectUc6R6gScenarioOption(value, expectedKey) {
-  if (!isPlainObject(value)) throw new TypeError('invalid_published_asset_scenario_option');
-  const allowed = new Set(['scenario_key', 'label', 'title', 'description', 'package_id', 'package_version']);
-  assertUc6AllowedFields(value, allowed, 'invalid_published_asset_scenario_option_fields');
-  if (value.scenario_key !== expectedKey) throw new TypeError('invalid_published_asset_scenario_option_order');
-  const label = Object.prototype.hasOwnProperty.call(value, 'label')
-    ? validateUc6SafePublicText(value.label, { maxLength: 256, code: 'invalid_published_asset_scenario_label' })
-    : '';
-  const title = Object.prototype.hasOwnProperty.call(value, 'title')
-    ? validateUc6SafePublicText(value.title, { maxLength: 256, code: 'invalid_published_asset_scenario_title' })
-    : '';
-  if (!label && !title) throw new TypeError('missing_published_asset_scenario_label');
-  const description = Object.prototype.hasOwnProperty.call(value, 'description')
-    ? validateUc6SafePublicText(value.description, { maxLength: 2048, allowEmpty: true, code: 'invalid_published_asset_scenario_description' })
-    : '';
-  const hasPackageId = Object.prototype.hasOwnProperty.call(value, 'package_id');
-  const hasPackageVersion = Object.prototype.hasOwnProperty.call(value, 'package_version');
-  if (hasPackageId !== hasPackageVersion) throw new TypeError('incomplete_published_asset_scenario_package_identity');
-  if (hasPackageId && (!BOUNDED_ID_PATTERN.test(value.package_id) || !BOUNDED_ID_PATTERN.test(value.package_version))) {
-    throw new TypeError('invalid_published_asset_scenario_package_identity');
+function projectUc6R6gDiscoveryAsset(value) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_published_asset_linked_family_asset');
+  assertUc6AllowedFields(value, new Set(['asset_id', 'source_pptx_sha256']), 'invalid_published_asset_linked_family_asset_fields');
+  const assetId = normalizeUc6ReusableAssetId(value.asset_id);
+  if (assetId !== value.asset_id) throw new TypeError('invalid_published_asset_linked_family_asset_id');
+  if (typeof value.source_pptx_sha256 !== 'string' || !SHA256_PATTERN.test(value.source_pptx_sha256)) {
+    throw new TypeError('invalid_published_asset_linked_family_source_sha');
   }
+  return { asset_id: assetId, source_pptx_sha256: value.source_pptx_sha256 };
+}
+
+function projectUc6R6gDiscoveryScenario(value, expectedKey) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_published_asset_scenario');
+  const allowed = new Set(['scenario_key', 'label', 'package_id', 'package_version']);
+  assertUc6AllowedFields(value, allowed, 'invalid_published_asset_scenario_fields');
+  if (value.scenario_key !== expectedKey) throw new TypeError('invalid_published_asset_scenario_order');
+  const label = validateUc6SafePublicText(value.label, { maxLength: 256, code: 'invalid_published_asset_scenario_label' });
+  if (
+    typeof value.package_id !== 'string'
+    || typeof value.package_version !== 'string'
+    || !BOUNDED_ID_PATTERN.test(value.package_id)
+    || !BOUNDED_ID_PATTERN.test(value.package_version)
+  ) throw new TypeError('invalid_published_asset_scenario_package_identity');
   return {
     scenario_key: value.scenario_key,
-    label: label || title,
-    ...(title ? { title } : {}),
-    description,
-    ...(hasPackageId ? { package_id: value.package_id, package_version: value.package_version } : {})
+    label,
+    package_id: value.package_id,
+    package_version: value.package_version
+  };
+}
+
+function projectUc6R6gDiscoveryLinkedFamily(value) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_published_asset_linked_family_identity');
+  const allowed = new Set([
+    'published_scenario_family_id', 'synthetic_scenario_family_id', 'scenario_count',
+    'scenario_family_artifact_sha256', 'publication_manifest_sha256', 'link_identity', 'scenarios'
+  ]);
+  assertUc6AllowedFields(value, allowed, 'invalid_published_asset_linked_family_identity_fields');
+  for (const field of ['published_scenario_family_id', 'synthetic_scenario_family_id', 'link_identity']) {
+    if (typeof value[field] !== 'string' || !BOUNDED_ID_PATTERN.test(value[field])) {
+      throw new TypeError(`invalid_published_asset_linked_family_${field}`);
+    }
+  }
+  if (value.scenario_count !== 3) throw new TypeError('invalid_published_asset_linked_family_scenario_count');
+  if (!Array.isArray(value.scenarios) || value.scenarios.length !== UC6_R6G_SCENARIO_KEYS.length) {
+    throw new TypeError('invalid_published_asset_scenarios_count');
+  }
+  for (const field of ['scenario_family_artifact_sha256', 'publication_manifest_sha256']) {
+    if (typeof value[field] !== 'string' || !SHA256_PATTERN.test(value[field])) {
+      throw new TypeError(`invalid_published_asset_linked_family_${field}`);
+    }
+  }
+  return {
+    published_scenario_family_id: value.published_scenario_family_id,
+    synthetic_scenario_family_id: value.synthetic_scenario_family_id,
+    scenario_count: 3,
+    scenario_family_artifact_sha256: value.scenario_family_artifact_sha256,
+    publication_manifest_sha256: value.publication_manifest_sha256,
+    link_identity: value.link_identity,
+    scenarios: value.scenarios.map((scenario, index) => projectUc6R6gDiscoveryScenario(scenario, UC6_R6G_SCENARIO_KEYS[index]))
   };
 }
 
 export function projectUc6PublishedAssetLinkedScenarioFamily(payload, options = {}) {
   if (!isPlainObject(payload)) throw new TypeError('invalid_published_asset_linked_family_payload');
   const allowed = new Set([
-    'schema_version', 'asset', 'linked_scenario_family', 'scenario_options',
+    'schema_version', 'asset', 'linked_scenario_family',
     'control_plane_contract_version', 'public_safety'
   ]);
   assertUc6AllowedFields(payload, allowed, 'invalid_published_asset_linked_family_fields');
   if (payload.schema_version !== UC6_R6G_LINKED_FAMILY_SCHEMA) throw new TypeError('invalid_published_asset_linked_family_schema');
   if (payload.public_safety !== 'PASS') throw new TypeError('invalid_published_asset_linked_family_public_safety');
   const expectedAssetId = normalizeUc6ReusableAssetId(options.expectedAssetId);
-  const asset = projectUc6ReusableAssetRow(payload.asset);
+  const asset = projectUc6R6gDiscoveryAsset(payload.asset);
   if (asset.asset_id !== expectedAssetId) throw new TypeError('published_asset_linked_family_asset_mismatch');
-  const linkedScenarioFamily = projectUc6R6gLinkedFamilyIdentity(payload.linked_scenario_family);
-  if (!Array.isArray(payload.scenario_options) || payload.scenario_options.length !== 3) {
-    throw new TypeError('invalid_published_asset_scenario_options_count');
-  }
-  const scenarioOptions = payload.scenario_options.map((option, index) => projectUc6R6gScenarioOption(option, UC6_R6G_SCENARIO_KEYS[index]));
+  const linkedScenarioFamily = projectUc6R6gDiscoveryLinkedFamily(payload.linked_scenario_family);
   return {
     schema_version: payload.schema_version,
     asset,
     linked_scenario_family: linkedScenarioFamily,
-    scenario_options: scenarioOptions,
     control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
     public_safety: payload.public_safety
   };
@@ -1709,12 +1737,12 @@ export function validateUc6PublishedAssetScenarioRenderCommand(command, linkedFa
   }
   if (linkedFamilyProjection !== null) {
     const linked = linkedFamilyProjection?.linked_scenario_family;
-    const options = linkedFamilyProjection?.scenario_options;
+    const scenarios = linked?.scenarios;
     if (
       !isPlainObject(linked)
       || linked.published_scenario_family_id !== familyId
-      || !Array.isArray(options)
-      || !options.some((option) => option?.scenario_key === scenarioKey)
+      || !Array.isArray(scenarios)
+      || !scenarios.some((scenario) => scenario?.scenario_key === scenarioKey)
     ) {
       return { ok: false, code: 'published_scenario_render_selection_mismatch', message: '서버가 확인한 Scenario Family 선택 상태와 일치하지 않습니다.' };
     }
