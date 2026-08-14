@@ -1337,7 +1337,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6g-b-published-scenario-render-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-b1-publication-layout-repair-2026-08-14-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2352,7 +2352,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('uc6-r6g-b-published-scenario-render'), true);
+  assert.equal(app.includes('uc6-r6g-b1-publication-layout-repair'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -4158,7 +4158,7 @@ test('R6G-B app source integrates two Asset source lanes, shared polling/capabil
   const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-r6g-b-published-scenario-render-2026-08-14-v1"), true);
+  assert.equal(app.includes("app.uc6-r6g-b1-publication-layout-repair-2026-08-14-v1"), true);
   assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
   assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
   assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
@@ -4177,4 +4177,22 @@ test('R6G-B app source integrates two Asset source lanes, shared polling/capabil
   assert.equal(admin.includes('requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.publishedScenarioRenders'), true);
   assert.equal(admin.includes('/dummy-databag-packages'), true);
   assert.equal(admin.includes('/renders`'), true);
+});
+
+test('R6G-B1 Fresh publication completion remains in normal flow above a reachable final action', () => {
+  const app = readSource('../public/app.js');
+  const css = readSource('../public/style.css');
+  const result = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
+  const panelIndex = result.indexOf('createUC6FreshPublicationPanel(status, uc6State.publication)');
+  const actionIndex = result.indexOf("'uc6-action-row uc6-r6g-b1-final-actions'");
+  const clearIndex = result.indexOf("createUC6ActionButton('uc6-clearBtn', '새 문서 시작'");
+
+  assert.ok(panelIndex >= 0 && panelIndex < actionIndex, 'publication panel must precede the final action row');
+  assert.ok(actionIndex < clearIndex, 'the final action row must contain the new-document action');
+  assert.match(css, /#view-uc6 \.uc6-r6f-b-publication-panel\s*\{[^}]*position:\s*static;[^}]*max-height:\s*none;[^}]*overflow:\s*visible;/s);
+  assert.match(css, /#view-uc6 \.uc6-r6e-d2-result-stage\s*\{[^}]*grid-auto-rows:\s*max-content;[^}]*overflow:\s*visible;/s);
+  assert.match(css, /#view-uc6 \.uc6-r6g-b1-final-actions\s*\{[^}]*position:\s*static;[^}]*padding-bottom:\s*18px;/s);
+  assert.equal(css.includes('#view-uc6 .uc6-r6f-b-publication-panel {\n    z-index:'), false);
+  assert.match(css, /#view-uc6 \.uc6-r6f-b-publication-panel :is\(dd, p, strong\)[^{]*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
+  assert.match(css, /#main-content\s*\{[^}]*overflow-y:\s*auto;/s);
 });

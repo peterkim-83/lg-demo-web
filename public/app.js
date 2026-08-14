@@ -63,7 +63,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6g-b-published-scenario-render-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-r6g-b1-publication-layout-repair-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -8653,7 +8653,7 @@ Customer: Thank you. Goodbye.`
     downloadStatus.hidden = !uc6State.reviewArtifactDownloadMessage;
     card.append(downloadStatus);
     card.append(createUC6FreshPublicationPanel(status, uc6State.publication));
-    const actions = createUc6Node('div', 'uc6-action-row');
+    const actions = createUc6Node('div', 'uc6-action-row uc6-r6g-b1-final-actions');
     if (uc6State.reviewArtifactsStatus === 'error') {
       actions.append(createUC6ActionButton(
         'uc6-retryFreshDeliveryBtn',

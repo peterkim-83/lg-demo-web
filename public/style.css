@@ -7027,6 +7027,35 @@ body:has(#view-uc5.active) #main-content {
     overflow-wrap: anywhere;
 }
 
+/* R6G-B1: Fresh publication completion stays in normal flow. */
+#view-uc6 .uc6-r6e-d2-result-stage {
+    align-content: start;
+    grid-auto-rows: max-content;
+    overflow: visible;
+}
+
+#view-uc6 .uc6-r6f-b-publication-panel {
+    position: static;
+    top: auto;
+    align-self: start;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+}
+
+#view-uc6 .uc6-r6f-b-publication-panel :is(dd, p, strong),
+#view-uc6 .uc6-r6g-b1-final-actions {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#view-uc6 .uc6-r6g-b1-final-actions {
+    position: static;
+    margin-top: 4px;
+    padding-bottom: 18px;
+}
+
 @media (max-width: 1180px) {
     #view-uc6 .uc6-a8f-review-layout {
         grid-template-columns: minmax(0, 1fr);
