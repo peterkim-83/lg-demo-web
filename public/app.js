@@ -63,7 +63,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6931,6 +6931,8 @@ Customer: Thank you. Goodbye.`
           ? 'Source Context를 바탕으로 Slot을 생성하고 PPTX/PDF를 렌더하고 있습니다.'
           : '선택한 데이터 패키지로 PPTX/PDF를 렌더하고 있습니다.';
       } else if (projected.state === 'render_completed') {
+        uc6State.consecutivePollErrors = 0;
+        stopUC6Polling();
         uc6State.stageMessage = '문서 생성이 완료되었습니다.';
       } else if (projected.state === 'failed') {
         uc6State.stageMessage = '문서 생성 작업이 실패했습니다. 자동으로 다시 요청하지 않습니다.';

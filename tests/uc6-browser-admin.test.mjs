@@ -1337,7 +1337,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2352,7 +2352,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -3892,7 +3892,7 @@ const R6G_ASSET_ID = 'reusable_template_asset__b1cdbd6ca2ff94b40e90b5cf55cbd596a
 const R6G_FAMILY_ID = 'published_scenario_family__95e6dc2b2aa7044913c50a0b6355d28a3fb139e5';
 const R6G_SYNTHETIC_FAMILY_ID = 'fresh_synthetic_8290144ea521975465db67c7a46aca9b';
 const R6G_LINK_ID = 'reusable_asset_scenario_family_link__eeff53ae3e65cea12e9d61e31af56f2bad1580d5';
-const R6G_JOB_ID = 'fd_uc6_admin_20260814T033600Z_193c4b04d1a3b734';
+const R6G_JOB_ID = 'fd_uc6_admin_20260814T082343Z_5d831745ae323525';
 const R6G_LIVE_SUBMISSION_JOB_ID = 'fd_uc6_admin_20260814T080241Z_23fb4ca7b0489345';
 const R6G_SOURCE_SHA = 'c7f6aa39870873fce264bafe69c452741f3f08044835f99e504ddf2b02022b08';
 
@@ -3913,7 +3913,6 @@ function r6gLinkedIdentity(overrides = {}) {
     published_scenario_family_id: R6G_FAMILY_ID,
     synthetic_scenario_family_id: R6G_SYNTHETIC_FAMILY_ID,
     scenario_count: 3,
-    ordered_scenario_keys: ['scenario_000', 'scenario_001', 'scenario_002'],
     scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3',
     publication_manifest_sha256: '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12',
     link_identity: R6G_LINK_ID,
@@ -3961,7 +3960,7 @@ function r6gBoundPackage(overrides = {}) {
     package_id: 'fresh_synthetic_scenario_001',
     package_version: 'v1',
     title: '재사용 시나리오 2',
-    description: '게시된 안전한 source-context package',
+    package_manifest_sha256: '87200443ce1344f466000600e5e539731c2c989f82e41f427d137dbaf65f9c41',
     source_context_bundle_sha256: 'e8c1a3e3430e0bd15a523c8da1152c1c34fcb9248f01b95c12217d0888e857e5',
     ...overrides
   };
@@ -4010,6 +4009,8 @@ function r6gCompletedResult(overrides = {}) {
     status: 'completed',
     job_id: R6G_JOB_ID,
     task_type: 'fetchdoc_browser_admin_uc6_render_published_asset_scenario',
+    artifact_id: 'browser_admin_uc6_published_asset_scenario_render_result',
+    artifact_visibility: 'public',
     asset: {
       asset_id: R6G_ASSET_ID,
       source_pptx_sha256: R6G_SOURCE_SHA,
@@ -4024,8 +4025,8 @@ function r6gCompletedResult(overrides = {}) {
     provider_call_count: 17,
     generation_unit_count: 28,
     slot_count: 59,
-    generated_slot_count: 44,
-    private_fallback_slot_count: 15,
+    generated_slot_count: 45,
+    private_fallback_slot_count: 14,
     active_canonical_source_groups: ['account_context', 'business_metrics'],
     render_state: 'render_completed',
     review_state: 'not_required',
@@ -4041,12 +4042,18 @@ function r6gCompletedResult(overrides = {}) {
     provider_execution: {
       actual_provider_call_count: 17,
       logical_provider_call_count: 17,
+      provider_attempt_count: 17,
       retry_count: 0,
       receipt_replay_count: 0,
       checkpoint_replay_count: 0
     },
     control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS',
+    public_safety: {
+      raw_source_context_exposed: false,
+      backend_filesystem_path_exposed: false,
+      signed_artifact_url_exposed: false,
+      secret_value_exposed: false
+    },
     ...overrides
   };
 }
@@ -4187,32 +4194,49 @@ test('R6G-B3 exact live 202 submission projects minimal Asset, selected family, 
   ));
 });
 
-test('R6G-B completed live-shape result preserves dynamic metrics and treats grounded fallback as success', () => {
+test('R6G-B4 nested completed render preserves exact artifact metadata and fallback success', () => {
   const projected = projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult(), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID });
   assert.equal(projected.source_generation_batch_count, 17);
   assert.equal(projected.provider_call_count, 17);
   assert.equal(projected.generation_unit_count, 28);
-  assert.equal(projected.generated_slot_count, 44);
-  assert.equal(projected.private_fallback_slot_count, 15);
+  assert.equal(projected.artifact_id, 'browser_admin_uc6_published_asset_scenario_render_result');
+  assert.equal(projected.artifact_visibility, 'public');
+  assert.equal(Object.values(projected.public_safety).every((exposed) => exposed === false), true);
+  assert.equal(projected.generated_slot_count, 45);
+  assert.equal(projected.private_fallback_slot_count, 14);
   assert.equal(projected.slot_count, 59);
   assert.equal(projected.render_state, 'render_completed');
   assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_result_v1' }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
   assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ blocking_issue_count: 1 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
   assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ red_physical_mutation_failure_count: 1 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ generated_slot_count: 45 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ generated_slot_count: 46 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ public_safety: { raw_source_context_exposed: true } }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult({
+    job_id: R6G_JOB_ID,
+    state: 'render_completed',
+    source: { sha256: R6G_SOURCE_SHA, size_bytes: 540947, slide_count: 5, filename: `${R6G_ASSET_ID}.pptx` },
+    render: r6gCompletedResult(),
+    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION
+  }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
 });
 
-test('R6G-B job projector reuses the shared job envelope while A8G and R6G results remain lane-strict', () => {
+test('R6G-B4 exact completed job envelope requires nested render and coherent job/source identity', () => {
   const payload = {
     job_id: R6G_JOB_ID,
     state: 'render_completed',
-    source: { sha256: R6G_SOURCE_SHA, size_bytes: 4096, slide_count: 17, filename: 'published-template.pptx' },
+    source: { sha256: R6G_SOURCE_SHA, size_bytes: 540947, slide_count: 5, filename: `${R6G_ASSET_ID}.pptx` },
     render: r6gCompletedResult(),
     control_plane_contract_version: R6C_CONTROL_PLANE_VERSION
   };
   const projected = projectUc6PublishedAssetScenarioRenderJobStatus(payload, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID });
   assert.equal(projected.state, 'render_completed');
-  assert.equal(projected.private_fallback_slot_count, 15);
+  assert.equal(projected.private_fallback_slot_count, 14);
+  assert.equal(projected.render.job_id, R6G_JOB_ID);
+  assert.equal(projected.render.schema_version, 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_result_v1');
+  assert.deepEqual(projected.source, payload.source);
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderJobStatus({ ...payload, render: undefined }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderJobStatus({ ...payload, render: r6gCompletedResult({ job_id: R6G_LIVE_SUBMISSION_JOB_ID }) }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderJobStatus({ ...payload, source: { ...payload.source, sha256: 'a'.repeat(64) } }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
   assert.throws(() => projectUc6ReusableAssetRenderJobStatus(payload, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
 });
 
@@ -4265,7 +4289,7 @@ test('R6G-B3 app retains accepted job identity, locks duplicate submission, and 
   const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1"), true);
+  assert.equal(app.includes("app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1"), true);
   assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
   assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
   assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
@@ -4296,6 +4320,25 @@ test('R6G-B3 app retains accepted job identity, locks duplicate submission, and 
   assert.equal(admin.includes('requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.publishedScenarioRenders'), true);
   assert.equal(admin.includes('/dummy-databag-packages'), true);
   assert.equal(admin.includes('/renders`'), true);
+});
+
+test('R6G-B4 valid terminal readback clears polling suspension, stops polling, and loads artifact capabilities', () => {
+  const app = readSource('../public/app.js');
+  const admin = readSource('../public/uc6-browser-admin.mjs');
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const stageMap = extractFunctionBody(app, 'mapUC6PublicStateToStage');
+  const jobProjector = extractFunctionBody(admin, 'projectUc6PublishedAssetScenarioRenderJobStatus');
+
+  assert.equal(jobProjector.includes('projectUc6PublishedAssetScenarioRenderResult(payload.render, options)'), true);
+  assert.equal(jobProjector.includes('projectUc6PublishedAssetScenarioRenderResult(payload, options)'), false);
+  assert.equal(jobProjector.includes("render.asset.source_pptx_sha256 !== source.sha256"), true);
+  assert.equal(refresh.includes("uc6State.renderStatus = projected.state === 'render_completed' ? projected : null"), true);
+  assert.equal(refresh.includes('uc6State.consecutivePollErrors = 0'), true);
+  assert.equal(refresh.includes('stopUC6Polling()'), true);
+  assert.equal(refresh.includes('await loadUC6A8HDeliveryState(options.signal)'), true);
+  assert.equal(poll.includes('else stopUC6Polling()'), true);
+  assert.equal(stageMap.includes("if (state === 'render_completed') return 'result'"), true);
 });
 
 test('R6G-B1 Fresh publication completion remains in normal flow above a reachable final action', () => {
