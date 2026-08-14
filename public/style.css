@@ -6245,6 +6245,23 @@ body:has(#view-uc5.active) #main-content {
     line-height: 1.55;
 }
 
+#view-uc6 .uc6-stage-card.is-warning {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+#view-uc6 .uc6-stage-card.is-warning h2,
+#view-uc6 .uc6-inline-warning {
+    color: #92400e;
+}
+
+#view-uc6 .uc6-inline-warning {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.55;
+}
+
 #view-uc6 .uc6-field {
     display: grid;
     gap: 7px;

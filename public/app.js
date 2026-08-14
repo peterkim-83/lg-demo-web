@@ -63,7 +63,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6553,22 +6553,16 @@ Customer: Thank you. Goodbye.`
         error?.name === 'Uc6AmbiguousSubmissionError'
         || error?.code === 'ambiguous_submission'
         || error?.code === 'ambiguous_submission_projection'
+        || (error?.name === 'AbortError' && isUc6Authorized() && Boolean(uc6State.jobId))
         || Number(error?.status) === 409
       ) {
         uc6State.freshRenderSubmissionAmbiguous = true;
         uc6State.jobState = 'render_unknown';
-        uc6State.stageMessage = '생성 요청 결과가 불명확합니다. POST를 다시 보내지 않고 서버 상태를 확인합니다.';
+        uc6State.consecutivePollErrors = 0;
+        uc6State.stageMessage = '생성 요청의 응답을 확인하지 못했습니다. 중복 생성을 방지하기 위해 생성 요청은 다시 보내지 않고 현재 작업 상태만 확인합니다.';
         saveUC6LocalState();
         renderUC6All();
-        try {
-          await refreshUC6JobStatus({ signal: controller.signal, renderSubmissionReconciliation: true });
-          if (uc6State.jobState === 'render_queued' || uc6State.jobState === 'render_running') startUC6Polling();
-        } catch (readError) {
-          if (handleUC6AuthorizationFailure(readError)) return;
-          if (readError?.name !== 'AbortError') {
-            uc6State.stageMessage = '생성 요청 결과를 확인하지 못했습니다. 작업 상태를 다시 확인하세요.';
-          }
-        }
+        startUC6Polling();
         return;
       }
       if (handleUC6AuthorizationFailure(error)) return;
@@ -6786,18 +6780,14 @@ Customer: Thank you. Goodbye.`
       );
   }
 
-  function isUC6FreshRenderReconciliationPending() {
-    const control = projectUc6FreshSyntheticRenderControl({
-      selectionState: uc6State.syntheticSelectionState,
-      boundScenario: uc6State.boundSyntheticScenario,
-      publicState: uc6State.jobState,
-      submitted: uc6State.freshRenderSubmitted,
-      ambiguous: uc6State.freshRenderSubmissionAmbiguous,
-      inFlight: uc6State.operationInFlight
-    });
+  function isUC6FreshRenderSubmissionReconciliationPending() {
     return uc6State.flowLane === 'dummy_render'
       && uc6State.freshSyntheticExpected === true
-      && control.renderPollable;
+      && uc6State.freshRenderSubmitted === true
+      && uc6State.freshRenderSubmissionAmbiguous === true
+      && Boolean(uc6State.jobId)
+      && uc6State.jobState === 'render_unknown'
+      && uc6State.renderStatus?.state !== 'render_completed';
   }
 
   function isUC6FreshExecutionTerminal() {
@@ -6813,7 +6803,7 @@ Customer: Thank you. Goodbye.`
     const mapped = mapUc6StateToView(uc6State.jobState);
     return isUC6FreshSourceReconciliationPending()
       || isUC6FreshSyntheticPollingPending()
-      || isUC6FreshRenderReconciliationPending()
+      || isUC6FreshRenderSubmissionReconciliationPending()
       || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
         ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
         : mapped.pollable);
@@ -6832,11 +6822,13 @@ Customer: Thank you. Goodbye.`
         stopUC6Polling();
         return;
       }
-      if (error?.name !== 'AbortError') {
+      if (error?.name !== 'AbortError' || isUC6FreshRenderSubmissionReconciliationPending()) {
         uc6State.consecutivePollErrors += 1;
         if (uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS) {
           stopUC6Polling();
-          uc6State.stageMessage = '상태 확인을 잠시 중단했습니다. 수동으로 다시 시작할 수 있습니다.';
+          uc6State.stageMessage = uc6State.freshRenderSubmissionAmbiguous
+            ? '자동 상태 확인을 잠시 중단했습니다. 생성 요청은 다시 보내지 않고 현재 작업 상태를 수동으로 확인할 수 있습니다.'
+            : '상태 확인을 잠시 중단했습니다. 수동으로 다시 시작할 수 있습니다.';
           setUC6LiveMessage(uc6State.stageMessage);
         } else {
           scheduleUC6Poll();
@@ -6953,6 +6945,7 @@ Customer: Thank you. Goodbye.`
         uc6State.lastPollingTimestamp = Date.now();
         uc6State.freshRenderSubmitted = true;
         uc6State.freshRenderSubmissionAmbiguous = false;
+        uc6State.consecutivePollErrors = 0;
         uc6State.renderStatus = projected.state === 'render_completed' ? projected : null;
         const deliveryControl = projectUc6FreshRenderDeliveryControl({
           publicState: projected.state,
@@ -7004,11 +6997,9 @@ Customer: Thank you. Goodbye.`
           if (
             synthetic.selection_state === 'bound'
             && uc6State.freshRenderSubmissionAmbiguous
-            && options.renderSubmissionReconciliation !== true
           ) {
-            uc6State.freshRenderSubmitted = false;
-            uc6State.freshRenderSubmissionAmbiguous = false;
-            uc6State.stageMessage = '서버가 생성 요청을 접수하지 않은 것으로 확인되었습니다. 필요하면 샘플 문서 생성을 다시 요청하세요.';
+            uc6State.jobState = 'render_unknown';
+            uc6State.stageMessage = '생성 요청의 접수 상태가 아직 확정되지 않았습니다. 생성 요청은 다시 보내지 않고 서버 작업 상태만 확인합니다.';
             saveUC6LocalState();
             renderUC6All();
           }
@@ -8041,7 +8032,9 @@ Customer: Thank you. Goodbye.`
     card.append(grid);
     card.append(createUc6Node(
       'p',
-      uc6State.syntheticBindingSubmissionAmbiguous || uc6State.freshRenderSubmissionAmbiguous ? 'uc6-inline-error' : 'uc6-stage-message',
+      uc6State.syntheticBindingSubmissionAmbiguous
+        ? 'uc6-inline-error'
+        : uc6State.freshRenderSubmissionAmbiguous ? 'uc6-inline-warning' : 'uc6-stage-message',
       uc6State.stageMessage || (isBound ? '선택이 서버에 고정되었습니다. 준비가 되면 샘플 문서 생성을 시작하세요.' : '정확히 하나의 합성 샘플 컨텍스트를 선택하세요.')
     ));
     const actions = createUc6Node('div', 'uc6-action-row');
@@ -8322,16 +8315,20 @@ Customer: Thank you. Goodbye.`
   }
 
   function renderUC6RenderUnknownStage(root) {
-    const card = createUc6Node('section', 'uc6-stage-card is-error');
-    card.append(createUc6Node('h2', '', '생성 요청 상태 확인 필요'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '생성 요청의 접수 여부를 확인할 수 없습니다.'));
-    card.append(createUc6Node('p', 'uc6-inline-error', '네트워크 응답을 수신하지 못했습니다. 다시 생성을 요청하기 전에 반드시 작업 상태를 새로고침하여 서버 접수 여부를 확인하세요.'));
+    const reconciliationPending = isUC6FreshRenderSubmissionReconciliationPending();
+    const pollingPaused = reconciliationPending && uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS;
+    const card = createUc6Node('section', 'uc6-stage-card is-warning');
+    card.append(createUc6Node('h2', '', '생성 요청 확인 중'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', '생성 요청의 응답을 확인하지 못했습니다. 서버에서 작업이 계속 진행 중일 수 있습니다. 중복 생성을 방지하기 위해 생성 요청은 다시 보내지 않고 현재 작업 상태만 확인합니다.'));
+    card.append(createUc6Node('p', 'uc6-inline-warning', pollingPaused
+      ? '자동 상태 확인을 잠시 중단했습니다. 생성 요청은 다시 보내지 않고 현재 작업 상태를 수동으로 확인할 수 있습니다.'
+      : '서버 작업 상태를 확인하고 있습니다.'));
 
     const actions = createUc6Node('div', 'uc6-action-row');
     if (uc6State.flowLane === 'asset_render' && !uc6State.jobId) {
       actions.append(createUC6ActionButton('uc6-restartAssetRenderBtn', 'Asset 선택으로 돌아가기', 'btn btn-primary', uc6State.operationInFlight));
     } else {
-      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '상태 새로고침', 'btn btn-primary', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
+      actions.append(createUC6ActionButton('uc6-resumePollingBtn', '상태 새로고침', 'btn btn-primary', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
     }
     card.append(actions);
 

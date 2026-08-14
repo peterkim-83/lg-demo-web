@@ -1337,7 +1337,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2352,7 +2352,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -3257,19 +3257,19 @@ test('R6E-D2 app continuation reuses polling and capabilities, reconciles ambigu
   const download = extractFunctionBody(app, 'downloadUC6ReviewArtifact');
   const staticRender = extractFunctionBody(app, 'submitUC6DummyRender');
   const assetRender = extractFunctionBody(app, 'submitUC6ReusableAssetRender');
+  const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
 
   assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
   assert.ok(submit.indexOf('uc6State.freshRenderSubmitted = true') < submit.indexOf('api.submitFreshSyntheticScenarioRender'));
   assert.equal(submit.includes('projectUc6FreshSyntheticRenderControl'), true);
-  assert.equal(submit.includes('renderSubmissionReconciliation: true'), true);
-  assert.equal(submit.includes("uc6State.jobState === 'render_queued' || uc6State.jobState === 'render_running'"), true);
-  assert.equal(submit.includes('startUC6Polling()'), true, 'accepted ambiguous submission resumes the shared poller');
+  assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false, 'mutation signal cannot be reused for ambiguous reconciliation GET');
+  assert.equal(submit.includes('startUC6Polling()'), true, 'ambiguous submission resumes the shared poller');
   assert.equal(submit.includes('submitDummyDatabagRender'), false);
   assert.equal(submit.includes('submitReusableAssetRender'), false);
   assert.equal(refresh.includes('projectUc6FreshSyntheticRenderJobStatus'), true);
   assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false, 'GET reconciliation cannot replay POST');
   assert.equal(poll.includes('isUC6JobPollingPending()'), true);
-  assert.equal(pollingDecision.includes('isUC6FreshRenderReconciliationPending()'), true);
+  assert.equal(pollingDecision.includes('isUC6FreshRenderSubmissionReconciliationPending()'), true);
   assert.equal(renderSelection.includes('uc6-submitFreshRenderBtn'), true);
   assert.equal(renderSelection.includes("selectionState: uc6State.syntheticSelectionState"), true);
   assert.equal(renderProgress.includes('uc6State.freshSyntheticExpected'), true);
@@ -3347,7 +3347,7 @@ test('R6E-D2 shared Fresh terminal override dominates stale upstream state witho
     mapUc6StateToView,
     isUC6FreshSourceReconciliationPending: pending.source || (() => false),
     isUC6FreshSyntheticPollingPending: pending.synthetic || (() => false),
-    isUC6FreshRenderReconciliationPending: pending.render || (() => false)
+    isUC6FreshRenderSubmissionReconciliationPending: pending.render || (() => false)
   });
 
   const completedBase = {
@@ -3457,7 +3457,7 @@ test('R6E-D2 persisted stale not_started resume completes delivery once and leav
     mapUc6StateToView,
     isUC6FreshSourceReconciliationPending: () => true,
     isUC6FreshSyntheticPollingPending: staleSyntheticPending,
-    isUC6FreshRenderReconciliationPending: () => true
+    isUC6FreshRenderSubmissionReconciliationPending: () => true
   });
 
   let jobGetCount = 0;
@@ -4289,7 +4289,7 @@ test('R6G-B3 app retains accepted job identity, locks duplicate submission, and 
   const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-r6g-b4-completed-job-envelope-alignment-2026-08-14-v1"), true);
+  assert.equal(app.includes("app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1"), true);
   assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
   assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
   assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
@@ -4339,6 +4339,103 @@ test('R6G-B4 valid terminal readback clears polling suspension, stops polling, a
   assert.equal(refresh.includes('await loadUC6A8HDeliveryState(options.signal)'), true);
   assert.equal(poll.includes('else stopUC6Polling()'), true);
   assert.equal(stageMap.includes("if (state === 'render_completed') return 'result'"), true);
+});
+
+test('R6G-B5 only ambiguous Fresh same-job render_unknown is explicitly reconciliation-pollable', () => {
+  const app = readSource('../public/app.js');
+  const pendingFor = (state) => executeExtractedFunction(app, 'isUC6FreshRenderSubmissionReconciliationPending', { uc6State: state });
+  const base = {
+    flowLane: 'dummy_render',
+    freshSyntheticExpected: true,
+    freshRenderSubmitted: true,
+    freshRenderSubmissionAmbiguous: true,
+    jobId: JOB_ID,
+    jobState: 'render_unknown',
+    renderStatus: null,
+    reviewArtifactsStatus: 'idle'
+  };
+  assert.equal(pendingFor(base), true);
+  for (const invalid of [
+    { flowLane: 'asset_render' },
+    { freshSyntheticExpected: false },
+    { freshRenderSubmitted: false },
+    { freshRenderSubmissionAmbiguous: false },
+    { jobId: '' },
+    { jobState: 'render_queued' },
+    { jobState: 'render_completed', renderStatus: { state: 'render_completed' } },
+    { jobState: 'failed' }
+  ]) assert.equal(pendingFor({ ...base, ...invalid }), false);
+
+  const pollingFor = (state, reconciliationPending, terminal = false) => executeExtractedFunction(app, 'isUC6JobPollingPending', {
+    uc6State: state,
+    isUC6FreshExecutionTerminal: () => terminal,
+    mapUc6StateToView,
+    isUC6FreshSourceReconciliationPending: () => false,
+    isUC6FreshSyntheticPollingPending: () => false,
+    isUC6FreshRenderSubmissionReconciliationPending: () => reconciliationPending
+  });
+  assert.equal(Boolean(mapUc6StateToView('render_unknown').renderPollable), false, 'render_unknown is not globally pollable');
+  assert.equal(pollingFor(base, pendingFor(base)), true);
+  for (const jobState of ['render_queued', 'render_running']) {
+    const authoritative = { ...base, jobState, freshRenderSubmissionAmbiguous: false };
+    assert.equal(pollingFor(authoritative, false), true, `${jobState} continues normal polling after ambiguity clears`);
+  }
+  for (const jobState of ['render_completed', 'failed']) {
+    const authoritative = { ...base, jobState, freshRenderSubmissionAmbiguous: false };
+    assert.equal(pollingFor(authoritative, false, true), false, `${jobState} is terminal after ambiguity clears`);
+  }
+});
+
+test('R6G-B5 ambiguous POST starts bounded polling with a distinct controller and never replays mutation', () => {
+  const app = readSource('../public/app.js');
+  const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
+  const start = extractFunctionBody(app, 'startUC6Polling');
+  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
+  const resumeHandler = app.slice(app.indexOf("target.id === 'uc6-resumePollingBtn'"), app.indexOf("target.id === 'uc6-enterDecisionBtn'"));
+
+  assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
+  assert.ok(submit.indexOf('uc6State.freshRenderSubmitted = true') < submit.indexOf('api.submitFreshSyntheticScenarioRender'));
+  assert.equal(submit.includes("error?.name === 'AbortError' && isUc6Authorized() && Boolean(uc6State.jobId)"), true);
+  assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false);
+  assert.equal(submit.includes('startUC6Polling()'), true);
+  assert.equal(submit.includes("uc6State.jobState = 'render_unknown'"), true);
+  assert.equal(submit.includes("uc6State.jobId = ''"), false, 'known same-job identity remains retained');
+  assert.equal(start.includes('uc6State.pollingAbortController = new AbortController()'), true);
+  assert.equal(poll.includes('signal: uc6State.pollingAbortController.signal'), true);
+  assert.equal(poll.includes("error?.name !== 'AbortError' || isUC6FreshRenderSubmissionReconciliationPending()"), true);
+  assert.equal(poll.includes('uc6State.consecutivePollErrors += 1'), true);
+  assert.equal(poll.includes('uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS'), true);
+  assert.equal(poll.includes('scheduleUC6Poll()'), true, 'a first transient reconciliation failure schedules another safe GET');
+  assert.equal(refresh.includes('uc6State.freshRenderSubmissionAmbiguous = false'), true, 'authoritative render readback clears ambiguity');
+  assert.equal(refresh.includes("uc6State.jobState = 'render_unknown'"), true, 'non-authoritative bound readback preserves reconciliation');
+  assert.equal(refresh.includes('uc6State.freshRenderSubmitted = false'), false, 'upstream readback cannot unlock duplicate POST');
+  assert.equal(resumeHandler.includes('uc6State.consecutivePollErrors = 0'), true);
+  assert.equal(resumeHandler.includes('startUC6Polling()'), true, 'paused polling remains manually recoverable');
+});
+
+test('R6G-B5 render_unknown uses neutral warning copy while confirmed failure remains destructive', () => {
+  const app = readSource('../public/app.js');
+  const css = readSource('../public/style.css');
+  const unknown = extractFunctionBody(app, 'renderUC6RenderUnknownStage');
+  const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
+  const selection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
+
+  assert.equal(app.includes('app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1'), true);
+  assert.equal(unknown.includes("'uc6-stage-card is-warning'"), true);
+  assert.equal(unknown.includes('생성 요청 확인 중'), true);
+  assert.equal(unknown.includes('서버 작업 상태를 확인하고 있습니다.'), true);
+  assert.equal(unknown.includes('자동 상태 확인을 잠시 중단했습니다.'), true);
+  assert.equal(unknown.includes("'uc6-resumePollingBtn', '상태 새로고침'"), true);
+  assert.equal(unknown.includes('is-error'), false);
+  assert.equal(unknown.includes('uc6-inline-error'), false);
+  assert.equal(unknown.includes('문서 생성 실패'), false);
+  assert.equal(selection.includes("'uc6-inline-warning'"), true);
+  assert.equal(failed.includes("'uc6-stage-card is-error'"), true);
+  assert.equal(failed.includes('문서 생성 실패'), true);
+  assert.match(css, /#view-uc6 \.uc6-stage-card\.is-warning\s*\{/);
+  assert.match(css, /#view-uc6 \.uc6-inline-warning\s*\{/);
 });
 
 test('R6G-B1 Fresh publication completion remains in normal flow above a reachable final action', () => {
