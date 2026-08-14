@@ -7119,6 +7119,47 @@ body:has(#view-uc5.active) #main-content {
   margin-top: 1rem;
 }
 
+#view-uc6 .uc6-r6g-source-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+#view-uc6 .uc6-r6g-source-lane {
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.76);
+}
+
+#view-uc6 .uc6-r6g-source-lane.is-selected {
+  border-color: rgba(59, 130, 246, 0.72);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+#view-uc6 .uc6-r6g-source-lane > h3,
+#view-uc6 .uc6-r6g-source-lane > p {
+  margin: 0;
+}
+
+#view-uc6 .uc6-r6g-scenario-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.7rem;
+}
+
+#view-uc6 .uc6-r6g-scenario-key,
+#view-uc6 .uc6-r6g-package-hint {
+  overflow-wrap: anywhere;
+  color: var(--text-sub);
+  font-size: 0.74rem;
+}
+
 @media (max-width: 720px) {
   #view-uc6 .uc6-flow-lane-switch,
   #view-uc6 .uc6-flow-lane-switch .btn {
@@ -7128,5 +7169,9 @@ body:has(#view-uc5.active) #main-content {
   #view-uc6 .uc6-a8h-selected-asset {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  #view-uc6 .uc6-r6g-source-choices {
+    grid-template-columns: 1fr;
   }
 }

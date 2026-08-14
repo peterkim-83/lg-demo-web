@@ -21,6 +21,9 @@ import {
   projectUc6ReusableAssetPackageOptions,
   projectUc6ReusableAssetRenderJobStatus,
   projectUc6ReusableAssetRenderSubmission,
+  projectUc6PublishedAssetLinkedScenarioFamily,
+  projectUc6PublishedAssetScenarioRenderJobStatus,
+  projectUc6PublishedAssetScenarioRenderSubmission,
   projectUc6DummyDatabagRenderJobStatus,
   projectUc6DummyDatabagRenderSubmission,
   projectUc6FinalDeliveryCapabilities,
@@ -60,7 +63,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6f-b-fresh-review-publication-2026-08-14-v3';
+const APP_VERSION = 'app.uc6-r6g-b-published-scenario-render-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5201,6 +5204,12 @@ Customer: Thank you. Goodbye.`
     reusableAssetCatalogStatus: 'idle',
     selectedAssetId: '',
     assetPackageOptions: null,
+    assetSourceLane: 'static_package',
+    linkedScenarioFamily: null,
+    linkedScenarioFamilyStatus: 'idle',
+    linkedScenarioFamilyMessage: '',
+    selectedPublishedScenarioFamilyId: '',
+    selectedPublishedScenarioKey: '',
     assetSubmissionAmbiguous: false,
     packageOptions: null,
     freshOnboardingExpected: false,
@@ -5505,6 +5514,9 @@ Customer: Thank you. Goodbye.`
         fresh_render_submitted: uc6State.freshRenderSubmitted,
         fresh_render_submission_ambiguous: uc6State.freshRenderSubmissionAmbiguous,
         selected_asset_id: uc6State.selectedAssetId,
+        asset_source_lane: uc6State.assetSourceLane,
+        selected_published_scenario_family_id: uc6State.selectedPublishedScenarioFamilyId,
+        selected_published_scenario_key: uc6State.selectedPublishedScenarioKey,
         selected_package_family_id: uc6State.selectedPackageFamilyId,
         selected_package_id: uc6State.selectedPackageId,
         selected_package_version: uc6State.selectedPackageVersion,
@@ -5622,6 +5634,12 @@ Customer: Thank you. Goodbye.`
     uc6State.reusableAssetCatalogStatus = 'idle';
     uc6State.selectedAssetId = '';
     uc6State.assetPackageOptions = null;
+    uc6State.assetSourceLane = 'static_package';
+    uc6State.linkedScenarioFamily = null;
+    uc6State.linkedScenarioFamilyStatus = 'idle';
+    uc6State.linkedScenarioFamilyMessage = '';
+    uc6State.selectedPublishedScenarioFamilyId = '';
+    uc6State.selectedPublishedScenarioKey = '';
     uc6State.assetSubmissionAmbiguous = false;
     uc6State.packageOptions = null;
     uc6State.freshOnboardingExpected = false;
@@ -5815,6 +5833,13 @@ Customer: Thank you. Goodbye.`
         ? 'dummy_render'
         : persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render');
       if (persisted.selected_asset_id) uc6State.selectedAssetId = persisted.selected_asset_id;
+      uc6State.assetSourceLane = persisted.asset_source_lane || 'static_package';
+      if (persisted.selected_published_scenario_family_id) {
+        uc6State.selectedPublishedScenarioFamilyId = persisted.selected_published_scenario_family_id;
+      }
+      if (persisted.selected_published_scenario_key) {
+        uc6State.selectedPublishedScenarioKey = persisted.selected_published_scenario_key;
+      }
       if (persisted.selected_package_family_id && uc6State.flowLane === 'dummy_render') {
         uc6State.selectedPackageFamilyId = persisted.selected_package_family_id;
       }
@@ -5950,13 +5975,20 @@ Customer: Thank you. Goodbye.`
         uc6State.selectedPackageId = '';
         uc6State.selectedPackageVersion = '';
         uc6State.assetPackageOptions = null;
+        uc6State.linkedScenarioFamily = null;
+        uc6State.linkedScenarioFamilyStatus = 'idle';
+        uc6State.selectedPublishedScenarioFamilyId = '';
+        uc6State.selectedPublishedScenarioKey = '';
       }
       uc6State.stageMessage = catalog.asset_count
         ? '게시된 reusable Asset을 선택하세요.'
         : '현재 사용할 수 있는 게시 Asset이 없습니다.';
       saveUC6LocalState();
       renderUC6All();
-      if (selected) await loadUC6ReusableAssetPackages(signal);
+      if (selected) await Promise.allSettled([
+        loadUC6ReusableAssetPackages(signal),
+        loadUC6PublishedAssetLinkedScenarioFamily(signal)
+      ]);
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
       if (error?.name === 'AbortError') return;
@@ -5975,10 +6007,50 @@ Customer: Thank you. Goodbye.`
     uc6State.selectedPackageId = '';
     uc6State.selectedPackageVersion = '';
     uc6State.assetPackageOptions = null;
-    uc6State.stageMessage = '선택한 Asset과 호환되는 데이터 패키지를 확인하고 있습니다.';
+    uc6State.assetSourceLane = 'static_package';
+    uc6State.linkedScenarioFamily = null;
+    uc6State.linkedScenarioFamilyStatus = 'loading';
+    uc6State.linkedScenarioFamilyMessage = '연결된 게시 Scenario Family를 확인하고 있습니다.';
+    uc6State.selectedPublishedScenarioFamilyId = '';
+    uc6State.selectedPublishedScenarioKey = '';
+    uc6State.stageMessage = '선택한 Asset에 사용할 수 있는 Source Context를 확인하고 있습니다.';
     saveUC6LocalState();
     renderUC6All();
-    await loadUC6ReusableAssetPackages();
+    await Promise.allSettled([
+      loadUC6ReusableAssetPackages(),
+      loadUC6PublishedAssetLinkedScenarioFamily()
+    ]);
+  }
+
+  async function loadUC6PublishedAssetLinkedScenarioFamily(signal) {
+    if (!isUc6Authorized() || uc6State.flowLane !== 'asset_render' || !uc6State.selectedAssetId) return;
+    uc6State.linkedScenarioFamilyStatus = 'loading';
+    uc6State.linkedScenarioFamilyMessage = '연결된 게시 Scenario Family를 확인하고 있습니다.';
+    renderUC6All();
+    try {
+      const raw = await uc6State.api.getPublishedAssetLinkedScenarioFamily(uc6State.selectedAssetId, { signal });
+      const projected = projectUc6PublishedAssetLinkedScenarioFamily(raw, { expectedAssetId: uc6State.selectedAssetId });
+      uc6State.linkedScenarioFamily = projected;
+      uc6State.linkedScenarioFamilyStatus = 'ready';
+      uc6State.linkedScenarioFamilyMessage = '세 가지 reusable source-data 시나리오 중 하나를 선택할 수 있습니다.';
+      uc6State.selectedPublishedScenarioFamilyId = projected.linked_scenario_family.published_scenario_family_id;
+      if (!projected.scenario_options.some((option) => option.scenario_key === uc6State.selectedPublishedScenarioKey)) {
+        uc6State.selectedPublishedScenarioKey = '';
+      }
+      saveUC6LocalState();
+    } catch (error) {
+      if (handleUC6AuthorizationFailure(error)) return;
+      if (error?.name === 'AbortError') return;
+      uc6State.linkedScenarioFamily = null;
+      uc6State.linkedScenarioFamilyStatus = 'unavailable';
+      uc6State.linkedScenarioFamilyMessage = error?.code === 'browser_admin_uc6_linked_scenario_family_not_found'
+        ? '이 Asset에는 연결된 게시 Scenario Family가 없습니다. 기존 curated/static 패키지는 계속 사용할 수 있습니다.'
+        : '연결된 Scenario Family를 사용할 수 없습니다. 기존 curated/static 패키지는 계속 사용할 수 있습니다.';
+      uc6State.selectedPublishedScenarioFamilyId = '';
+      uc6State.selectedPublishedScenarioKey = '';
+    } finally {
+      renderUC6All();
+    }
   }
 
   async function loadUC6ReusableAssetPackages(signal) {
@@ -6104,6 +6176,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = uc6State.selectedAssetId ? '데이터 패키지를 확인한 뒤 새 render-only job을 생성하세요.' : '게시된 reusable Asset을 선택하세요.';
     saveUC6LocalState();
     renderUC6All();
+    if (uc6State.selectedAssetId) loadUC6ReusableAssetCatalog().catch(() => {});
   }
 
   function findUC6PackageFamiliesForPackage(packageId, packageVersion, options = uc6State.packageOptions) {
@@ -6304,6 +6377,7 @@ Customer: Thank you. Goodbye.`
       return;
     }
     uc6State.operationInFlight = true;
+    uc6State.assetSourceLane = 'static_package';
     uc6State.selectedSyntheticScenarioKey = option.scenario_key;
     uc6State.stageMessage = '선택한 합성 샘플 컨텍스트를 이 작업에 고정하고 있습니다.';
     renderUC6All();
@@ -6351,6 +6425,72 @@ Customer: Thank you. Goodbye.`
     } finally {
       uc6State.operationInFlight = false;
       saveUC6LocalState();
+      renderUC6All();
+    }
+  }
+
+  async function submitUC6PublishedAssetScenarioRender() {
+    if (!isUc6Authorized() || uc6State.operationInFlight || uc6State.jobId || !uc6State.selectedAssetId) return;
+    const family = uc6State.linkedScenarioFamily;
+    if (
+      uc6State.linkedScenarioFamilyStatus !== 'ready'
+      || !family
+      || !uc6State.selectedPublishedScenarioFamilyId
+      || !uc6State.selectedPublishedScenarioKey
+    ) {
+      uc6State.linkedScenarioFamilyMessage = '연결된 Scenario Family와 시나리오 하나를 선택하세요.';
+      renderUC6All();
+      return;
+    }
+    uc6State.operationInFlight = true;
+    uc6State.assetSourceLane = 'published_scenario_family';
+    uc6State.assetSubmissionAmbiguous = false;
+    uc6State.stageMessage = '게시 Scenario Family의 선택한 source-data 상황으로 새 문서 생성을 요청하고 있습니다.';
+    renderUC6All();
+    const controller = createUC6OperationController();
+    try {
+      const raw = await uc6State.api.submitPublishedAssetScenarioRender(
+        uc6State.selectedAssetId,
+        {
+          published_scenario_family_id: uc6State.selectedPublishedScenarioFamilyId,
+          scenario_key: uc6State.selectedPublishedScenarioKey
+        },
+        { linkedFamilyProjection: family, signal: controller.signal }
+      );
+      const submitted = projectUc6PublishedAssetScenarioRenderSubmission(raw, { expectedAssetId: uc6State.selectedAssetId });
+      uc6State.jobId = submitted.job_id;
+      uc6State.jobState = submitted.state;
+      uc6State.source = {
+        sha256: submitted.asset.source_pptx_sha256,
+        slide_count: submitted.asset.slide_count
+      };
+      uc6State.renderStatus = null;
+      uc6State.selectedPublishedScenarioFamilyId = submitted.linked_scenario_family.published_scenario_family_id;
+      uc6State.selectedPublishedScenarioKey = submitted.linked_scenario_family.scenario_key;
+      uc6State.selectedPackageId = submitted.bound_package.package_id;
+      uc6State.selectedPackageVersion = submitted.bound_package.package_version;
+      uc6State.stageMessage = '동적 생성 요청이 접수되었습니다. Provider 생성과 물리 렌더 상태를 확인하고 있습니다.';
+      uc6State.consecutivePollErrors = 0;
+      saveUC6LocalState();
+      renderUC6All();
+      if (submitted.state === 'render_queued' || submitted.state === 'render_running') startUC6Polling();
+      else await refreshUC6JobStatus();
+    } catch (error) {
+      if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
+        uc6State.assetSubmissionAmbiguous = true;
+        uc6State.jobState = 'render_unknown';
+        uc6State.stageMessage = '동적 생성 요청의 접수 여부를 확인할 수 없습니다. Provider 생성을 자동 재전송하지 않습니다.';
+        setUC6LiveMessage(uc6State.stageMessage);
+        saveUC6LocalState();
+        renderUC6All();
+        return;
+      }
+      if (handleUC6AuthorizationFailure(error)) return;
+      uc6State.stageMessage = uc6MessageFromError(error);
+      setUC6LiveMessage(uc6State.stageMessage);
+      renderUC6All();
+    } finally {
+      uc6State.operationInFlight = false;
       renderUC6All();
     }
   }
@@ -6759,10 +6899,10 @@ Customer: Thank you. Goodbye.`
     }
 
     if (uc6State.flowLane === 'asset_render') {
-      const projected = projectUc6ReusableAssetRenderJobStatus(rawJob, {
-        expectedJobId: uc6State.jobId,
-        expectedAssetId: uc6State.selectedAssetId
-      });
+      const projectorOptions = { expectedJobId: uc6State.jobId, expectedAssetId: uc6State.selectedAssetId };
+      const projected = uc6State.assetSourceLane === 'published_scenario_family'
+        ? projectUc6PublishedAssetScenarioRenderJobStatus(rawJob, projectorOptions)
+        : projectUc6ReusableAssetRenderJobStatus(rawJob, projectorOptions);
       uc6State.jobState = projected.state;
       uc6State.source = projected.source;
       uc6State.lastPollingTimestamp = Date.now();
@@ -6770,6 +6910,23 @@ Customer: Thank you. Goodbye.`
       if (projected.bound_package) {
         uc6State.selectedPackageId = projected.bound_package.package_id;
         uc6State.selectedPackageVersion = projected.bound_package.package_version;
+      }
+      if (projected.linked_scenario_family) {
+        uc6State.selectedPublishedScenarioFamilyId = projected.linked_scenario_family.published_scenario_family_id;
+        uc6State.selectedPublishedScenarioKey = projected.linked_scenario_family.scenario_key;
+      }
+      if (projected.state === 'render_queued') {
+        uc6State.stageMessage = uc6State.assetSourceLane === 'published_scenario_family'
+          ? '선택한 Scenario Family 문서 생성 요청이 대기열에 있습니다.'
+          : '게시 Asset 문서 생성 요청이 대기열에 있습니다.';
+      } else if (projected.state === 'render_running') {
+        uc6State.stageMessage = uc6State.assetSourceLane === 'published_scenario_family'
+          ? 'Source Context를 바탕으로 Slot을 생성하고 PPTX/PDF를 렌더하고 있습니다.'
+          : '선택한 데이터 패키지로 PPTX/PDF를 렌더하고 있습니다.';
+      } else if (projected.state === 'render_completed') {
+        uc6State.stageMessage = '문서 생성이 완료되었습니다.';
+      } else if (projected.state === 'failed') {
+        uc6State.stageMessage = '문서 생성 작업이 실패했습니다. 자동으로 다시 요청하지 않습니다.';
       }
       saveUC6LocalState();
       renderUC6All();
@@ -7603,8 +7760,8 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6AssetPackageStage(root) {
     const card = createUc6Node('section', 'uc6-stage-card uc6-a8h-stage');
-    card.append(createUc6Node('h2', '', 'Asset 데이터 시나리오 선택'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '선택한 게시 Asset은 재분석하지 않습니다. 새 databag만 선택해 render-only job을 생성합니다.'));
+    card.append(createUc6Node('h2', '', 'Asset Source Context 선택'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', '같은 게시 Asset에 curated/static 패키지를 적용하거나, 연결된 게시 Scenario Family에서 reusable source-data 상황 하나를 선택할 수 있습니다.'));
     const asset = uc6State.reusableAssetCatalog?.assets?.find((row) => row.asset_id === uc6State.selectedAssetId) || uc6State.assetPackageOptions?.asset;
     if (asset) {
       const banner = createUc6Node('div', 'uc6-a8h-selected-asset');
@@ -7613,49 +7770,117 @@ Customer: Thank you. Goodbye.`
       banner.append(createUC6ActionButton('uc6-changeAssetBtn', 'Asset 변경', 'btn btn-outline', uc6State.operationInFlight));
       card.append(banner);
     }
+
+    const sourceChoices = createUc6Node('div', 'uc6-r6g-source-choices');
+    const staticLane = createUc6Node('section', `uc6-r6g-source-lane${uc6State.assetSourceLane === 'static_package' ? ' is-selected' : ''}`);
+    staticLane.append(createUc6Node('h3', '', 'A. Curated/static 데이터 패키지'));
+    staticLane.append(createUc6Node('p', 'uc6-help-text', '기존 A8G 흐름입니다. 검증된 정적 databag을 선택해 문서를 렌더합니다.'));
     const options = uc6State.assetPackageOptions;
     if (!options) {
-      card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage || '호환 데이터 패키지를 불러오는 중입니다.'));
+      staticLane.append(createUc6Node('p', 'uc6-stage-message', '호환 데이터 패키지를 불러오지 못했거나 아직 확인 중입니다.'));
       const actions = createUc6Node('div', 'uc6-action-row');
       actions.append(createUC6ActionButton('uc6-refreshAssetPackagesBtn', '패키지 다시 불러오기', 'btn btn-outline', uc6State.operationInFlight));
-      card.append(actions);
-      root.replaceChildren(card);
-      return;
-    }
-    const grid = createUc6Node('div', 'uc6-package-grid');
-    options.packages.forEach((pkg) => {
-      const selected = uc6State.selectedPackageId === pkg.package_id && uc6State.selectedPackageVersion === pkg.package_version;
-      const packageCard = createUc6Node('article', `uc6-package-card${selected ? ' is-selected' : ''}`);
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'uc6-asset-package-radio';
-      radio.id = `uc6-a8h-pkg-${pkg.package_id}-${pkg.package_version}`;
-      radio.checked = selected;
-      radio.disabled = uc6State.operationInFlight;
-      const label = document.createElement('label');
-      label.htmlFor = radio.id;
-      label.append(createUc6Node('strong', 'uc6-package-title', pkg.title));
-      const header = createUc6Node('div', 'uc6-package-header');
-      header.append(radio, label, createUc6Node('span', 'uc6-admin-chip is-neutral', pkg.package_version));
-      packageCard.append(header, createUc6Node('p', 'uc6-package-desc', pkg.description));
-      const meta = createUc6Node('div', 'uc6-package-meta');
-      meta.append(createUc6Node('small', '', `Template family: ${pkg.template_family_id}`));
-      meta.append(createUc6Node('small', '', `Canonical source groups: ${pkg.supported_canonical_source_group_count}`));
-      packageCard.append(meta);
-      packageCard.addEventListener('click', (event) => {
-        if (uc6State.operationInFlight) return;
-        if (event.target.tagName !== 'INPUT') radio.checked = true;
-        uc6State.selectedPackageId = pkg.package_id;
-        uc6State.selectedPackageVersion = pkg.package_version;
-        saveUC6LocalState();
-        renderUC6All();
+      staticLane.append(actions);
+    } else {
+      const grid = createUc6Node('div', 'uc6-package-grid');
+      options.packages.forEach((pkg) => {
+        const selected = uc6State.assetSourceLane === 'static_package' && uc6State.selectedPackageId === pkg.package_id && uc6State.selectedPackageVersion === pkg.package_version;
+        const packageCard = createUc6Node('article', `uc6-package-card${selected ? ' is-selected' : ''}`);
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'uc6-asset-source-radio';
+        radio.id = `uc6-a8h-pkg-${pkg.package_id}-${pkg.package_version}`;
+        radio.checked = selected;
+        radio.disabled = uc6State.operationInFlight;
+        const label = document.createElement('label');
+        label.htmlFor = radio.id;
+        label.append(createUc6Node('strong', 'uc6-package-title', pkg.title));
+        const header = createUc6Node('div', 'uc6-package-header');
+        header.append(radio, label, createUc6Node('span', 'uc6-admin-chip is-neutral', pkg.package_version));
+        packageCard.append(header, createUc6Node('p', 'uc6-package-desc', pkg.description));
+        const meta = createUc6Node('div', 'uc6-package-meta');
+        meta.append(createUc6Node('small', '', `Template family: ${pkg.template_family_id}`));
+        meta.append(createUc6Node('small', '', `Canonical source groups: ${pkg.supported_canonical_source_group_count}`));
+        packageCard.append(meta);
+        packageCard.addEventListener('click', (event) => {
+          if (uc6State.operationInFlight) return;
+          if (event.target.tagName !== 'INPUT') radio.checked = true;
+          uc6State.assetSourceLane = 'static_package';
+          uc6State.selectedPackageId = pkg.package_id;
+          uc6State.selectedPackageVersion = pkg.package_version;
+          saveUC6LocalState();
+          renderUC6All();
+        });
+        grid.append(packageCard);
       });
-      grid.append(packageCard);
-    });
-    card.append(grid);
+      staticLane.append(grid);
+      const actions = createUc6Node('div', 'uc6-action-row');
+      const canSubmit = uc6State.assetSourceLane === 'static_package' && Boolean(uc6State.selectedPackageId && uc6State.selectedPackageVersion && !uc6State.operationInFlight);
+      actions.append(createUC6ActionButton('uc6-submitAssetRenderBtn', '정적 패키지로 PPTX/PDF 생성', 'btn btn-primary', !canSubmit));
+      staticLane.append(actions);
+    }
+
+    const scenarioLane = createUc6Node('section', `uc6-r6g-source-lane${uc6State.assetSourceLane === 'published_scenario_family' ? ' is-selected' : ''}`);
+    scenarioLane.append(createUc6Node('h3', '', 'B. 연결된 게시 Scenario Family'));
+    scenarioLane.append(createUc6Node('p', 'uc6-help-text', '동일한 템플릿을 위한 세 가지 reusable source-data 상황입니다. 선택 후 Provider 생성과 결정론적 렌더가 새로 실행됩니다.'));
+    const linked = uc6State.linkedScenarioFamily;
+    if (uc6State.linkedScenarioFamilyStatus !== 'ready' || !linked) {
+      const unavailable = uc6State.linkedScenarioFamilyStatus === 'unavailable';
+      scenarioLane.append(createUc6Node('p', unavailable ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.linkedScenarioFamilyMessage || '연결된 Scenario Family를 불러오는 중입니다.'));
+      const actions = createUc6Node('div', 'uc6-action-row');
+      actions.append(createUC6ActionButton('uc6-refreshLinkedScenarioFamilyBtn', 'Scenario Family 다시 불러오기', 'btn btn-outline', uc6State.operationInFlight));
+      scenarioLane.append(actions);
+    } else {
+      const familyMeta = createUc6Node('details', 'uc6-technical-details');
+      familyMeta.append(createUc6Node('summary', '', 'Family 기술 정보'));
+      const metaList = createUc6Node('ul', 'uc6-bounded-list');
+      metaList.append(
+        createUc6ListItem(`Published family: ${linked.linked_scenario_family.published_scenario_family_id}`),
+        createUc6ListItem(`Original family: ${linked.linked_scenario_family.synthetic_scenario_family_id}`),
+        createUc6ListItem(`Link identity: ${linked.linked_scenario_family.link_identity}`)
+      );
+      familyMeta.append(metaList);
+      scenarioLane.append(familyMeta);
+      const grid = createUc6Node('div', 'uc6-r6g-scenario-grid');
+      linked.scenario_options.forEach((scenario) => {
+        const selected = uc6State.assetSourceLane === 'published_scenario_family' && uc6State.selectedPublishedScenarioKey === scenario.scenario_key;
+        const scenarioCard = createUc6Node('article', `uc6-package-card uc6-r6g-scenario-card${selected ? ' is-selected' : ''}`);
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'uc6-asset-source-radio';
+        radio.id = `uc6-r6g-${scenario.scenario_key}`;
+        radio.checked = selected;
+        radio.disabled = uc6State.operationInFlight;
+        const label = document.createElement('label');
+        label.htmlFor = radio.id;
+        label.append(createUc6Node('strong', 'uc6-package-title', scenario.title || scenario.label));
+        const header = createUc6Node('div', 'uc6-package-header');
+        header.append(radio, label, createUc6Node('code', 'uc6-r6g-scenario-key', scenario.scenario_key));
+        scenarioCard.append(header);
+        if (scenario.description) scenarioCard.append(createUc6Node('p', 'uc6-package-desc', scenario.description));
+        if (scenario.package_id) scenarioCard.append(createUc6Node('small', 'uc6-r6g-package-hint', `서버 연결 패키지: ${scenario.package_id}:${scenario.package_version}`));
+        scenarioCard.addEventListener('click', (event) => {
+          if (uc6State.operationInFlight) return;
+          if (event.target.tagName !== 'INPUT') radio.checked = true;
+          uc6State.assetSourceLane = 'published_scenario_family';
+          uc6State.selectedPublishedScenarioFamilyId = linked.linked_scenario_family.published_scenario_family_id;
+          uc6State.selectedPublishedScenarioKey = scenario.scenario_key;
+          saveUC6LocalState();
+          renderUC6All();
+        });
+        grid.append(scenarioCard);
+      });
+      scenarioLane.append(grid);
+      const actions = createUc6Node('div', 'uc6-action-row');
+      const canSubmit = uc6State.assetSourceLane === 'published_scenario_family'
+        && linked.scenario_options.some((scenario) => scenario.scenario_key === uc6State.selectedPublishedScenarioKey)
+        && !uc6State.operationInFlight;
+      actions.append(createUC6ActionButton('uc6-submitPublishedScenarioRenderBtn', '선택한 시나리오로 새 문서 생성', 'btn btn-primary', !canSubmit));
+      scenarioLane.append(actions);
+    }
+    sourceChoices.append(staticLane, scenarioLane);
+    card.append(sourceChoices);
     const actions = createUc6Node('div', 'uc6-action-row');
-    const canSubmit = Boolean(uc6State.selectedPackageId && uc6State.selectedPackageVersion && !uc6State.operationInFlight);
-    actions.append(createUC6ActionButton('uc6-submitAssetRenderBtn', '새 PPTX/PDF 생성', 'btn btn-primary', !canSubmit));
     actions.append(createUC6ActionButton('uc6-changeAssetBtn', 'Asset 변경', 'btn btn-outline', uc6State.operationInFlight));
     card.append(actions);
     if (uc6State.stageMessage) card.append(createUc6Node('p', 'uc6-stage-message', uc6State.stageMessage));
@@ -7668,15 +7893,36 @@ Customer: Thank you. Goodbye.`
       renderUC6UnavailableStage(root);
       return;
     }
+    const isPublishedScenarioRender = uc6State.assetSourceLane === 'published_scenario_family';
     const card = createUc6Node('section', 'uc6-stage-card uc6-a8h-stage');
-    card.append(createUc6Node('h2', '', 'Render-only 문서 생성 완료'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '게시 Asset은 변경되지 않았습니다. 생성 결과는 일반 delivery이며 재승인·재게시 대상이 아닙니다.'));
+    card.append(createUc6Node('h2', '', isPublishedScenarioRender ? 'Scenario Family 문서 생성 완료' : 'Render-only 문서 생성 완료'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', isPublishedScenarioRender
+      ? '게시된 source-context package를 바탕으로 Provider Slot 생성과 결정론적 물리 렌더를 완료했습니다. 이 consumer 결과는 재승인·재게시 대상이 아닙니다.'
+      : '게시 Asset은 변경되지 않았습니다. 생성 결과는 일반 delivery이며 재승인·재게시 대상이 아닙니다.'));
     const summary = createUc6Node('div', 'uc6-compact-facts');
     summary.append(createUC6SummaryItem('Asset', status.asset.asset_id));
-    summary.append(createUC6SummaryItem('데이터 패키지', status.bound_package.title));
+    if (isPublishedScenarioRender) {
+      const scenarioKey = status.linked_scenario_family.scenario_key;
+      const scenario = uc6State.linkedScenarioFamily?.scenario_options?.find((option) => option.scenario_key === scenarioKey);
+      summary.append(createUC6SummaryItem('선택 시나리오', scenario?.label || scenarioKey));
+      summary.append(createUC6SummaryItem('Scenario key', scenarioKey));
+      summary.append(createUC6SummaryItem('Bound package', `${status.bound_package.package_id}:${status.bound_package.package_version}`));
+      summary.append(createUC6SummaryItem('Generation units', status.generation_unit_count));
+      summary.append(createUC6SummaryItem('Slots', status.slot_count));
+      summary.append(createUC6SummaryItem('Provider 생성', status.generated_slot_count));
+      summary.append(createUC6SummaryItem('Grounded fallback', status.private_fallback_slot_count));
+      summary.append(createUC6SummaryItem('Source batches', status.source_generation_batch_count));
+      summary.append(createUC6SummaryItem('Provider calls', status.provider_call_count));
+      summary.append(createUC6SummaryItem('완료 상태', status.render_state));
+    } else {
+      summary.append(createUC6SummaryItem('데이터 패키지', status.bound_package.title));
+    }
     summary.append(createUC6SummaryItem('검토', status.review_state));
     summary.append(createUC6SummaryItem('게시', status.publication_state));
     card.append(summary);
+    if (isPublishedScenarioRender && status.private_fallback_slot_count > 0) {
+      card.append(createUc6Node('p', 'uc6-stage-message', `Source Context에서 사용할 수 없었던 ${status.private_fallback_slot_count}개 필드는 검증된 원본/템플릿 fallback을 유지했습니다. 생성은 정상 완료되었습니다.`));
+    }
     const pdfCapability = uc6State.reviewArtifacts?.artifacts?.find((artifact) => artifact.alias === 'final_render_output_pdf');
     if (uc6State.reviewArtifactsStatus === 'ready' && pdfCapability?.actions?.view?.available) {
       const shell = createUc6Node('div', 'uc6-a8f-viewer-shell');
@@ -8029,13 +8275,18 @@ Customer: Thank you. Goodbye.`
     const card = createUc6Node('section', 'uc6-stage-card');
     card.append(createUc6Node('h2', '', '문서 생성 진행 중'));
     card.append(createUc6Node('p', 'uc6-stage-copy', uc6State.flowLane === 'asset_render'
-      ? '게시 Asset의 원본 visual mold와 authoritative lineage에 선택한 databag을 적용하고 있습니다.'
+      ? uc6State.assetSourceLane === 'published_scenario_family'
+        ? '게시 Scenario Family의 source context로 Provider Slot을 생성한 뒤 PPTX와 PDF를 렌더하고 있습니다.'
+        : '게시 Asset의 원본 visual mold와 authoritative lineage에 선택한 databag을 적용하고 있습니다.'
       : uc6State.freshSyntheticExpected
         ? '서버에 고정된 합성 샘플 컨텍스트로 PPTX 및 PDF 산출물을 생성하고 있습니다.'
         : '선택한 데이터 패키지로 PPTX 및 PDF 산출물을 생성하고 있습니다.'));
 
     const facts = createUc6Node('div', 'uc6-compact-facts');
     if (uc6State.source?.filename) facts.append(createUC6SummaryItem('파일명', uc6State.source.filename));
+    if (uc6State.assetSourceLane === 'published_scenario_family' && uc6State.selectedPublishedScenarioKey) {
+      facts.append(createUC6SummaryItem('시나리오', uc6State.selectedPublishedScenarioKey));
+    }
     if (uc6State.selectedPackageId) facts.append(createUC6SummaryItem('패키지 ID', uc6State.selectedPackageId));
     if (uc6State.selectedPackageVersion) facts.append(createUC6SummaryItem('패키지 버전', uc6State.selectedPackageVersion));
     facts.append(createUC6SummaryItem('상태', UC6_STATE_LABELS[uc6State.jobState] || uc6State.jobState));
@@ -8090,7 +8341,9 @@ Customer: Thank you. Goodbye.`
 
     const actions = createUc6Node('div', 'uc6-action-row');
     if (uc6State.flowLane === 'asset_render') {
-      const hasSelection = !!uc6State.selectedAssetId && !!uc6State.selectedPackageId && !!uc6State.selectedPackageVersion;
+      const hasSelection = uc6State.assetSourceLane === 'published_scenario_family'
+        ? !!uc6State.selectedAssetId && !!uc6State.selectedPublishedScenarioFamilyId && !!uc6State.selectedPublishedScenarioKey && !!uc6State.linkedScenarioFamily
+        : !!uc6State.selectedAssetId && !!uc6State.selectedPackageId && !!uc6State.selectedPackageVersion;
       actions.append(createUC6ActionButton('uc6-retryRenderBtn', '같은 Asset으로 다시 생성', 'btn btn-primary', !isUc6Authorized() || !hasSelection || uc6State.operationInFlight));
       actions.append(createUC6ActionButton('uc6-restartAssetRenderBtn', 'Asset 선택으로 돌아가기', 'btn btn-outline', uc6State.operationInFlight));
     } else if (uc6State.freshSyntheticExpected) {
@@ -8553,7 +8806,13 @@ Customer: Thank you. Goodbye.`
     if (uc6State.jobState) rows.push(['현재 상태', UC6_STATE_LABELS[uc6State.jobState] || uc6State.jobState]);
     if (uc6State.flowLane === 'asset_render') {
       if (uc6State.selectedAssetId) rows.push(['Reusable Asset', uc6State.selectedAssetId]);
-      const packageTitle = uc6State.renderStatus?.bound_package?.title || uc6State.assetPackageOptions?.packages?.find((pkg) => pkg.package_id === uc6State.selectedPackageId && pkg.package_version === uc6State.selectedPackageVersion)?.title || '';
+      if (uc6State.assetSourceLane === 'published_scenario_family') {
+        const scenario = uc6State.linkedScenarioFamily?.scenario_options?.find((option) => option.scenario_key === uc6State.selectedPublishedScenarioKey);
+        rows.push(['Source Context', 'Linked Published Scenario Family']);
+        if (uc6State.selectedPublishedScenarioFamilyId) rows.push(['Scenario Family', uc6State.selectedPublishedScenarioFamilyId]);
+        if (uc6State.selectedPublishedScenarioKey) rows.push(['선택 시나리오', scenario?.label || uc6State.selectedPublishedScenarioKey]);
+      }
+      const packageTitle = uc6State.renderStatus?.bound_package?.title || (uc6State.assetSourceLane === 'static_package' ? uc6State.assetPackageOptions?.packages?.find((pkg) => pkg.package_id === uc6State.selectedPackageId && pkg.package_version === uc6State.selectedPackageVersion)?.title : '') || '';
       if (packageTitle) rows.push(['데이터 패키지', packageTitle]);
       if (uc6State.selectedPackageId) rows.push(['선택 패키지', `${uc6State.selectedPackageId}:${uc6State.selectedPackageVersion}`]);
       if (uc6State.renderStatus) {
@@ -8938,8 +9197,23 @@ Customer: Thank you. Goodbye.`
       else if (target.id === 'uc6-useAssetLaneBtn') switchUC6FlowLane('asset_render');
       else if (target.id === 'uc6-refreshAssetCatalogBtn') loadUC6ReusableAssetCatalog();
       else if (target.id === 'uc6-refreshAssetPackagesBtn') loadUC6ReusableAssetPackages();
-      else if (target.id === 'uc6-changeAssetBtn') { uc6State.selectedAssetId = ''; uc6State.selectedPackageId = ''; uc6State.selectedPackageVersion = ''; uc6State.assetPackageOptions = null; saveUC6LocalState(); renderUC6All(); }
+      else if (target.id === 'uc6-refreshLinkedScenarioFamilyBtn') loadUC6PublishedAssetLinkedScenarioFamily();
+      else if (target.id === 'uc6-changeAssetBtn') {
+        uc6State.selectedAssetId = '';
+        uc6State.selectedPackageId = '';
+        uc6State.selectedPackageVersion = '';
+        uc6State.assetPackageOptions = null;
+        uc6State.assetSourceLane = 'static_package';
+        uc6State.linkedScenarioFamily = null;
+        uc6State.linkedScenarioFamilyStatus = 'idle';
+        uc6State.linkedScenarioFamilyMessage = '';
+        uc6State.selectedPublishedScenarioFamilyId = '';
+        uc6State.selectedPublishedScenarioKey = '';
+        saveUC6LocalState();
+        renderUC6All();
+      }
       else if (target.id === 'uc6-submitAssetRenderBtn') submitUC6ReusableAssetRender();
+      else if (target.id === 'uc6-submitPublishedScenarioRenderBtn') submitUC6PublishedAssetScenarioRender();
       else if (target.id === 'uc6-restartAssetRenderBtn') restartUC6AssetRenderSelection();
       else if (target.id === 'uc6-uploadBtn') uploadUC6PptxJob();
       else if (target.dataset.uc6SyntheticScenario) bindUC6FreshSyntheticScenario(target.dataset.uc6SyntheticScenario);
@@ -8951,8 +9225,14 @@ Customer: Thank you. Goodbye.`
       else if (target.id === 'uc6-submitRenderBtn') submitUC6DummyRender(false);
       else if (target.id === 'uc6-retryRenderBtn') {
         if (uc6State.flowLane === 'asset_render') {
-          restartUC6AssetRenderSelection();
-          submitUC6ReusableAssetRender();
+          const sourceLane = uc6State.assetSourceLane;
+          if (sourceLane === 'published_scenario_family') {
+            restartUC6AssetRenderSelection();
+            submitUC6PublishedAssetScenarioRender();
+          } else {
+            restartUC6AssetRenderSelection();
+            submitUC6ReusableAssetRender();
+          }
         } else {
           submitUC6DummyRender(true);
         }
