@@ -1778,6 +1778,67 @@ function projectUc6R6gBoundPackage(value) {
   };
 }
 
+function projectUc6R6gSubmissionLinkedFamily(value, expectedFamilyId, expectedScenarioKey) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_published_scenario_render_submission_linked_family');
+  const allowed = new Set([
+    'published_scenario_family_id', 'synthetic_scenario_family_id', 'scenario_count',
+    'scenario_family_artifact_sha256', 'publication_manifest_sha256', 'link_identity', 'scenario_key'
+  ]);
+  assertUc6AllowedFields(value, allowed, 'invalid_published_scenario_render_submission_linked_family_fields');
+  for (const field of ['published_scenario_family_id', 'synthetic_scenario_family_id', 'link_identity']) {
+    if (typeof value[field] !== 'string' || !BOUNDED_ID_PATTERN.test(value[field])) {
+      throw new TypeError(`invalid_published_scenario_render_submission_${field}`);
+    }
+  }
+  if (value.published_scenario_family_id !== expectedFamilyId) {
+    throw new TypeError('published_scenario_render_submission_family_mismatch');
+  }
+  if (value.scenario_count !== 3) throw new TypeError('invalid_published_scenario_render_submission_scenario_count');
+  if (!UC6_R6G_SCENARIO_KEYS.includes(value.scenario_key) || value.scenario_key !== expectedScenarioKey) {
+    throw new TypeError('published_scenario_render_submission_scenario_mismatch');
+  }
+  for (const field of ['scenario_family_artifact_sha256', 'publication_manifest_sha256']) {
+    if (typeof value[field] !== 'string' || !SHA256_PATTERN.test(value[field])) {
+      throw new TypeError(`invalid_published_scenario_render_submission_${field}`);
+    }
+  }
+  return {
+    published_scenario_family_id: value.published_scenario_family_id,
+    synthetic_scenario_family_id: value.synthetic_scenario_family_id,
+    scenario_count: 3,
+    scenario_family_artifact_sha256: value.scenario_family_artifact_sha256,
+    publication_manifest_sha256: value.publication_manifest_sha256,
+    link_identity: value.link_identity,
+    scenario_key: value.scenario_key
+  };
+}
+
+function projectUc6R6gSubmissionBoundPackage(value) {
+  if (!isPlainObject(value)) throw new TypeError('invalid_published_scenario_render_submission_bound_package');
+  const allowed = new Set(['package_id', 'package_version', 'title', 'source_context_bundle_sha256']);
+  assertUc6AllowedFields(value, allowed, 'invalid_published_scenario_render_submission_bound_package_fields');
+  if (typeof value.package_id !== 'string' || !BOUNDED_ID_PATTERN.test(value.package_id)) {
+    throw new TypeError('invalid_published_scenario_render_submission_package_id');
+  }
+  const packageVersion = validateUc6SafePublicText(value.package_version, {
+    maxLength: 128,
+    code: 'invalid_published_scenario_render_submission_package_version'
+  });
+  const title = validateUc6SafePublicText(value.title, {
+    maxLength: 256,
+    code: 'invalid_published_scenario_render_submission_package_title'
+  });
+  if (typeof value.source_context_bundle_sha256 !== 'string' || !SHA256_PATTERN.test(value.source_context_bundle_sha256)) {
+    throw new TypeError('invalid_published_scenario_render_submission_package_sha');
+  }
+  return {
+    package_id: value.package_id,
+    package_version: packageVersion,
+    title,
+    source_context_bundle_sha256: value.source_context_bundle_sha256
+  };
+}
+
 export function projectUc6PublishedAssetScenarioRenderSubmission(payload, options = {}) {
   if (!isPlainObject(payload)) throw new TypeError('invalid_published_scenario_render_submission_payload');
   const allowed = new Set([
@@ -1787,18 +1848,28 @@ export function projectUc6PublishedAssetScenarioRenderSubmission(payload, option
   ]);
   assertUc6AllowedFields(payload, allowed, 'invalid_published_scenario_render_submission_fields');
   const expectedAssetId = normalizeUc6ReusableAssetId(options.expectedAssetId);
+  if (typeof options.expectedPublishedScenarioFamilyId !== 'string' || !BOUNDED_ID_PATTERN.test(options.expectedPublishedScenarioFamilyId)) {
+    throw new TypeError('invalid_expected_published_scenario_family_id');
+  }
+  if (!UC6_R6G_SCENARIO_KEYS.includes(options.expectedScenarioKey)) {
+    throw new TypeError('invalid_expected_published_scenario_key');
+  }
   if (payload.schema_version !== UC6_R6G_SUBMISSION_SCHEMA) throw new TypeError('invalid_published_scenario_render_submission_schema');
   const jobId = normalizeUc6JobId(payload.job_id);
   if (payload.task_type !== UC6_R6G_TASK_TYPE) throw new TypeError('invalid_published_scenario_render_submission_task_type');
   if (!Number.isSafeInteger(payload.task_id) || payload.task_id <= 0) throw new TypeError('invalid_published_scenario_render_submission_task_id');
-  if (!KNOWN_QUEUE_STATUSES.has(payload.queue_status) || payload.state !== QUEUE_STATE_MAP[payload.queue_status]) {
+  if (!KNOWN_QUEUE_STATUSES.has(payload.queue_status) || payload.queue_status !== 'pending' || payload.state !== 'render_queued') {
     throw new TypeError('invalid_published_scenario_render_submission_queue_state');
   }
   if (typeof payload.created !== 'boolean') throw new TypeError('invalid_published_scenario_render_submission_created');
   if (payload.public_safety !== 'PASS') throw new TypeError('invalid_published_scenario_render_submission_public_safety');
-  const asset = projectUc6ReusableAssetRow(payload.asset);
+  const asset = projectUc6R6gDiscoveryAsset(payload.asset);
   if (asset.asset_id !== expectedAssetId) throw new TypeError('published_scenario_render_submission_asset_mismatch');
-  const linkedScenarioFamily = projectUc6R6gLinkedFamilyIdentity(payload.linked_scenario_family, { requireScenarioKey: true });
+  const linkedScenarioFamily = projectUc6R6gSubmissionLinkedFamily(
+    payload.linked_scenario_family,
+    options.expectedPublishedScenarioFamilyId,
+    options.expectedScenarioKey
+  );
   return {
     schema_version: payload.schema_version,
     job_id: jobId,
@@ -1809,7 +1880,7 @@ export function projectUc6PublishedAssetScenarioRenderSubmission(payload, option
     state: payload.state,
     asset,
     linked_scenario_family: linkedScenarioFamily,
-    bound_package: projectUc6R6gBoundPackage(payload.bound_package),
+    bound_package: projectUc6R6gSubmissionBoundPackage(payload.bound_package),
     control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
     public_safety: payload.public_safety
   };

@@ -1337,7 +1337,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6g-b2-linked-family-schema-alignment-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2352,7 +2352,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('app.uc6-r6g-b2-linked-family-schema-alignment-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -3893,6 +3893,7 @@ const R6G_FAMILY_ID = 'published_scenario_family__95e6dc2b2aa7044913c50a0b6355d2
 const R6G_SYNTHETIC_FAMILY_ID = 'fresh_synthetic_8290144ea521975465db67c7a46aca9b';
 const R6G_LINK_ID = 'reusable_asset_scenario_family_link__eeff53ae3e65cea12e9d61e31af56f2bad1580d5';
 const R6G_JOB_ID = 'fd_uc6_admin_20260814T033600Z_193c4b04d1a3b734';
+const R6G_LIVE_SUBMISSION_JOB_ID = 'fd_uc6_admin_20260814T080241Z_23fb4ca7b0489345';
 const R6G_SOURCE_SHA = 'c7f6aa39870873fce264bafe69c452741f3f08044835f99e504ddf2b02022b08';
 
 function r6gAssetRow(overrides = {}) {
@@ -3966,6 +3967,43 @@ function r6gBoundPackage(overrides = {}) {
   };
 }
 
+function r6gLiveSubmission(overrides = {}) {
+  return {
+    schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_submission_v1',
+    job_id: R6G_LIVE_SUBMISSION_JOB_ID,
+    task_type: 'fetchdoc_browser_admin_uc6_render_published_asset_scenario',
+    task_id: 2497,
+    queue_status: 'pending',
+    created: true,
+    state: 'render_queued',
+    asset: { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA },
+    linked_scenario_family: {
+      published_scenario_family_id: R6G_FAMILY_ID,
+      synthetic_scenario_family_id: R6G_SYNTHETIC_FAMILY_ID,
+      scenario_count: 3,
+      scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3',
+      publication_manifest_sha256: '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12',
+      link_identity: R6G_LINK_ID,
+      scenario_key: 'scenario_002'
+    },
+    bound_package: {
+      package_id: 'fresh_synthetic_scenario_002',
+      package_version: 'v1',
+      title: 'Airport Business Hotel Efficiency Program',
+      source_context_bundle_sha256: '35b132ed10aefe09dedd9f0463c4697db963731cb1b6e0ff3890de941d804c9a'
+    },
+    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
+    public_safety: 'PASS',
+    ...overrides
+  };
+}
+
+const R6G_SUBMISSION_OPTIONS = Object.freeze({
+  expectedAssetId: R6G_ASSET_ID,
+  expectedPublishedScenarioFamilyId: R6G_FAMILY_ID,
+  expectedScenarioKey: 'scenario_002'
+});
+
 function r6gCompletedResult(overrides = {}) {
   return {
     schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_result_v1',
@@ -3986,8 +4024,8 @@ function r6gCompletedResult(overrides = {}) {
     provider_call_count: 17,
     generation_unit_count: 28,
     slot_count: 59,
-    generated_slot_count: 45,
-    private_fallback_slot_count: 14,
+    generated_slot_count: 44,
+    private_fallback_slot_count: 15,
     active_canonical_source_groups: ['account_context', 'business_metrics'],
     render_state: 'render_completed',
     review_state: 'not_required',
@@ -4094,26 +4132,59 @@ test('R6G-B render command accepts only the authoritative family ID and one exac
   }
 });
 
-test('R6G-B submission projector validates queue, task, Asset, family, and selected scenario identity', () => {
-  const submission = {
-    schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_submission_v1',
-    job_id: R6G_JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_render_published_asset_scenario',
-    task_id: 2468,
-    queue_status: 'pending',
-    created: true,
-    state: 'render_queued',
-    asset: r6gAssetRow(),
-    linked_scenario_family: r6gLinkedIdentity({ scenario_key: 'scenario_001' }),
-    bound_package: r6gBoundPackage(),
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS'
-  };
-  const projected = projectUc6PublishedAssetScenarioRenderSubmission(submission, { expectedAssetId: R6G_ASSET_ID });
-  assert.equal(projected.job_id, R6G_JOB_ID);
-  assert.equal(projected.linked_scenario_family.scenario_key, 'scenario_001');
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission({ ...submission, task_type: 'fetchdoc_browser_admin_uc6_render_reusable_asset' }, { expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission({ ...submission, state: 'render_running' }, { expectedAssetId: R6G_ASSET_ID }));
+test('R6G-B3 exact live 202 submission projects minimal Asset, selected family, scenario, and server package', () => {
+  const submission = r6gLiveSubmission();
+  const projected = projectUc6PublishedAssetScenarioRenderSubmission(submission, R6G_SUBMISSION_OPTIONS);
+  assert.equal(projected.job_id, R6G_LIVE_SUBMISSION_JOB_ID);
+  assert.equal(projected.task_id, 2497);
+  assert.equal(projected.queue_status, 'pending');
+  assert.equal(projected.created, true);
+  assert.equal(projected.state, 'render_queued');
+  assert.deepEqual(projected.asset, { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA });
+  assert.equal(projected.linked_scenario_family.scenario_key, 'scenario_002');
+  assert.equal(projected.linked_scenario_family.link_identity, R6G_LINK_ID);
+  assert.deepEqual(projected.bound_package, submission.bound_package);
+
+  for (const invalid of [
+    { schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_submission_v0' },
+    { task_type: 'fetchdoc_browser_admin_uc6_render_reusable_asset' },
+    { task_id: 0 },
+    { task_id: 1.5 },
+    { queue_status: 'processing' },
+    { created: 'true' },
+    { state: 'render_running' },
+    { public_safety: 'FAIL' },
+    { asset: { asset_id: A8H_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA } }
+  ]) {
+    assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(r6gLiveSubmission(invalid), R6G_SUBMISSION_OPTIONS));
+  }
+
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
+    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, published_scenario_family_id: 'published_scenario_family__other' } }),
+    R6G_SUBMISSION_OPTIONS
+  ));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
+    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, scenario_key: 'scenario_001' } }),
+    R6G_SUBMISSION_OPTIONS
+  ));
+  const inventedLinkAlias = { ...submission.linked_scenario_family, immutable_link_identity: R6G_LINK_ID };
+  delete inventedLinkAlias.link_identity;
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
+    r6gLiveSubmission({ linked_scenario_family: inventedLinkAlias }),
+    R6G_SUBMISSION_OPTIONS
+  ));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
+    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, scenario_count: 2 } }),
+    R6G_SUBMISSION_OPTIONS
+  ));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
+    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, scenario_family_artifact_sha256: 'not-a-sha' } }),
+    R6G_SUBMISSION_OPTIONS
+  ));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
+    r6gLiveSubmission({ bound_package: { ...submission.bound_package, label: submission.bound_package.title } }),
+    R6G_SUBMISSION_OPTIONS
+  ));
 });
 
 test('R6G-B completed live-shape result preserves dynamic metrics and treats grounded fallback as success', () => {
@@ -4121,14 +4192,14 @@ test('R6G-B completed live-shape result preserves dynamic metrics and treats gro
   assert.equal(projected.source_generation_batch_count, 17);
   assert.equal(projected.provider_call_count, 17);
   assert.equal(projected.generation_unit_count, 28);
-  assert.equal(projected.generated_slot_count, 45);
-  assert.equal(projected.private_fallback_slot_count, 14);
+  assert.equal(projected.generated_slot_count, 44);
+  assert.equal(projected.private_fallback_slot_count, 15);
   assert.equal(projected.slot_count, 59);
   assert.equal(projected.render_state, 'render_completed');
   assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_result_v1' }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
   assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ blocking_issue_count: 1 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
   assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ red_physical_mutation_failure_count: 1 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ generated_slot_count: 46 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
+  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ generated_slot_count: 45 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
 });
 
 test('R6G-B job projector reuses the shared job envelope while A8G and R6G results remain lane-strict', () => {
@@ -4141,11 +4212,11 @@ test('R6G-B job projector reuses the shared job envelope while A8G and R6G resul
   };
   const projected = projectUc6PublishedAssetScenarioRenderJobStatus(payload, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID });
   assert.equal(projected.state, 'render_completed');
-  assert.equal(projected.private_fallback_slot_count, 14);
+  assert.equal(projected.private_fallback_slot_count, 15);
   assert.throws(() => projectUc6ReusableAssetRenderJobStatus(payload, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
 });
 
-test('R6G-B API uses Firebase Bearer, exact GET/POST routes, and single-attempt ambiguous mutation handling', async () => {
+test('R6G-B3 API keeps exact two-field POST, Firebase Bearer, and single-attempt mutation safety', async () => {
   const calls = [];
   const family = projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection(), { expectedAssetId: R6G_ASSET_ID });
   const api = createUc6BrowserAdminApi({
@@ -4159,7 +4230,7 @@ test('R6G-B API uses Firebase Bearer, exact GET/POST routes, and single-attempt 
   await api.getPublishedAssetLinkedScenarioFamily(R6G_ASSET_ID);
   await api.submitPublishedAssetScenarioRender(R6G_ASSET_ID, {
     published_scenario_family_id: R6G_FAMILY_ID,
-    scenario_key: 'scenario_001'
+    scenario_key: 'scenario_002'
   }, { linkedFamilyProjection: family });
   await api.getRenderArtifactCapabilities(R6G_JOB_ID);
   assert.deepEqual(calls.map((call) => new URL(call.url).pathname), [
@@ -4167,7 +4238,8 @@ test('R6G-B API uses Firebase Bearer, exact GET/POST routes, and single-attempt 
     `/fetchdoc/browser-admin/uc6/reusable-assets/${R6G_ASSET_ID}/published-scenario-renders`,
     `/fetchdoc/browser-admin/uc6/jobs/${R6G_JOB_ID}/render-artifact-capabilities`
   ]);
-  assert.deepEqual(JSON.parse(calls[1].init.body), { published_scenario_family_id: R6G_FAMILY_ID, scenario_key: 'scenario_001' });
+  assert.deepEqual(JSON.parse(calls[1].init.body), { published_scenario_family_id: R6G_FAMILY_ID, scenario_key: 'scenario_002' });
+  assert.equal(calls.filter((call) => call.init.method === 'POST').length, 1);
   assert.equal(calls.every((call) => call.init.headers.Authorization === 'Bearer firebase-r6g-token'), true);
   assert.equal(calls.every((call) => call.init.headers['X-Internal-Token'] === undefined), true);
 
@@ -4184,7 +4256,7 @@ test('R6G-B API uses Firebase Bearer, exact GET/POST routes, and single-attempt 
   assert.equal(attempts, 1);
 });
 
-test('R6G-B2 app reads labels from nested scenarios while preserving submission, polling, and layout lanes', () => {
+test('R6G-B3 app retains accepted job identity, locks duplicate submission, and starts the shared poller', () => {
   const app = readSource('../public/app.js');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   const css = readSource('../public/style.css');
@@ -4193,7 +4265,7 @@ test('R6G-B2 app reads labels from nested scenarios while preserving submission,
   const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-r6g-b2-linked-family-schema-alignment-2026-08-14-v1"), true);
+  assert.equal(app.includes("app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1"), true);
   assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
   assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
   assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
@@ -4204,6 +4276,14 @@ test('R6G-B2 app reads labels from nested scenarios while preserving submission,
   assert.equal(css.includes('#view-uc6 .uc6-r6g-source-choices'), true);
   assert.equal(submit.includes('submitPublishedAssetScenarioRender'), true);
   assert.equal((submit.match(/submitPublishedAssetScenarioRender/g) || []).length, 1);
+  assert.equal(submit.includes('uc6State.operationInFlight || uc6State.jobId || uc6State.assetSubmissionAmbiguous'), true);
+  assert.equal(submit.includes('expectedPublishedScenarioFamilyId: uc6State.selectedPublishedScenarioFamilyId'), true);
+  assert.equal(submit.includes('expectedScenarioKey: uc6State.selectedPublishedScenarioKey'), true);
+  assert.ok(submit.indexOf('uc6State.jobId = submitted.job_id') < submit.indexOf('startUC6Polling()'));
+  assert.equal((submit.match(/startUC6Polling\(\)/g) || []).length, 1);
+  assert.equal(submit.includes('mutationResponseReceived = true'), true);
+  assert.equal(submit.includes('mutationResponseReceived || error?.name'), true);
+  assert.equal(renderChoice.includes('!uc6State.assetSubmissionAmbiguous'), true);
   assert.equal(submit.includes('package_id:'), false);
   assert.equal(submit.includes('source_context_bundle_sha256'), false);
   assert.equal(submit.includes('자동 재전송하지 않습니다'), true);

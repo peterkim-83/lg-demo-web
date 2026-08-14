@@ -63,7 +63,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6g-b2-linked-family-schema-alignment-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-r6g-b3-submission-schema-alignment-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -6430,7 +6430,7 @@ Customer: Thank you. Goodbye.`
   }
 
   async function submitUC6PublishedAssetScenarioRender() {
-    if (!isUc6Authorized() || uc6State.operationInFlight || uc6State.jobId || !uc6State.selectedAssetId) return;
+    if (!isUc6Authorized() || uc6State.operationInFlight || uc6State.jobId || uc6State.assetSubmissionAmbiguous || !uc6State.selectedAssetId) return;
     const family = uc6State.linkedScenarioFamily;
     if (
       uc6State.linkedScenarioFamilyStatus !== 'ready'
@@ -6448,6 +6448,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = '게시 Scenario Family의 선택한 source-data 상황으로 새 문서 생성을 요청하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
+    let mutationResponseReceived = false;
     try {
       const raw = await uc6State.api.submitPublishedAssetScenarioRender(
         uc6State.selectedAssetId,
@@ -6457,12 +6458,16 @@ Customer: Thank you. Goodbye.`
         },
         { linkedFamilyProjection: family, signal: controller.signal }
       );
-      const submitted = projectUc6PublishedAssetScenarioRenderSubmission(raw, { expectedAssetId: uc6State.selectedAssetId });
+      mutationResponseReceived = true;
+      const submitted = projectUc6PublishedAssetScenarioRenderSubmission(raw, {
+        expectedAssetId: uc6State.selectedAssetId,
+        expectedPublishedScenarioFamilyId: uc6State.selectedPublishedScenarioFamilyId,
+        expectedScenarioKey: uc6State.selectedPublishedScenarioKey
+      });
       uc6State.jobId = submitted.job_id;
       uc6State.jobState = submitted.state;
       uc6State.source = {
-        sha256: submitted.asset.source_pptx_sha256,
-        slide_count: submitted.asset.slide_count
+        sha256: submitted.asset.source_pptx_sha256
       };
       uc6State.renderStatus = null;
       uc6State.selectedPublishedScenarioFamilyId = submitted.linked_scenario_family.published_scenario_family_id;
@@ -6476,10 +6481,12 @@ Customer: Thank you. Goodbye.`
       if (submitted.state === 'render_queued' || submitted.state === 'render_running') startUC6Polling();
       else await refreshUC6JobStatus();
     } catch (error) {
-      if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
+      if (mutationResponseReceived || error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
         uc6State.assetSubmissionAmbiguous = true;
         uc6State.jobState = 'render_unknown';
-        uc6State.stageMessage = '동적 생성 요청의 접수 여부를 확인할 수 없습니다. Provider 생성을 자동 재전송하지 않습니다.';
+        uc6State.stageMessage = mutationResponseReceived
+          ? '동적 생성 요청은 응답했지만 접수 정보를 안전하게 확인할 수 없습니다. Provider 생성을 자동 재전송하지 않습니다.'
+          : '동적 생성 요청의 접수 여부를 확인할 수 없습니다. Provider 생성을 자동 재전송하지 않습니다.';
         setUC6LiveMessage(uc6State.stageMessage);
         saveUC6LocalState();
         renderUC6All();
@@ -7873,6 +7880,7 @@ Customer: Thank you. Goodbye.`
       const actions = createUc6Node('div', 'uc6-action-row');
       const canSubmit = uc6State.assetSourceLane === 'published_scenario_family'
         && linked.linked_scenario_family.scenarios.some((scenario) => scenario.scenario_key === uc6State.selectedPublishedScenarioKey)
+        && !uc6State.assetSubmissionAmbiguous
         && !uc6State.operationInFlight;
       actions.append(createUC6ActionButton('uc6-submitPublishedScenarioRenderBtn', '선택한 시나리오로 새 문서 생성', 'btn btn-primary', !canSubmit));
       scenarioLane.append(actions);
