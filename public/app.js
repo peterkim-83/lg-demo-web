@@ -63,7 +63,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5115,7 +5115,11 @@ Customer: Thank you. Goodbye.`
   // ==========================================
   const UC6_STORAGE_KEY = 'fetchdoc.uc6.browser_admin_control_plane.v1';
   const UC6_FIREBASE_SDK_VERSION = '10.14.1';
-  const UC6_POLL_INTERVAL_MS = 3500;
+  const UC6_POLL_DELAY_SEQUENCES_MS = Object.freeze({
+    long_running: Object.freeze([5000, 8000, 12000, 15000]),
+    render: Object.freeze([3500]),
+    ambiguous_render: Object.freeze([3500, 5000, 8000])
+  });
   const UC6_MAX_TRANSIENT_ERRORS = 3;
   const UC6_AUTHORIZED_LABEL = '승인된 FetchDoc 관리자';
   const UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA = 'uc6_a9_0g2a_r6d2b_browser_admin_dummy_databag_package_family_options_v1';
@@ -5264,6 +5268,11 @@ Customer: Thank you. Goodbye.`
     lastRenderedStage: '',
     pollingTimer: null,
     pollingAbortController: null,
+    pollingSequence: 0,
+    pollingJobId: '',
+    pollingStageKey: '',
+    pollAttempt: 0,
+    activePollingRequestSequence: 0,
     operationAbortController: null,
     finalDeliveryAbortController: null,
     reviewSurfaceAbortController: null,
@@ -5619,9 +5628,25 @@ Customer: Thank you. Goodbye.`
     uc6State.finalDeliveryRequestActive = false;
   }
 
-  function stopUC6Polling() {
+  function clearUC6PollingTimer() {
     if (uc6State.pollingTimer) clearTimeout(uc6State.pollingTimer);
     uc6State.pollingTimer = null;
+  }
+
+  function resetUC6PollingBackoff() {
+    uc6State.pollingJobId = '';
+    uc6State.pollingStageKey = '';
+    uc6State.pollAttempt = 0;
+  }
+
+  function stopUC6Polling(options = {}) {
+    clearUC6PollingTimer();
+    if (options.abortRequest !== false && uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
+    uc6State.pollingAbortController = null;
+    uc6State.pollingSequence += 1;
+    uc6State.activePollingRequestSequence = 0;
+    uc6State.statusRequestActive = false;
+    resetUC6PollingBackoff();
   }
 
   function resetUC6JobState(clearStorage = false) {
@@ -6745,21 +6770,6 @@ Customer: Thank you. Goodbye.`
     }
   }
 
-  function startUC6Polling() {
-    stopUC6Polling();
-    if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
-    uc6State.pollingAbortController = new AbortController();
-    scheduleUC6Poll(0);
-  }
-
-  function scheduleUC6Poll(delay = UC6_POLL_INTERVAL_MS) {
-    stopUC6Polling();
-    if (!isUc6Authorized() || !uc6State.jobId) return;
-    uc6State.pollingTimer = setTimeout(() => {
-      pollUC6JobStatus().catch(() => {});
-    }, delay);
-  }
-
   function isUC6FreshSourceReconciliationPending() {
     return uc6State.flowLane === 'dummy_render'
       && uc6State.freshOnboardingExpected === true
@@ -6809,15 +6819,113 @@ Customer: Thank you. Goodbye.`
         : mapped.pollable);
   }
 
-  async function pollUC6JobStatus() {
-    if (uc6State.statusRequestActive || !uc6State.pollingAbortController) return;
+  function getUC6PollingClass() {
+    if (isUC6FreshRenderSubmissionReconciliationPending()) return 'ambiguous_render';
+    if (isUC6FreshExecutionTerminal()) return 'terminal';
+    const mapped = mapUc6StateToView(uc6State.jobState);
+    if (mapped.renderPollable) return 'render';
+    if (
+      isUC6FreshSourceReconciliationPending()
+      || isUC6FreshSyntheticPollingPending()
+      || mapped.onboardingPollable
+      || mapped.syntheticScenariosPollable
+      || mapped.pollable
+    ) return 'long_running';
+    if (
+      mapped.terminal
+      || uc6State.jobState === 'render_completed'
+      || uc6State.jobState === 'failed'
+      || uc6State.jobState === 'onboarding_blocked'
+      || uc6State.jobState === 'synthetic_scenarios_failed'
+    ) return 'terminal';
+    return 'idle';
+  }
+
+  function getUC6PollingStageKey(pollingClass = getUC6PollingClass()) {
+    return [
+      uc6State.jobId,
+      pollingClass,
+      uc6State.jobState,
+      uc6State.syntheticGenerationState
+    ].join(':');
+  }
+
+  function getUC6PollingDelay({ pollingClass, pollAttempt } = {}) {
+    const sequence = UC6_POLL_DELAY_SEQUENCES_MS[pollingClass];
+    if (!sequence) return null;
+    const normalizedAttempt = Number.isInteger(pollAttempt) && pollAttempt > 0 ? pollAttempt : 0;
+    return sequence[Math.min(normalizedAttempt, sequence.length - 1)];
+  }
+
+  function getUC6NextPollingDelay({ advance = true } = {}) {
+    const pollingClass = getUC6PollingClass();
+    const stageKey = getUC6PollingStageKey(pollingClass);
+    if (pollingClass === 'terminal' || pollingClass === 'idle') return null;
+    if (uc6State.pollingJobId !== uc6State.jobId || uc6State.pollingStageKey !== stageKey) {
+      uc6State.pollingJobId = uc6State.jobId;
+      uc6State.pollingStageKey = stageKey;
+      uc6State.pollAttempt = 0;
+    }
+    const delay = getUC6PollingDelay({ pollingClass, pollAttempt: uc6State.pollAttempt });
+    if (advance) {
+      const maximumAttempt = UC6_POLL_DELAY_SEQUENCES_MS[pollingClass].length - 1;
+      uc6State.pollAttempt = Math.min(uc6State.pollAttempt + 1, maximumAttempt);
+    }
+    return delay;
+  }
+
+  function isUC6PollingContextCurrent(context) {
+    return Boolean(
+      context
+      && context.sequence === uc6State.pollingSequence
+      && context.jobId === uc6State.pollingJobId
+      && context.jobId === uc6State.jobId
+      && uc6State.pollingAbortController
+    );
+  }
+
+  function startUC6Polling(options = {}) {
+    stopUC6Polling();
+    if (!isUc6Authorized() || !uc6State.jobId || !isUC6JobPollingPending()) return null;
+    uc6State.pollingAbortController = new AbortController();
+    uc6State.pollingJobId = uc6State.jobId;
+    uc6State.pollingStageKey = getUC6PollingStageKey();
+    uc6State.pollAttempt = 0;
+    const context = { sequence: uc6State.pollingSequence, jobId: uc6State.jobId };
+    if (options.scheduleImmediately !== false) scheduleUC6Poll(0, context);
+    return context;
+  }
+
+  function scheduleUC6Poll(delay = null, pollingContext = null) {
+    const context = pollingContext || { sequence: uc6State.pollingSequence, jobId: uc6State.pollingJobId };
+    if (!isUc6Authorized() || !isUC6PollingContextCurrent(context)) return;
+    const resolvedDelay = delay === null ? getUC6NextPollingDelay() : delay;
+    if (!Number.isFinite(resolvedDelay) || resolvedDelay < 0) return;
+    clearUC6PollingTimer();
+    uc6State.pollingTimer = setTimeout(() => {
+      uc6State.pollingTimer = null;
+      if (!isUC6PollingContextCurrent(context)) return;
+      pollUC6JobStatus(context).catch(() => {});
+    }, resolvedDelay);
+  }
+
+  async function pollUC6JobStatus(pollingContext = null) {
+    const context = pollingContext || { sequence: uc6State.pollingSequence, jobId: uc6State.pollingJobId };
+    if (!isUC6PollingContextCurrent(context) || uc6State.activePollingRequestSequence === context.sequence) return;
+    uc6State.activePollingRequestSequence = context.sequence;
     uc6State.statusRequestActive = true;
     try {
-      await refreshUC6JobStatus({ signal: uc6State.pollingAbortController.signal, fetchReview: uc6State.flowLane === 'legacy_analysis' });
+      const refreshed = await refreshUC6JobStatus({
+        signal: uc6State.pollingAbortController.signal,
+        fetchReview: uc6State.flowLane === 'legacy_analysis',
+        pollingContext: context
+      });
+      if (refreshed === false || !isUC6PollingContextCurrent(context)) return;
       uc6State.consecutivePollErrors = 0;
       if (isUC6JobPollingPending()) scheduleUC6Poll();
       else stopUC6Polling();
     } catch (error) {
+      if (!isUC6PollingContextCurrent(context)) return;
       if (handleUC6AuthorizationFailure(error)) {
         stopUC6Polling();
         return;
@@ -6831,18 +6939,30 @@ Customer: Thank you. Goodbye.`
             : '상태 확인을 잠시 중단했습니다. 수동으로 다시 시작할 수 있습니다.';
           setUC6LiveMessage(uc6State.stageMessage);
         } else {
-          scheduleUC6Poll();
+          scheduleUC6Poll(getUC6NextPollingDelay({ advance: false }), context);
         }
       }
     } finally {
-      uc6State.statusRequestActive = false;
+      if (uc6State.activePollingRequestSequence === context.sequence) {
+        uc6State.activePollingRequestSequence = 0;
+        uc6State.statusRequestActive = false;
+      }
       renderUC6All();
     }
   }
 
+  async function refreshUC6PollingNow() {
+    uc6State.consecutivePollErrors = 0;
+    const context = startUC6Polling({ scheduleImmediately: false });
+    if (!context) return;
+    await pollUC6JobStatus(context);
+  }
+
   async function refreshUC6JobStatus(options = {}) {
     if (!isUc6Authorized() || !uc6State.jobId) return;
-    const rawJob = await uc6State.api.getJob(uc6State.jobId, { signal: options.signal });
+    const requestedJobId = uc6State.jobId;
+    const rawJob = await uc6State.api.getJob(requestedJobId, { signal: options.signal });
+    if (options.pollingContext && !isUC6PollingContextCurrent(options.pollingContext)) return false;
 
     const authoritativeDummyRenderLane = rawJob
       && typeof rawJob === 'object'
@@ -6924,7 +7044,7 @@ Customer: Thank you. Goodbye.`
           : '선택한 데이터 패키지로 PPTX/PDF를 렌더하고 있습니다.';
       } else if (projected.state === 'render_completed') {
         uc6State.consecutivePollErrors = 0;
-        stopUC6Polling();
+        stopUC6Polling({ abortRequest: false });
         uc6State.stageMessage = '문서 생성이 완료되었습니다.';
       } else if (projected.state === 'failed') {
         uc6State.stageMessage = '문서 생성 작업이 실패했습니다. 자동으로 다시 요청하지 않습니다.';
@@ -6951,7 +7071,7 @@ Customer: Thank you. Goodbye.`
           publicState: projected.state,
           deliveryStatus: uc6State.reviewArtifactsStatus
         });
-        if (deliveryControl.executionTerminal) stopUC6Polling();
+        if (deliveryControl.executionTerminal) stopUC6Polling({ abortRequest: false });
         if (!deliveryControl.executionTerminal) clearUC6A8FReviewState({ keepDecisionIdentity: false });
         if (projected.state === 'render_queued') {
           uc6State.stageMessage = '샘플 문서 생성 요청이 대기열에 있습니다.';
@@ -6986,7 +7106,7 @@ Customer: Thank you. Goodbye.`
           saveUC6LocalState();
           await reconcileUC6FreshSyntheticScenarios({ signal: options.signal, allowSubmit: true });
         } else if (projected.state === 'onboarding_blocked') {
-          stopUC6Polling();
+          stopUC6Polling({ abortRequest: false });
           uc6State.packageOptions = null;
           resetUC6FreshSyntheticState();
           uc6State.stageMessage = 'Fresh onboarding을 완료할 수 없습니다. 새 PPTX를 선택하거나 작업 상태를 다시 확인하세요.';
@@ -9257,8 +9377,7 @@ Customer: Thank you. Goodbye.`
       else if (target.id === 'uc6-clearBtn') resetUC6JobState(true);
       else if (target.id === 'uc6-retryAnalysisBtn') submitUC6Analysis(true);
       else if (target.id === 'uc6-resumePollingBtn') {
-        uc6State.consecutivePollErrors = 0;
-        startUC6Polling();
+        refreshUC6PollingNow().catch(() => {});
         renderUC6All();
       } else if (target.id === 'uc6-enterDecisionBtn') {
         uc6State.decisionMode = true;

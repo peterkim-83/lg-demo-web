@@ -496,6 +496,19 @@ function executeExtractedFunction(source, name, scope = {}) {
   );
 }
 
+function createExtractedFunction(source, name, scope = {}) {
+  const entries = Object.entries(scope);
+  const extracted = extractFunctionSource(source, name);
+  const functionStart = source.indexOf(`function ${name}(`);
+  const declaration = source.slice(Math.max(0, functionStart - 6), functionStart) === 'async '
+    ? `async ${extracted}`
+    : extracted;
+  return Function(
+    ...entries.map(([key]) => key),
+    `${declaration}; return ${name};`
+  )(...entries.map(([, value]) => value));
+}
+
 test('API base validation accepts only production HTTPS and explicit loopback HTTP', () => {
   assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org'), API_BASE);
   assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org/'), API_BASE);
@@ -1337,7 +1350,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2352,7 +2365,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -2703,7 +2716,7 @@ test('R6D3 fresh source-ready reconciliation remains contextually GET-pollable a
   assert.ok(readyBranch < blockedBranch);
   assert.equal(refresh.slice(readyBranch, blockedBranch).includes('loadUC6PackageOptions'), false);
   assert.equal(refresh.slice(readyBranch, blockedBranch).includes('reconcileUC6FreshSyntheticScenarios'), true);
-  assert.equal(refresh.slice(blockedBranch, queuedRunningBranch).includes('stopUC6Polling()'), true);
+  assert.equal(refresh.slice(blockedBranch, queuedRunningBranch).includes('stopUC6Polling({ abortRequest: false })'), true);
   assert.equal(refresh.slice(blockedBranch, queuedRunningBranch).includes('loadUC6PackageOptions'), false);
 });
 
@@ -3523,7 +3536,7 @@ test('R6E-D2 completed capability failure is a bounded delivery error with expli
   assert.equal(loadFreshDelivery.includes('submitFreshSyntheticScenarioRender'), false);
   assert.equal(loadFreshDelivery.includes('startUC6Polling'), false);
 
-  assert.equal(refresh.includes('if (deliveryControl.executionTerminal) stopUC6Polling()'), true);
+  assert.equal(refresh.includes('if (deliveryControl.executionTerminal) stopUC6Polling({ abortRequest: false })'), true);
   assert.equal(refresh.includes('if (!deliveryControl.executionTerminal) clearUC6A8FReviewState'), true);
   assert.equal(refresh.includes('if (deliveryControl.shouldResolveCapabilities)'), true);
   assert.equal(freshBranch.includes("reviewArtifactsStatus !== 'ready'"), false, 'Fresh error cannot be reset into automatic retry eligibility');
@@ -4289,7 +4302,7 @@ test('R6G-B3 app retains accepted job identity, locks duplicate submission, and 
   const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1"), true);
+  assert.equal(app.includes("app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1"), true);
   assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
   assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
   assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
@@ -4335,7 +4348,7 @@ test('R6G-B4 valid terminal readback clears polling suspension, stops polling, a
   assert.equal(jobProjector.includes("render.asset.source_pptx_sha256 !== source.sha256"), true);
   assert.equal(refresh.includes("uc6State.renderStatus = projected.state === 'render_completed' ? projected : null"), true);
   assert.equal(refresh.includes('uc6State.consecutivePollErrors = 0'), true);
-  assert.equal(refresh.includes('stopUC6Polling()'), true);
+  assert.equal(refresh.includes('stopUC6Polling({ abortRequest: false })'), true);
   assert.equal(refresh.includes('await loadUC6A8HDeliveryState(options.signal)'), true);
   assert.equal(poll.includes('else stopUC6Polling()'), true);
   assert.equal(stageMap.includes("if (state === 'render_completed') return 'result'"), true);
@@ -4392,6 +4405,7 @@ test('R6G-B5 ambiguous POST starts bounded polling with a distinct controller an
   const start = extractFunctionBody(app, 'startUC6Polling');
   const poll = extractFunctionBody(app, 'pollUC6JobStatus');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const refreshNow = extractFunctionBody(app, 'refreshUC6PollingNow');
   const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
   const resumeHandler = app.slice(app.indexOf("target.id === 'uc6-resumePollingBtn'"), app.indexOf("target.id === 'uc6-enterDecisionBtn'"));
 
@@ -4411,8 +4425,10 @@ test('R6G-B5 ambiguous POST starts bounded polling with a distinct controller an
   assert.equal(refresh.includes('uc6State.freshRenderSubmissionAmbiguous = false'), true, 'authoritative render readback clears ambiguity');
   assert.equal(refresh.includes("uc6State.jobState = 'render_unknown'"), true, 'non-authoritative bound readback preserves reconciliation');
   assert.equal(refresh.includes('uc6State.freshRenderSubmitted = false'), false, 'upstream readback cannot unlock duplicate POST');
-  assert.equal(resumeHandler.includes('uc6State.consecutivePollErrors = 0'), true);
-  assert.equal(resumeHandler.includes('startUC6Polling()'), true, 'paused polling remains manually recoverable');
+  assert.equal(refreshNow.includes('uc6State.consecutivePollErrors = 0'), true);
+  assert.equal(refreshNow.includes('startUC6Polling({ scheduleImmediately: false })'), true);
+  assert.equal(refreshNow.includes('await pollUC6JobStatus(context)'), true, 'paused polling remains manually recoverable through an immediate GET');
+  assert.equal(resumeHandler.includes('refreshUC6PollingNow().catch'), true);
 });
 
 test('R6G-B5 render_unknown uses neutral warning copy while confirmed failure remains destructive', () => {
@@ -4422,7 +4438,7 @@ test('R6G-B5 render_unknown uses neutral warning copy while confirmed failure re
   const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
   const selection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
 
-  assert.equal(app.includes('app.uc6-r6g-b5-ambiguous-safe-polling-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'), true);
   assert.equal(unknown.includes("'uc6-stage-card is-warning'"), true);
   assert.equal(unknown.includes('생성 요청 확인 중'), true);
   assert.equal(unknown.includes('서버 작업 상태를 확인하고 있습니다.'), true);
@@ -4436,6 +4452,222 @@ test('R6G-B5 render_unknown uses neutral warning copy while confirmed failure re
   assert.equal(failed.includes('문서 생성 실패'), true);
   assert.match(css, /#view-uc6 \.uc6-stage-card\.is-warning\s*\{/);
   assert.match(css, /#view-uc6 \.uc6-inline-warning\s*\{/);
+});
+
+test('R6G-C0B polling policy is bounded, keeps render responsive, and resets for stage or job changes', () => {
+  const app = readSource('../public/app.js');
+  const sequences = Object.freeze({
+    long_running: Object.freeze([5000, 8000, 12000, 15000]),
+    render: Object.freeze([3500]),
+    ambiguous_render: Object.freeze([3500, 5000, 8000])
+  });
+  assert.equal(app.includes('long_running: Object.freeze([5000, 8000, 12000, 15000])'), true);
+  assert.equal(app.includes('render: Object.freeze([3500])'), true);
+  assert.equal(app.includes('ambiguous_render: Object.freeze([3500, 5000, 8000])'), true);
+
+  const getDelay = createExtractedFunction(app, 'getUC6PollingDelay', {
+    UC6_POLL_DELAY_SEQUENCES_MS: sequences
+  });
+  assert.deepEqual([0, 1, 2, 3, 4, 99].map((pollAttempt) => getDelay({ pollingClass: 'long_running', pollAttempt })), [5000, 8000, 12000, 15000, 15000, 15000]);
+  assert.deepEqual([0, 1, 8].map((pollAttempt) => getDelay({ pollingClass: 'render', pollAttempt })), [3500, 3500, 3500]);
+  assert.deepEqual([0, 1, 2, 9].map((pollAttempt) => getDelay({ pollingClass: 'ambiguous_render', pollAttempt })), [3500, 5000, 8000, 8000]);
+  assert.ok(getDelay({ pollingClass: 'render', pollAttempt: 50 }) < getDelay({ pollingClass: 'long_running', pollAttempt: 50 }));
+
+  const state = {
+    jobId: 'job-a',
+    jobState: 'onboarding_running',
+    pollingJobId: 'job-a',
+    pollingStageKey: '',
+    pollAttempt: 0
+  };
+  let pollingClass = 'long_running';
+  const nextDelay = createExtractedFunction(app, 'getUC6NextPollingDelay', {
+    uc6State: state,
+    getUC6PollingClass: () => pollingClass,
+    getUC6PollingStageKey: (value) => `${state.jobId}:${value}:${state.jobState}`,
+    getUC6PollingDelay: getDelay,
+    UC6_POLL_DELAY_SEQUENCES_MS: sequences
+  });
+  assert.deepEqual([nextDelay(), nextDelay(), nextDelay(), nextDelay(), nextDelay()], [5000, 8000, 12000, 15000, 15000]);
+  state.jobState = 'synthetic_scenarios_running';
+  assert.equal(nextDelay(), 5000, 'a material stage transition re-anchors long-running backoff');
+  pollingClass = 'render';
+  state.jobState = 'render_running';
+  assert.equal(nextDelay(), 3500, 'render does not inherit the prior long-running maximum');
+  pollingClass = 'long_running';
+  state.jobId = 'job-b';
+  state.jobState = 'onboarding_running';
+  assert.equal(nextDelay(), 5000, 'a new job starts at the first long-running delay');
+});
+
+test('R6G-C0B classifies preparation, render, ambiguous, and terminal states without an onboarding timeout', () => {
+  const app = readSource('../public/app.js');
+  const classify = ({ state, sourcePending = false, syntheticPending = false, ambiguous = false, freshTerminal = false }) => {
+    const uc6State = { jobState: state };
+    return createExtractedFunction(app, 'getUC6PollingClass', {
+      uc6State,
+      isUC6FreshRenderSubmissionReconciliationPending: () => ambiguous,
+      isUC6FreshExecutionTerminal: () => freshTerminal,
+      isUC6FreshSourceReconciliationPending: () => sourcePending,
+      isUC6FreshSyntheticPollingPending: () => syntheticPending,
+      mapUc6StateToView
+    })();
+  };
+  assert.equal(classify({ state: 'source_ready', sourcePending: true }), 'long_running');
+  assert.equal(classify({ state: 'onboarding_queued' }), 'long_running');
+  assert.equal(classify({ state: 'onboarding_running' }), 'long_running');
+  assert.equal(classify({ state: 'synthetic_scenarios_running', syntheticPending: true }), 'long_running');
+  assert.equal(classify({ state: 'analysis_running' }), 'long_running');
+  assert.equal(classify({ state: 'render_queued' }), 'render');
+  assert.equal(classify({ state: 'render_running' }), 'render');
+  assert.equal(classify({ state: 'render_unknown', ambiguous: true }), 'ambiguous_render');
+  assert.equal(classify({ state: 'render_completed' }), 'terminal');
+  assert.equal(classify({ state: 'failed' }), 'terminal');
+  assert.equal(classify({ state: 'unknown' }), 'idle');
+  assert.equal(app.includes('UC6_ONBOARDING_TIMEOUT'), false);
+  assert.equal(app.includes('UC6_MAX_ONBOARDING_DURATION'), false);
+});
+
+test('R6G-C0B uses one fake-timer polling owner and rejects stale timer or job contexts', async () => {
+  const app = readSource('../public/app.js');
+  const timers = new Map();
+  const polls = [];
+  let nextTimerId = 1;
+  const fakeSetTimeout = (callback, delay) => {
+    const id = nextTimerId;
+    nextTimerId += 1;
+    timers.set(id, { callback, delay });
+    return id;
+  };
+  const fakeClearTimeout = (id) => timers.delete(id);
+  class FakeAbortController {
+    constructor() {
+      this.signal = { aborted: false };
+    }
+    abort() {
+      this.signal.aborted = true;
+    }
+  }
+  const state = {
+    jobId: 'job-a',
+    pollingTimer: null,
+    pollingAbortController: null,
+    pollingSequence: 0,
+    pollingJobId: '',
+    pollingStageKey: '',
+    pollAttempt: 0,
+    activePollingRequestSequence: 0,
+    statusRequestActive: false
+  };
+  const entries = {
+    uc6State: state,
+    clearTimeout: fakeClearTimeout,
+    setTimeout: fakeSetTimeout,
+    AbortController: FakeAbortController,
+    isUc6Authorized: () => true,
+    isUC6JobPollingPending: () => true,
+    getUC6PollingStageKey: () => `${state.jobId}:render:${state.jobState || 'render_running'}`,
+    getUC6NextPollingDelay: () => 3500,
+    pollUC6JobStatus: async (context) => { polls.push(context); }
+  };
+  const names = Object.keys(entries);
+  const owner = Function(...names, `
+    ${extractFunctionSource(app, 'clearUC6PollingTimer')}
+    ${extractFunctionSource(app, 'resetUC6PollingBackoff')}
+    ${extractFunctionSource(app, 'stopUC6Polling')}
+    ${extractFunctionSource(app, 'isUC6PollingContextCurrent')}
+    ${extractFunctionSource(app, 'scheduleUC6Poll')}
+    ${extractFunctionSource(app, 'startUC6Polling')}
+    return { startUC6Polling, scheduleUC6Poll, isUC6PollingContextCurrent };
+  `)(...Object.values(entries));
+
+  const firstContext = owner.startUC6Polling();
+  const firstController = state.pollingAbortController;
+  const firstTimer = [...timers.values()][0];
+  assert.equal(timers.size, 1);
+  const secondContext = owner.startUC6Polling();
+  assert.equal(firstController.signal.aborted, true);
+  assert.equal(timers.size, 1, 'restarting replaces rather than duplicates the pending timer');
+  firstTimer.callback();
+  assert.equal(polls.length, 0, 'a cancelled sequence callback cannot reach the GET poller');
+
+  const secondTimerEntry = [...timers.entries()][0];
+  timers.delete(secondTimerEntry[0]);
+  secondTimerEntry[1].callback();
+  await Promise.resolve();
+  assert.deepEqual(polls, [secondContext]);
+
+  state.jobId = 'job-b';
+  const thirdContext = owner.startUC6Polling();
+  secondTimerEntry[1].callback();
+  assert.equal(polls.length, 1, 'an older job callback cannot enter the newer job owner');
+  assert.equal(owner.isUC6PollingContextCurrent(firstContext), false);
+  assert.equal(owner.isUC6PollingContextCurrent(thirdContext), true);
+
+  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  assert.ok(refresh.indexOf('const rawJob = await uc6State.api.getJob(requestedJobId') < refresh.indexOf('if (options.pollingContext && !isUC6PollingContextCurrent(options.pollingContext)) return false'));
+  assert.ok(refresh.indexOf('if (options.pollingContext && !isUC6PollingContextCurrent(options.pollingContext)) return false') < refresh.indexOf('const authoritativeDummyRenderLane'));
+});
+
+test('R6G-C0B manual refresh is immediate GET-only and transport failures remain separately bounded', async () => {
+  const app = readSource('../public/app.js');
+  const state = { consecutivePollErrors: 3 };
+  const calls = [];
+  const context = { sequence: 9, jobId: JOB_ID };
+  const refreshNow = createExtractedFunction(app, 'refreshUC6PollingNow', {
+    uc6State: state,
+    startUC6Polling: (options) => { calls.push(['start', options]); return context; },
+    pollUC6JobStatus: async (value) => { calls.push(['get', value]); }
+  });
+  const pending = refreshNow();
+  assert.deepEqual(calls, [
+    ['start', { scheduleImmediately: false }],
+    ['get', context]
+  ], 'manual refresh directly enters the read-only poll instead of waiting for a timer');
+  await pending;
+  assert.equal(state.consecutivePollErrors, 0);
+  assert.equal(extractFunctionBody(app, 'refreshUC6PollingNow').includes('submit'), false);
+
+  const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
+  const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
+  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
+  assert.equal(ambiguousCatch.includes('startUC6Polling()'), true);
+  assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false);
+  assert.equal(poll.includes('signal: uc6State.pollingAbortController.signal'), true);
+  assert.equal(poll.includes('uc6State.consecutivePollErrors += 1'), true);
+  assert.equal(poll.includes('uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS'), true);
+  assert.equal(poll.includes('getUC6NextPollingDelay({ advance: false })'), true, 'transport failures do not advance normal successful-stage backoff');
+  assert.equal(poll.includes('stopUC6Polling();'), true, 'the bounded error threshold pauses automatic polling');
+});
+
+test('R6G-C0B preserves Fresh, published Asset, artifact, and B5 UX contracts while changing cadence only', () => {
+  const app = readSource('../public/app.js');
+  const admin = readSource('../public/uc6-browser-admin.mjs');
+  const freshSubmit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
+  const publishedSubmit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
+  const publishedRefresh = extractFunctionBody(app, 'refreshUC6JobStatus');
+  const syntheticStage = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
+  const unknown = extractFunctionBody(app, 'renderUC6RenderUnknownStage');
+  const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
+  assert.equal(app.includes("const APP_VERSION = 'app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'"), true);
+  assert.equal(freshSubmit.includes('submitFreshSyntheticScenarioRender(uc6State.jobId, { signal: controller.signal })'), true);
+  assert.equal(freshSubmit.includes('scenario_key:'), false);
+  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.forEach'), true);
+  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.length === 3'), true);
+  assert.equal(publishedSubmit.includes('published_scenario_family_id: uc6State.selectedPublishedScenarioFamilyId'), true);
+  assert.equal(publishedSubmit.includes('scenario_key: uc6State.selectedPublishedScenarioKey'), true);
+  assert.equal(publishedSubmit.includes('package_id:'), false);
+  assert.equal(publishedRefresh.includes('projectUc6PublishedAssetScenarioRenderJobStatus'), true);
+  assert.equal(admin.includes('projectUc6PublishedAssetScenarioRenderResult(payload.render, options)'), true);
+  assert.equal(app.includes('linked.linked_scenario_family.scenarios.forEach'), true);
+  assert.equal(publishedRefresh.includes('await loadUC6A8HDeliveryState(options.signal)'), true);
+  assert.equal(app.includes('final_render_output_pdf'), true);
+  assert.equal(app.includes('final_render_output_pptx'), true);
+  assert.equal(unknown.includes("'uc6-stage-card is-warning'"), true);
+  assert.equal(unknown.includes('is-error'), false);
+  assert.equal(failed.includes("'uc6-stage-card is-error'"), true);
+  assert.equal(failed.includes('문서 생성 실패'), true);
 });
 
 test('R6G-B1 Fresh publication completion remains in normal flow above a reachable final action', () => {
