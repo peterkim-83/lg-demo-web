@@ -35,6 +35,7 @@ import {
   projectUc6DummyDatabagRenderSubmission,
   projectUc6FinalDeliveryCapabilities,
   parseUc6PublicError,
+  parseUc6JobEventFrame,
   projectUc6PersistedState,
   projectUc6ReviewIssuePresentation,
   projectUc6ReusableAssetPublication,
@@ -1350,7 +1351,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2365,7 +2366,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -2663,7 +2664,7 @@ test('R6D3 onboarding protection remains intact while fresh continuation uses th
   assert.ok(upload.indexOf("projected.state === 'onboarding_ready'") < upload.indexOf('reconcileUC6FreshSyntheticScenarios'));
   assert.equal(upload.includes('loadUC6PackageOptions'), false);
   assert.equal((upload.match(/submitFreshTemplateOnboarding/g) || []).length, 1);
-  assert.equal(upload.includes('startUC6Polling();'), true);
+  assert.equal(upload.includes('startUC6JobObservation'), true);
   assert.ok(refresh.indexOf('projectUc6FreshTemplateOnboardingJobStatus') < refresh.indexOf('projectUc6DummyDatabagRenderJobStatus'));
   assert.equal(refresh.includes("projected.state === 'source_ready' && uc6State.freshOnboardingExpected"), true);
   assert.equal(refresh.includes("projected.state === 'onboarding_ready'"), true);
@@ -2697,7 +2698,7 @@ test('R6D3 fresh source-ready reconciliation remains contextually GET-pollable a
 
   assert.equal(resume.includes('persisted.fresh_onboarding_expected === true'), true);
   assert.equal(pollingDecision.includes('isUC6FreshSourceReconciliationPending()'), true);
-  assert.equal(resume.includes('if (isUC6JobPollingPending()) startUC6Polling()'), true);
+  assert.equal(resume.includes('if (isUC6JobPollingPending()) startUC6JobObservation()'), true);
   assert.equal(poll.includes('if (isUC6JobPollingPending()) scheduleUC6Poll()'), true);
 
   assert.equal(eligibility.includes('submitFreshTemplateOnboarding'), false);
@@ -3276,7 +3277,7 @@ test('R6E-D2 app continuation reuses polling and capabilities, reconciles ambigu
   assert.ok(submit.indexOf('uc6State.freshRenderSubmitted = true') < submit.indexOf('api.submitFreshSyntheticScenarioRender'));
   assert.equal(submit.includes('projectUc6FreshSyntheticRenderControl'), true);
   assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false, 'mutation signal cannot be reused for ambiguous reconciliation GET');
-  assert.equal(submit.includes('startUC6Polling()'), true, 'ambiguous submission resumes the shared poller');
+  assert.equal(submit.includes('startUC6JobObservation()'), true, 'ambiguous submission keeps observing the known job through the unified stream');
   assert.equal(submit.includes('submitDummyDatabagRender'), false);
   assert.equal(submit.includes('submitReusableAssetRender'), false);
   assert.equal(refresh.includes('projectUc6FreshSyntheticRenderJobStatus'), true);
@@ -4302,7 +4303,7 @@ test('R6G-B3 app retains accepted job identity, locks duplicate submission, and 
   const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1"), true);
+  assert.equal(app.includes("app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1"), true);
   assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
   assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
   assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
@@ -4316,8 +4317,8 @@ test('R6G-B3 app retains accepted job identity, locks duplicate submission, and 
   assert.equal(submit.includes('uc6State.operationInFlight || uc6State.jobId || uc6State.assetSubmissionAmbiguous'), true);
   assert.equal(submit.includes('expectedPublishedScenarioFamilyId: uc6State.selectedPublishedScenarioFamilyId'), true);
   assert.equal(submit.includes('expectedScenarioKey: uc6State.selectedPublishedScenarioKey'), true);
-  assert.ok(submit.indexOf('uc6State.jobId = submitted.job_id') < submit.indexOf('startUC6Polling()'));
-  assert.equal((submit.match(/startUC6Polling\(\)/g) || []).length, 1);
+  assert.ok(submit.indexOf('uc6State.jobId = submitted.job_id') < submit.indexOf('startUC6JobObservation()'));
+  assert.equal((submit.match(/startUC6JobObservation\(\)/g) || []).length, 1);
   assert.equal(submit.includes('mutationResponseReceived = true'), true);
   assert.equal(submit.includes('mutationResponseReceived || error?.name'), true);
   assert.equal(renderChoice.includes('!uc6State.assetSubmissionAmbiguous'), true);
@@ -4402,7 +4403,7 @@ test('R6G-B5 only ambiguous Fresh same-job render_unknown is explicitly reconcil
 test('R6G-B5 ambiguous POST starts bounded polling with a distinct controller and never replays mutation', () => {
   const app = readSource('../public/app.js');
   const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
-  const start = extractFunctionBody(app, 'startUC6Polling');
+  const start = extractFunctionBody(app, 'startUC6PollingFallback');
   const poll = extractFunctionBody(app, 'pollUC6JobStatus');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const refreshNow = extractFunctionBody(app, 'refreshUC6PollingNow');
@@ -4413,7 +4414,7 @@ test('R6G-B5 ambiguous POST starts bounded polling with a distinct controller an
   assert.ok(submit.indexOf('uc6State.freshRenderSubmitted = true') < submit.indexOf('api.submitFreshSyntheticScenarioRender'));
   assert.equal(submit.includes("error?.name === 'AbortError' && isUc6Authorized() && Boolean(uc6State.jobId)"), true);
   assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false);
-  assert.equal(submit.includes('startUC6Polling()'), true);
+  assert.equal(submit.includes('startUC6JobObservation()'), true);
   assert.equal(submit.includes("uc6State.jobState = 'render_unknown'"), true);
   assert.equal(submit.includes("uc6State.jobId = ''"), false, 'known same-job identity remains retained');
   assert.equal(start.includes('uc6State.pollingAbortController = new AbortController()'), true);
@@ -4426,8 +4427,8 @@ test('R6G-B5 ambiguous POST starts bounded polling with a distinct controller an
   assert.equal(refresh.includes("uc6State.jobState = 'render_unknown'"), true, 'non-authoritative bound readback preserves reconciliation');
   assert.equal(refresh.includes('uc6State.freshRenderSubmitted = false'), false, 'upstream readback cannot unlock duplicate POST');
   assert.equal(refreshNow.includes('uc6State.consecutivePollErrors = 0'), true);
-  assert.equal(refreshNow.includes('startUC6Polling({ scheduleImmediately: false })'), true);
-  assert.equal(refreshNow.includes('await pollUC6JobStatus(context)'), true, 'paused polling remains manually recoverable through an immediate GET');
+  assert.equal(refreshNow.includes('await refreshUC6JobStatus'), true);
+  assert.equal(refreshNow.includes('startUC6JobObservation()'), true, 'manual recovery returns to listener-driven observation after one-shot GET');
   assert.equal(resumeHandler.includes('refreshUC6PollingNow().catch'), true);
 });
 
@@ -4438,11 +4439,11 @@ test('R6G-B5 render_unknown uses neutral warning copy while confirmed failure re
   const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
   const selection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
 
-  assert.equal(app.includes('app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'), true);
+  assert.equal(app.includes('app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'), true);
   assert.equal(unknown.includes("'uc6-stage-card is-warning'"), true);
   assert.equal(unknown.includes('생성 요청 확인 중'), true);
-  assert.equal(unknown.includes('서버 작업 상태를 확인하고 있습니다.'), true);
-  assert.equal(unknown.includes('자동 상태 확인을 잠시 중단했습니다.'), true);
+  assert.equal(unknown.includes('실시간 서버 이벤트로 작업 상태를 확인하고 있습니다.'), true);
+  assert.equal(unknown.includes('실시간 연결과 제한된 상태 확인이 모두 일시적으로 중단되었습니다.'), true);
   assert.equal(unknown.includes("'uc6-resumePollingBtn', '상태 새로고침'"), true);
   assert.equal(unknown.includes('is-error'), false);
   assert.equal(unknown.includes('uc6-inline-error'), false);
@@ -4528,7 +4529,7 @@ test('R6G-C0B classifies preparation, render, ambiguous, and terminal states wit
   assert.equal(app.includes('UC6_MAX_ONBOARDING_DURATION'), false);
 });
 
-test('R6G-C0B uses one fake-timer polling owner and rejects stale timer or job contexts', async () => {
+test('Transport-C keeps the legacy polling fallback bounded and rejects stale timer or job contexts', async () => {
   const app = readSource('../public/app.js');
   const timers = new Map();
   const polls = [];
@@ -4568,7 +4569,8 @@ test('R6G-C0B uses one fake-timer polling owner and rejects stale timer or job c
     isUC6JobPollingPending: () => true,
     getUC6PollingStageKey: () => `${state.jobId}:render:${state.jobState || 'render_running'}`,
     getUC6NextPollingDelay: () => 3500,
-    pollUC6JobStatus: async (context) => { polls.push(context); }
+    pollUC6JobStatus: async (context) => { polls.push(context); },
+    stopUC6JobEventListener: () => {}
   };
   const names = Object.keys(entries);
   const owner = Function(...names, `
@@ -4577,15 +4579,15 @@ test('R6G-C0B uses one fake-timer polling owner and rejects stale timer or job c
     ${extractFunctionSource(app, 'stopUC6Polling')}
     ${extractFunctionSource(app, 'isUC6PollingContextCurrent')}
     ${extractFunctionSource(app, 'scheduleUC6Poll')}
-    ${extractFunctionSource(app, 'startUC6Polling')}
-    return { startUC6Polling, scheduleUC6Poll, isUC6PollingContextCurrent };
+    ${extractFunctionSource(app, 'startUC6PollingFallback')}
+    return { startUC6PollingFallback, scheduleUC6Poll, isUC6PollingContextCurrent };
   `)(...Object.values(entries));
 
-  const firstContext = owner.startUC6Polling();
+  const firstContext = owner.startUC6PollingFallback();
   const firstController = state.pollingAbortController;
   const firstTimer = [...timers.values()][0];
   assert.equal(timers.size, 1);
-  const secondContext = owner.startUC6Polling();
+  const secondContext = owner.startUC6PollingFallback();
   assert.equal(firstController.signal.aborted, true);
   assert.equal(timers.size, 1, 'restarting replaces rather than duplicates the pending timer');
   firstTimer.callback();
@@ -4598,7 +4600,7 @@ test('R6G-C0B uses one fake-timer polling owner and rejects stale timer or job c
   assert.deepEqual(polls, [secondContext]);
 
   state.jobId = 'job-b';
-  const thirdContext = owner.startUC6Polling();
+  const thirdContext = owner.startUC6PollingFallback();
   secondTimerEntry[1].callback();
   assert.equal(polls.length, 1, 'an older job callback cannot enter the newer job owner');
   assert.equal(owner.isUC6PollingContextCurrent(firstContext), false);
@@ -4609,39 +4611,40 @@ test('R6G-C0B uses one fake-timer polling owner and rejects stale timer or job c
   assert.ok(refresh.indexOf('if (options.pollingContext && !isUC6PollingContextCurrent(options.pollingContext)) return false') < refresh.indexOf('const authoritativeDummyRenderLane'));
 });
 
-test('R6G-C0B manual refresh is immediate GET-only and transport failures remain separately bounded', async () => {
+test('Transport-C manual refresh is one-shot GET reconciliation and resumes the unified listener', async () => {
   const app = readSource('../public/app.js');
-  const state = { consecutivePollErrors: 3 };
+  const state = { consecutivePollErrors: 3, jobEventRecoveryFailures: 2, flowLane: 'dummy_render' };
   const calls = [];
-  const context = { sequence: 9, jobId: JOB_ID };
   const refreshNow = createExtractedFunction(app, 'refreshUC6PollingNow', {
     uc6State: state,
-    startUC6Polling: (options) => { calls.push(['start', options]); return context; },
-    pollUC6JobStatus: async (value) => { calls.push(['get', value]); }
+    refreshUC6JobStatus: async (options) => { calls.push(['get', options]); },
+    isUC6JobObservationPending: () => true,
+    startUC6JobObservation: () => { calls.push(['listen']); }
   });
-  const pending = refreshNow();
+  await refreshNow();
   assert.deepEqual(calls, [
-    ['start', { scheduleImmediately: false }],
-    ['get', context]
-  ], 'manual refresh directly enters the read-only poll instead of waiting for a timer');
-  await pending;
+    ['get', { fetchReview: false }],
+    ['listen']
+  ]);
   assert.equal(state.consecutivePollErrors, 0);
+  assert.equal(state.jobEventRecoveryFailures, 0);
   assert.equal(extractFunctionBody(app, 'refreshUC6PollingNow').includes('submit'), false);
 
   const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
   const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
   const poll = extractFunctionBody(app, 'pollUC6JobStatus');
+  const recover = extractFunctionBody(app, 'recoverUC6JobEventListener');
   assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
-  assert.equal(ambiguousCatch.includes('startUC6Polling()'), true);
+  assert.equal(ambiguousCatch.includes('startUC6JobObservation()'), true);
   assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false);
+  assert.equal(recover.includes('await refreshUC6JobStatus'), true, 'stream disconnect performs one-shot authoritative reconciliation');
+  assert.equal(recover.includes('UC6_MAX_JOB_EVENT_RECOVERY_FAILURES'), true);
+  assert.equal(recover.includes('startUC6PollingFallback()'), true, 'legacy polling is reachable only after bounded stream recovery failure');
   assert.equal(poll.includes('signal: uc6State.pollingAbortController.signal'), true);
-  assert.equal(poll.includes('uc6State.consecutivePollErrors += 1'), true);
   assert.equal(poll.includes('uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS'), true);
-  assert.equal(poll.includes('getUC6NextPollingDelay({ advance: false })'), true, 'transport failures do not advance normal successful-stage backoff');
-  assert.equal(poll.includes('stopUC6Polling();'), true, 'the bounded error threshold pauses automatic polling');
 });
 
-test('R6G-C0B preserves Fresh, published Asset, artifact, and B5 UX contracts while changing cadence only', () => {
+test('Transport-C preserves Fresh, published Asset, artifact, and B5 UX contracts while changing observation transport', () => {
   const app = readSource('../public/app.js');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   const freshSubmit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
@@ -4650,7 +4653,7 @@ test('R6G-C0B preserves Fresh, published Asset, artifact, and B5 UX contracts wh
   const syntheticStage = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
   const unknown = extractFunctionBody(app, 'renderUC6RenderUnknownStage');
   const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
-  assert.equal(app.includes("const APP_VERSION = 'app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1'"), true);
+  assert.equal(app.includes("const APP_VERSION = 'app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'"), true);
   assert.equal(freshSubmit.includes('submitFreshSyntheticScenarioRender(uc6State.jobId, { signal: controller.signal })'), true);
   assert.equal(freshSubmit.includes('scenario_key:'), false);
   assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.forEach'), true);
@@ -4686,4 +4689,106 @@ test('R6G-B1 Fresh publication completion remains in normal flow above a reachab
   assert.equal(css.includes('#view-uc6 .uc6-r6f-b-publication-panel {\n    z-index:'), false);
   assert.match(css, /#view-uc6 \.uc6-r6f-b-publication-panel :is\(dd, p, strong\)[^{]*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
   assert.match(css, /#main-content\s*\{[^}]*overflow-y:\s*auto;/s);
+});
+
+test('Transport-C SSE frame parser accepts only the unified public job-event envelope', () => {
+  const frame = [
+    'id: 17',
+    'event: job_state',
+    'data: {"schema_version":"fetchdoc_job_event_v1","event_kind":"state_change","job_id":"fd_uc6_admin_test_12345","task_id":77,"task_type":"fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario","stage":"provider_generation_running","status":"running","sequence":17,"completed_units":3,"total_units":16,"updated_at":"2026-08-15T12:00:00+00:00"}',
+    ''
+  ].join('\n');
+  assert.deepEqual(parseUc6JobEventFrame(frame), {
+    schema_version: 'fetchdoc_job_event_v1',
+    event_kind: 'state_change',
+    job_id: JOB_ID,
+    task_id: 77,
+    task_type: 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario',
+    stage: 'provider_generation_running',
+    status: 'running',
+    sequence: 17,
+    completed_units: 3,
+    total_units: 16,
+    updated_at: '2026-08-15T12:00:00+00:00'
+  });
+  assert.equal(parseUc6JobEventFrame(': heartbeat\n\n'), null);
+  assert.equal(parseUc6JobEventFrame('event: job_state\n\n'), null);
+  assert.throws(() => parseUc6JobEventFrame('data: {bad json}\n\n'), /uc6_job_event_invalid_json/);
+  assert.throws(() => parseUc6JobEventFrame(`data: ${JSON.stringify({
+    schema_version: 'wrong', event_kind: 'snapshot', job_id: JOB_ID, stage: 'render_running', status: 'running', sequence: 1
+  })}\n\n`), /uc6_job_event_schema_unsupported/);
+  assert.throws(() => parseUc6JobEventFrame(`data: ${JSON.stringify({
+    schema_version: 'fetchdoc_job_event_v1', event_kind: 'state_change', job_id: JOB_ID,
+    stage: 'provider_generation_running', status: 'running', sequence: 2, completed_units: 17, total_units: 16
+  })}\n\n`), /uc6_job_event_progress_invalid/);
+});
+
+test('Transport-C stream GET keeps Firebase Bearer auth, refreshes one 401, and never exposes internal auth', async () => {
+  assert.equal(
+    UC6_BROWSER_ADMIN_ENDPOINTS.jobEvents(`  ${JOB_ID}  `),
+    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/events`
+  );
+  const calls = [];
+  const tokenRefreshes = [];
+  const streamResponse = {
+    status: 200,
+    ok: true,
+    headers: { get: (name) => String(name).toLowerCase() === 'content-type' ? 'text/event-stream; charset=utf-8' : null },
+    body: { getReader() { return {}; } }
+  };
+  let attempt = 0;
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async (forceRefresh) => {
+      tokenRefreshes.push(forceRefresh);
+      return forceRefresh ? 'firebase-refreshed' : 'firebase-initial';
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      attempt += 1;
+      return attempt === 1 ? response(401, { detail: { code: 'browser_admin_token_expired' } }) : streamResponse;
+    }
+  });
+  const opened = await api.openJobEvents(JOB_ID);
+  assert.equal(opened, streamResponse);
+  assert.deepEqual(tokenRefreshes, [false, true]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/events`);
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.headers.Accept, 'text/event-stream');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-initial');
+  assert.equal(calls[1].init.headers.Authorization, 'Bearer firebase-refreshed');
+  assert.equal(calls.every(({ init }) => init.headers['X-Internal-Token'] === undefined), true);
+  assert.equal(calls.every(({ init }) => init.credentials === 'omit' && init.cache === 'no-store'), true);
+});
+
+test('Transport-C listener is the normal observation path and polling is bounded recovery only', () => {
+  const app = readSource('../public/app.js');
+  const admin = readSource('../public/uc6-browser-admin.mjs');
+  const start = extractFunctionBody(app, 'startUC6JobObservation');
+  const run = extractFunctionBody(app, 'runUC6JobEventListener');
+  const consume = extractFunctionBody(app, 'consumeUC6JobEventStream');
+  const recover = extractFunctionBody(app, 'recoverUC6JobEventListener');
+  const fallback = extractFunctionBody(app, 'startUC6PollingFallback');
+  const manual = extractFunctionBody(app, 'refreshUC6PollingNow');
+  const freshRender = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
+  const upload = extractFunctionBody(app, 'uploadUC6PptxJob');
+
+  assert.equal(admin.includes('openJobEvents(jobId'), true);
+  assert.equal(app.includes('new EventSource('), false, 'native EventSource must not weaken Firebase Bearer auth');
+  assert.equal(start.includes('runUC6JobEventListener(context)'), true);
+  assert.equal(start.includes('startUC6PollingFallback'), false, 'normal observation does not start legacy polling');
+  assert.equal(run.includes('uc6State.api.openJobEvents'), true);
+  assert.equal(consume.includes('parseUc6JobEventFrame(frame)'), true);
+  assert.equal(consume.includes('eventContext: context'), true, 'event wake-up reconciles through the authoritative current-state GET');
+  assert.ok(recover.indexOf('await refreshUC6JobStatus') < recover.indexOf('uc6State.jobEventRecoveryFailures += 1'));
+  assert.ok(recover.indexOf('uc6State.jobEventRecoveryFailures >= UC6_MAX_JOB_EVENT_RECOVERY_FAILURES') < recover.indexOf('startUC6PollingFallback()'));
+  assert.equal(fallback.includes('pollUC6JobStatus'), false, 'fallback owner only schedules the existing bounded GET poller');
+  assert.equal(manual.includes('await refreshUC6JobStatus'), true);
+  assert.equal(manual.includes('startUC6JobObservation()'), true);
+  assert.equal(manual.includes('pollUC6JobStatus'), false);
+  assert.ok(freshRender.indexOf('startUC6JobObservation({ force: true })') < freshRender.indexOf('api.submitFreshSyntheticScenarioRender'));
+  assert.ok(upload.indexOf('uc6State.jobId = normalizeUc6JobId') < upload.indexOf('startUC6JobObservation({ force: true })'));
+  assert.ok(upload.indexOf('startUC6JobObservation({ force: true })') < upload.indexOf('api.submitFreshTemplateOnboarding'));
+  assert.equal((freshRender.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1, 'non-idempotent render POST stays single-attempt');
 });

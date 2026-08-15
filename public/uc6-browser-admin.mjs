@@ -9,6 +9,7 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   syntheticScenarioBinding: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/synthetic-scenarios/binding`,
   syntheticScenarioRender: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/synthetic-scenarios/render`,
   job: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}`,
+  jobEvents: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/events`,
   review: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review`,
   reviewDecision: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/review-decision`,
   finalDeliveryCapabilities: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/final-delivery-capabilities`,
@@ -2905,6 +2906,60 @@ async function parseJsonResponse(response) {
   }
 }
 
+export function parseUc6JobEventFrame(frame) {
+  const normalized = String(frame ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!normalized.trim() || normalized.trimStart().startsWith(':')) return null;
+
+  const dataLines = [];
+  for (const line of normalized.split('\n')) {
+    if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+  }
+  if (!dataLines.length) return null;
+
+  let payload;
+  try {
+    payload = JSON.parse(dataLines.join('\n'));
+  } catch (_) {
+    throw new TypeError('uc6_job_event_invalid_json');
+  }
+  if (!payload || typeof payload !== 'object') throw new TypeError('uc6_job_event_invalid_payload');
+  if (payload.schema_version !== 'fetchdoc_job_event_v1') throw new TypeError('uc6_job_event_schema_unsupported');
+  if (payload.event_kind !== 'snapshot' && payload.event_kind !== 'state_change') throw new TypeError('uc6_job_event_kind_invalid');
+
+  const jobId = normalizeUc6JobId(payload.job_id);
+  const sequence = Number(payload.sequence);
+  if (!Number.isInteger(sequence) || sequence < 0) throw new TypeError('uc6_job_event_sequence_invalid');
+  const stage = String(payload.stage || '').trim();
+  const status = String(payload.status || '').trim();
+  if (!stage || !status) throw new TypeError('uc6_job_event_state_invalid');
+
+  const normalizeCount = (value, name) => {
+    if (value === null || value === undefined) return null;
+    const number = Number(value);
+    if (!Number.isInteger(number) || number < 0) throw new TypeError(`uc6_job_event_${name}_invalid`);
+    return number;
+  };
+  const completedUnits = normalizeCount(payload.completed_units, 'completed_units');
+  const totalUnits = normalizeCount(payload.total_units, 'total_units');
+  if (completedUnits !== null && totalUnits !== null && completedUnits > totalUnits) {
+    throw new TypeError('uc6_job_event_progress_invalid');
+  }
+
+  return {
+    schema_version: payload.schema_version,
+    event_kind: payload.event_kind,
+    job_id: jobId,
+    task_id: payload.task_id !== null && payload.task_id !== undefined && Number.isInteger(Number(payload.task_id)) ? Number(payload.task_id) : null,
+    task_type: typeof payload.task_type === 'string' && payload.task_type.trim() ? payload.task_type.trim() : null,
+    stage,
+    status,
+    sequence,
+    completed_units: completedUnits,
+    total_units: totalUnits,
+    updated_at: typeof payload.updated_at === 'string' && payload.updated_at.trim() ? payload.updated_at.trim() : null
+  };
+}
+
 export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, allowLoopbackHttp = false } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl_required');
   if (typeof getIdToken !== 'function') throw new TypeError('getIdToken_required');
@@ -2946,6 +3001,49 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
     if (!response || typeof response.ok !== 'boolean') throw createPublicError(parseUc6PublicErrorPayload(null, 0));
     if (!response.ok) throw createPublicError(await parseUc6PublicError(response));
     return parseJsonResponse(response);
+  }
+
+  async function requestStream(path, options = {}) {
+    const headers = {
+      Accept: 'text/event-stream',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache'
+    };
+
+    const buildOptions = async (forceRefresh) => {
+      const token = await getIdToken(forceRefresh === true);
+      if (typeof token !== 'string' || token.trim() === '') {
+        throw createPublicError(parseUc6PublicErrorPayload({ detail: { code: 'browser_admin_bearer_token_required' } }, 401));
+      }
+      return {
+        method: 'GET',
+        headers: {
+          ...headers,
+          Authorization: `Bearer ${token}`
+        },
+        cache: 'no-store',
+        credentials: 'omit',
+        signal: options.signal
+      };
+    };
+
+    const url = joinUrl(baseUrl, path);
+    let response = await fetchImpl(url, await buildOptions(false));
+    if (response?.status === 401) {
+      response = await fetchImpl(url, await buildOptions(true));
+    }
+    if (!response || typeof response.ok !== 'boolean') throw createPublicError(parseUc6PublicErrorPayload(null, 0));
+    if (!response.ok) throw createPublicError(await parseUc6PublicError(response));
+
+    const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
+    if (!contentType.startsWith('text/event-stream') || !response.body || typeof response.body.getReader !== 'function') {
+      const error = new Error('FetchDoc job event stream is unavailable.');
+      error.name = 'Uc6JobEventStreamError';
+      error.code = 'job_event_stream_unavailable';
+      error.publicMessage = '실시간 상태 연결을 사용할 수 없습니다.';
+      throw error;
+    }
+    return response;
   }
 
   async function requestSingle(path, options = {}) {
@@ -3058,6 +3156,9 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
     },
     getJob(jobId, options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.job(jobId), { method: 'GET', signal: options.signal });
+    },
+    openJobEvents(jobId, options = {}) {
+      return requestStream(UC6_BROWSER_ADMIN_ENDPOINTS.jobEvents(jobId), { signal: options.signal });
     },
     getReview(jobId, options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.review(jobId), { method: 'GET', signal: options.signal });

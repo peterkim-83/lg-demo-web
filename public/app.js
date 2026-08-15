@@ -6,6 +6,7 @@ import {
   createUc6BrowserAdminApi,
   mapUc6StateToView,
   normalizeUc6JobId,
+  parseUc6JobEventFrame,
   projectUc6DummyDatabagPackageFamilyOptions,
   projectUc6FreshTemplateOnboardingJobStatus,
   projectUc6FreshTemplateOnboardingSubmission,
@@ -63,7 +64,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-r6g-c0b-long-running-stage-polling-backoff-2026-08-14-v1';
+const APP_VERSION = 'app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 
@@ -5121,6 +5122,8 @@ Customer: Thank you. Goodbye.`
     ambiguous_render: Object.freeze([3500, 5000, 8000])
   });
   const UC6_MAX_TRANSIENT_ERRORS = 3;
+  const UC6_JOB_EVENT_RECONNECT_DELAYS_MS = Object.freeze([1000, 2000, 5000]);
+  const UC6_MAX_JOB_EVENT_RECOVERY_FAILURES = UC6_JOB_EVENT_RECONNECT_DELAYS_MS.length;
   const UC6_AUTHORIZED_LABEL = '승인된 FetchDoc 관리자';
   const UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA = 'uc6_a9_0g2a_r6d2b_browser_admin_dummy_databag_package_family_options_v1';
 
@@ -5266,6 +5269,18 @@ Customer: Thank you. Goodbye.`
     finalDeliveryRequestActive: false,
     liveMessage: '',
     lastRenderedStage: '',
+    jobEventAbortController: null,
+    jobEventReconnectTimer: null,
+    jobEventSequence: 0,
+    jobEventJobId: '',
+    jobEventLastSequence: -1,
+    jobEventRecoveryFailures: 0,
+    jobEventConnected: false,
+    jobEventFallbackActive: false,
+    jobEventStage: '',
+    jobEventStatus: '',
+    jobEventCompletedUnits: null,
+    jobEventTotalUnits: null,
     pollingTimer: null,
     pollingAbortController: null,
     pollingSequence: 0,
@@ -5613,11 +5628,16 @@ Customer: Thank you. Goodbye.`
 
   function abortUC6Operations() {
     if (uc6State.operationAbortController) uc6State.operationAbortController.abort();
+    if (uc6State.jobEventAbortController) uc6State.jobEventAbortController.abort();
+    if (uc6State.jobEventReconnectTimer) clearTimeout(uc6State.jobEventReconnectTimer);
     if (uc6State.pollingAbortController) uc6State.pollingAbortController.abort();
     if (uc6State.finalDeliveryAbortController) uc6State.finalDeliveryAbortController.abort();
     if (uc6State.reviewSurfaceAbortController) uc6State.reviewSurfaceAbortController.abort();
     if (uc6State.publicationAbortController) uc6State.publicationAbortController.abort();
     uc6State.operationAbortController = null;
+    uc6State.jobEventAbortController = null;
+    uc6State.jobEventReconnectTimer = null;
+    uc6State.jobEventConnected = false;
     uc6State.pollingAbortController = null;
     uc6State.finalDeliveryAbortController = null;
     uc6State.reviewSurfaceAbortController = null;
@@ -5631,6 +5651,20 @@ Customer: Thank you. Goodbye.`
   function clearUC6PollingTimer() {
     if (uc6State.pollingTimer) clearTimeout(uc6State.pollingTimer);
     uc6State.pollingTimer = null;
+  }
+
+  function clearUC6JobEventReconnectTimer() {
+    if (uc6State.jobEventReconnectTimer) clearTimeout(uc6State.jobEventReconnectTimer);
+    uc6State.jobEventReconnectTimer = null;
+  }
+
+  function stopUC6JobEventListener(options = {}) {
+    clearUC6JobEventReconnectTimer();
+    if (options.abortRequest !== false && uc6State.jobEventAbortController) uc6State.jobEventAbortController.abort();
+    uc6State.jobEventAbortController = null;
+    uc6State.jobEventSequence += 1;
+    uc6State.jobEventJobId = '';
+    uc6State.jobEventConnected = false;
   }
 
   function resetUC6PollingBackoff() {
@@ -5647,6 +5681,7 @@ Customer: Thank you. Goodbye.`
     uc6State.activePollingRequestSequence = 0;
     uc6State.statusRequestActive = false;
     resetUC6PollingBackoff();
+    if (options.preserveStream !== true) stopUC6JobEventListener();
   }
 
   function resetUC6JobState(clearStorage = false) {
@@ -5690,6 +5725,14 @@ Customer: Thank you. Goodbye.`
     uc6State.reviewMessage = '';
     uc6State.decisionMessage = '';
     clearUC6FinalDeliveryState();
+    uc6State.jobEventLastSequence = -1;
+    uc6State.jobEventRecoveryFailures = 0;
+    uc6State.jobEventConnected = false;
+    uc6State.jobEventFallbackActive = false;
+    uc6State.jobEventStage = '';
+    uc6State.jobEventStatus = '';
+    uc6State.jobEventCompletedUnits = null;
+    uc6State.jobEventTotalUnits = null;
     uc6State.consecutivePollErrors = 0;
     uc6State.lastPollingTimestamp = 0;
     if (uc6Els.fileInput) uc6Els.fileInput.value = '';
@@ -5879,7 +5922,7 @@ Customer: Thank you. Goodbye.`
       uc6State.jobId = persistedJobId;
       await refreshUC6JobStatus({ fetchReview: uc6State.flowLane === 'legacy_analysis' });
 
-      if (isUC6JobPollingPending()) startUC6Polling();
+      if (isUC6JobPollingPending()) startUC6JobObservation();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
       clearUC6LocalState();
@@ -5923,6 +5966,7 @@ Customer: Thank you. Goodbye.`
       };
       saveUC6LocalState();
       renderUC6All();
+      startUC6JobObservation({ force: true });
       const submitted = await uc6State.api.submitFreshTemplateOnboarding(uc6State.jobId, { signal: controller.signal });
       const projected = projectUc6FreshTemplateOnboardingSubmission(submitted, { expectedJobId: uc6State.jobId });
       uc6State.jobState = projected.state;
@@ -5939,14 +5983,14 @@ Customer: Thank you. Goodbye.`
             && uc6State.syntheticGenerationSubmitted
             && !uc6State.syntheticGenerationSubmissionAmbiguous
           )
-        ) startUC6Polling();
+        ) startUC6JobObservation();
       } else if (projected.state === 'onboarding_blocked') {
         uc6State.stageMessage = 'Fresh onboarding을 완료할 수 없습니다. 새 PPTX를 선택하거나 작업 상태를 다시 확인하세요.';
         saveUC6LocalState();
       } else {
         uc6State.stageMessage = 'Fresh onboarding 요청이 접수되었습니다. 작업 상태를 확인하고 있습니다.';
         saveUC6LocalState();
-        startUC6Polling();
+        startUC6JobObservation();
       }
     } catch (error) {
       if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
@@ -5955,7 +5999,7 @@ Customer: Thank you. Goodbye.`
         setUC6LiveMessage(uc6State.stageMessage);
         saveUC6LocalState();
         renderUC6All();
-        startUC6Polling();
+        startUC6JobObservation();
         return;
       }
       if (handleUC6AuthorizationFailure(error)) return;
@@ -6136,7 +6180,7 @@ Customer: Thank you. Goodbye.`
       uc6State.consecutivePollErrors = 0;
       saveUC6LocalState();
       renderUC6All();
-      if (submitted.state === 'render_queued' || submitted.state === 'render_running') startUC6Polling();
+      if (submitted.state === 'render_queued' || submitted.state === 'render_running') startUC6JobObservation();
       else await refreshUC6JobStatus();
     } catch (error) {
       if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
@@ -6353,6 +6397,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = '합성 샘플 컨텍스트 생성 요청을 전송하고 있습니다.';
     saveUC6LocalState();
     renderUC6All();
+    startUC6JobObservation({ force: true });
     try {
       const raw = await uc6State.api.submitFreshSyntheticScenarios(uc6State.jobId, { signal });
       const projected = projectUc6FreshSyntheticGenerationSubmission(raw, { expectedJobId: uc6State.jobId });
@@ -6503,7 +6548,7 @@ Customer: Thank you. Goodbye.`
       uc6State.consecutivePollErrors = 0;
       saveUC6LocalState();
       renderUC6All();
-      if (submitted.state === 'render_queued' || submitted.state === 'render_running') startUC6Polling();
+      if (submitted.state === 'render_queued' || submitted.state === 'render_running') startUC6JobObservation();
       else await refreshUC6JobStatus();
     } catch (error) {
       if (mutationResponseReceived || error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
@@ -6544,6 +6589,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = '선택한 샘플 컨텍스트로 문서 생성 요청을 전송하고 있습니다.';
     saveUC6LocalState();
     renderUC6All();
+    startUC6JobObservation({ force: true });
     const controller = createUC6OperationController();
     try {
       const raw = await uc6State.api.submitFreshSyntheticScenarioRender(uc6State.jobId, { signal: controller.signal });
@@ -6571,7 +6617,7 @@ Customer: Thank you. Goodbye.`
           : '샘플 문서 생성 요청이 접수되었습니다. 서버 상태를 확인하고 있습니다.';
       saveUC6LocalState();
       renderUC6All();
-      if (projected.state === 'render_queued' || projected.state === 'render_running') startUC6Polling();
+      if (projected.state === 'render_queued' || projected.state === 'render_running') startUC6JobObservation();
       else await refreshUC6JobStatus({ signal: controller.signal });
     } catch (error) {
       if (
@@ -6587,7 +6633,7 @@ Customer: Thank you. Goodbye.`
         uc6State.stageMessage = '생성 요청의 응답을 확인하지 못했습니다. 중복 생성을 방지하기 위해 생성 요청은 다시 보내지 않고 현재 작업 상태만 확인합니다.';
         saveUC6LocalState();
         renderUC6All();
-        startUC6Polling();
+        startUC6JobObservation();
         return;
       }
       if (handleUC6AuthorizationFailure(error)) return;
@@ -6688,6 +6734,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = retryFailed ? '문서 생성을 다시 요청하고 있습니다.' : '선택한 데이터로 문서 생성 요청을 전송하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
+    startUC6JobObservation({ force: true });
     try {
       const command = {
         package_id: uc6State.selectedPackageId,
@@ -6718,7 +6765,7 @@ Customer: Thank you. Goodbye.`
         uc6State.jobState = projected.state;
         saveUC6LocalState();
         renderUC6All();
-        startUC6Polling();
+        startUC6JobObservation();
       }
     } catch (error) {
       if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
@@ -6750,6 +6797,7 @@ Customer: Thank you. Goodbye.`
     uc6State.stageMessage = retryFailed ? '실패한 분석을 다시 요청하고 있습니다.' : '분석을 요청하고 있습니다.';
     renderUC6All();
     const controller = createUC6OperationController();
+    startUC6JobObservation({ force: true });
     try {
       const submitted = await uc6State.api.submitAnalysis(uc6State.jobId, { retryFailed: retryFailed === true, signal: controller.signal });
       uc6State.analysisSubmittedForJobId = uc6State.jobId;
@@ -6758,7 +6806,7 @@ Customer: Thank you. Goodbye.`
       uc6State.stageMessage = '분석 요청이 접수되었습니다. 상태를 확인하고 있습니다.';
       saveUC6LocalState();
       renderUC6All();
-      startUC6Polling();
+      startUC6JobObservation();
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
       uc6State.stageMessage = uc6MessageFromError(error);
@@ -6819,6 +6867,13 @@ Customer: Thank you. Goodbye.`
         : mapped.pollable);
   }
 
+  function isUC6JobObservationPending() {
+    return isUC6JobPollingPending()
+      || uc6State.publicationRequestActive === true
+      || uc6State.publicationStatus === 'submitting'
+      || uc6State.publicationStatus === 'reconciling';
+  }
+
   function getUC6PollingClass() {
     if (isUC6FreshRenderSubmissionReconciliationPending()) return 'ambiguous_render';
     if (isUC6FreshExecutionTerminal()) return 'terminal';
@@ -6874,6 +6929,218 @@ Customer: Thank you. Goodbye.`
     return delay;
   }
 
+  function isUC6JobEventContextCurrent(context) {
+    return Boolean(
+      context
+      && context.sequence === uc6State.jobEventSequence
+      && context.jobId === uc6State.jobEventJobId
+      && context.jobId === uc6State.jobId
+      && uc6State.jobEventAbortController
+      && uc6State.jobEventAbortController.signal.aborted !== true
+    );
+  }
+
+  function getUC6JobEventStageMessage(event) {
+    const progress = event.completed_units !== null && event.total_units !== null
+      ? ` (${event.completed_units}/${event.total_units})`
+      : '';
+    return {
+      task_accepted: '작업이 접수되었습니다. 서버 이벤트를 기다리고 있습니다.',
+      task_running: '서버 작업이 실행 중입니다.',
+      task_requeued: '작업 실행이 안전하게 재개 대기열로 이동했습니다.',
+      xray_running: 'PPTX의 물리 구조와 fillable 후보를 분석하고 있습니다.',
+      xray_completed: 'PPTX 물리 구조 분석이 완료되었습니다.',
+      intake_running: 'Vector Source Intake를 준비하고 있습니다.',
+      intake_completed: 'Vector Source Intake가 완료되었습니다.',
+      document_context_running: '문서 전체 맥락을 구성하고 있습니다.',
+      document_context_completed: '문서 맥락 구성이 완료되었습니다.',
+      physical_semantic_advisory_running: '슬라이드별 Physical → Semantic Advisory를 실행하고 있습니다.',
+      physical_semantic_advisory_completed: '슬라이드 Advisory가 완료되었습니다.',
+      r0_r1_materialization_running: 'Generation Unit과 authoritative R0/R1 lineage를 구성하고 있습니다.',
+      r0_r1_materialization_completed: 'authoritative R0/R1 lineage 구성이 완료되었습니다.',
+      onboarding_ready: 'Fresh onboarding이 완료되었습니다.',
+      scenario_generation_running: `합성 샘플 컨텍스트를 생성하고 있습니다${progress}.`,
+      scenario_generation_ready: `합성 샘플 컨텍스트 생성이 완료되었습니다${progress}.`,
+      source_binding_completed: '선택한 source context binding이 완료되었습니다.',
+      provider_generation_running: `Provider Slot 생성을 실행하고 있습니다${progress}.`,
+      provider_generation_completed: `Provider Slot 생성이 완료되었습니다${progress}.`,
+      render_running: '생성 값을 원본 visual mold에 물리적으로 렌더하고 있습니다.',
+      pptx_ready: 'PPTX 생성이 완료되었습니다. PDF를 준비하고 있습니다.',
+      pdf_ready: 'PDF 생성이 완료되었습니다.',
+      render_completed: '문서 생성이 완료되었습니다.',
+      review_pending: '생성 산출물이 관리자 검토를 기다리고 있습니다.',
+      publication_running: '검토한 reusable Asset을 게시하고 있습니다.',
+      published: 'Reusable Asset 게시가 완료되었습니다.',
+      task_completed: '서버 작업이 완료되었습니다.',
+      task_failed: '서버 작업이 실패했습니다.'
+    }[event.stage] || '';
+  }
+
+  function applyUC6JobEvent(event, context) {
+    if (!isUC6JobEventContextCurrent(context) || !event || event.job_id !== context.jobId) return false;
+    if (!Number.isInteger(event.sequence) || event.sequence <= uc6State.jobEventLastSequence) return false;
+    uc6State.jobEventLastSequence = event.sequence;
+    uc6State.jobEventRecoveryFailures = 0;
+    uc6State.jobEventConnected = true;
+    uc6State.jobEventFallbackActive = false;
+    uc6State.jobEventStage = event.stage;
+    uc6State.jobEventStatus = event.status;
+    uc6State.jobEventCompletedUnits = event.completed_units;
+    uc6State.jobEventTotalUnits = event.total_units;
+    return true;
+  }
+
+  async function consumeUC6JobEventStream(response, context) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (isUC6JobEventContextCurrent(context)) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        buffer = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary >= 0) {
+          const frame = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf('\n\n');
+          const event = parseUc6JobEventFrame(frame);
+          if (!event || !applyUC6JobEvent(event, context)) continue;
+
+          const publicationEvent = event.stage === 'publication_running' || event.stage === 'published';
+          if (!publicationEvent) {
+            const refreshed = await refreshUC6JobStatus({
+              fetchReview: uc6State.flowLane === 'legacy_analysis',
+              eventContext: context
+            });
+            if (refreshed === false || !isUC6JobEventContextCurrent(context)) return;
+          }
+
+          const eventMessage = getUC6JobEventStageMessage(event);
+          if (eventMessage && isUC6JobEventContextCurrent(context)) {
+            uc6State.stageMessage = eventMessage;
+            setUC6LiveMessage(eventMessage);
+            saveUC6LocalState();
+            renderUC6All();
+          }
+          if (event.stage === 'published') {
+            stopUC6JobEventListener();
+            return;
+          }
+          if (!isUC6JobObservationPending()) {
+            stopUC6JobEventListener();
+            return;
+          }
+        }
+      }
+    } finally {
+      try { await reader.cancel(); } catch (_) { }
+    }
+    if (isUC6JobEventContextCurrent(context)) {
+      const error = new Error('FetchDoc job event stream closed.');
+      error.name = 'Uc6JobEventStreamClosedError';
+      error.code = 'job_event_stream_closed';
+      throw error;
+    }
+  }
+
+  function scheduleUC6JobEventReconnect(context) {
+    if (!isUC6JobEventContextCurrent(context)) return;
+    const index = Math.min(
+      Math.max(uc6State.jobEventRecoveryFailures - 1, 0),
+      UC6_JOB_EVENT_RECONNECT_DELAYS_MS.length - 1
+    );
+    const delay = UC6_JOB_EVENT_RECONNECT_DELAYS_MS[index];
+    clearUC6JobEventReconnectTimer();
+    uc6State.jobEventReconnectTimer = setTimeout(() => {
+      uc6State.jobEventReconnectTimer = null;
+      if (!isUC6JobEventContextCurrent(context)) return;
+      runUC6JobEventListener(context).catch(() => {});
+    }, delay);
+  }
+
+  async function recoverUC6JobEventListener(context, streamError) {
+    if (!isUC6JobEventContextCurrent(context)) return;
+    if (handleUC6AuthorizationFailure(streamError)) {
+      stopUC6Polling();
+      return;
+    }
+
+    try {
+      if (
+        uc6State.publicationRequestActive === true
+        || uc6State.publicationStatus === 'submitting'
+        || uc6State.publicationStatus === 'reconciling'
+      ) {
+        await reconcileUC6PublicationState();
+      } else {
+        await refreshUC6JobStatus({ fetchReview: uc6State.flowLane === 'legacy_analysis', eventContext: context });
+      }
+    } catch (reconcileError) {
+      if (!isUC6JobEventContextCurrent(context)) return;
+      if (handleUC6AuthorizationFailure(reconcileError)) {
+        stopUC6Polling();
+        return;
+      }
+    }
+    if (!isUC6JobEventContextCurrent(context)) return;
+    if (!isUC6JobObservationPending()) {
+      stopUC6JobEventListener({ abortRequest: false });
+      return;
+    }
+
+    uc6State.jobEventConnected = false;
+    uc6State.jobEventRecoveryFailures += 1;
+    if (uc6State.jobEventRecoveryFailures >= UC6_MAX_JOB_EVENT_RECOVERY_FAILURES) {
+      stopUC6JobEventListener({ abortRequest: false });
+      uc6State.jobEventFallbackActive = true;
+      uc6State.stageMessage = '실시간 상태 연결 복구가 반복 실패하여 제한된 상태 확인으로 전환합니다.';
+      setUC6LiveMessage(uc6State.stageMessage);
+      renderUC6All();
+      if (isUC6JobPollingPending()) startUC6PollingFallback();
+      return;
+    }
+
+    uc6State.stageMessage = '실시간 상태 연결을 복구하고 있습니다. 현재 작업은 서버에서 계속 실행됩니다.';
+    setUC6LiveMessage(uc6State.stageMessage);
+    renderUC6All();
+    scheduleUC6JobEventReconnect(context);
+  }
+
+  async function runUC6JobEventListener(context) {
+    if (!isUC6JobEventContextCurrent(context)) return;
+    try {
+      const response = await uc6State.api.openJobEvents(context.jobId, {
+        signal: uc6State.jobEventAbortController.signal
+      });
+      if (!isUC6JobEventContextCurrent(context)) return;
+      uc6State.jobEventConnected = true;
+      await consumeUC6JobEventStream(response, context);
+    } catch (error) {
+      if (!isUC6JobEventContextCurrent(context)) return;
+      if (error?.name === 'AbortError' && uc6State.jobEventAbortController?.signal?.aborted === true) return;
+      await recoverUC6JobEventListener(context, error);
+    }
+  }
+
+  function startUC6JobObservation(options = {}) {
+    stopUC6Polling({ preserveStream: true });
+    stopUC6JobEventListener();
+    if (!isUc6Authorized() || !uc6State.jobId) return null;
+    if (options.force !== true && !isUC6JobObservationPending()) return null;
+
+    uc6State.jobEventAbortController = new AbortController();
+    uc6State.jobEventJobId = uc6State.jobId;
+    uc6State.jobEventLastSequence = -1;
+    uc6State.jobEventRecoveryFailures = 0;
+    uc6State.jobEventConnected = false;
+    uc6State.jobEventFallbackActive = false;
+    const context = { sequence: uc6State.jobEventSequence, jobId: uc6State.jobId };
+    runUC6JobEventListener(context).catch(() => {});
+    return context;
+  }
+
   function isUC6PollingContextCurrent(context) {
     return Boolean(
       context
@@ -6884,8 +7151,8 @@ Customer: Thank you. Goodbye.`
     );
   }
 
-  function startUC6Polling(options = {}) {
-    stopUC6Polling();
+  function startUC6PollingFallback(options = {}) {
+    stopUC6Polling({ preserveStream: true });
     if (!isUc6Authorized() || !uc6State.jobId || !isUC6JobPollingPending()) return null;
     uc6State.pollingAbortController = new AbortController();
     uc6State.pollingJobId = uc6State.jobId;
@@ -6935,8 +7202,8 @@ Customer: Thank you. Goodbye.`
         if (uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS) {
           stopUC6Polling();
           uc6State.stageMessage = uc6State.freshRenderSubmissionAmbiguous
-            ? '자동 상태 확인을 잠시 중단했습니다. 생성 요청은 다시 보내지 않고 현재 작업 상태를 수동으로 확인할 수 있습니다.'
-            : '상태 확인을 잠시 중단했습니다. 수동으로 다시 시작할 수 있습니다.';
+            ? '실시간 연결 복구 후 사용한 제한된 상태 확인도 일시적으로 실패했습니다. 생성 요청은 다시 보내지 않고 수동 상태 확인만 사용할 수 있습니다.'
+            : '실시간 연결 복구 후 사용한 제한된 상태 확인이 일시적으로 중단되었습니다. 수동으로 상태를 다시 확인할 수 있습니다.';
           setUC6LiveMessage(uc6State.stageMessage);
         } else {
           scheduleUC6Poll(getUC6NextPollingDelay({ advance: false }), context);
@@ -6953,9 +7220,9 @@ Customer: Thank you. Goodbye.`
 
   async function refreshUC6PollingNow() {
     uc6State.consecutivePollErrors = 0;
-    const context = startUC6Polling({ scheduleImmediately: false });
-    if (!context) return;
-    await pollUC6JobStatus(context);
+    uc6State.jobEventRecoveryFailures = 0;
+    await refreshUC6JobStatus({ fetchReview: uc6State.flowLane === 'legacy_analysis' });
+    if (isUC6JobObservationPending()) startUC6JobObservation();
   }
 
   async function refreshUC6JobStatus(options = {}) {
@@ -6963,6 +7230,7 @@ Customer: Thank you. Goodbye.`
     const requestedJobId = uc6State.jobId;
     const rawJob = await uc6State.api.getJob(requestedJobId, { signal: options.signal });
     if (options.pollingContext && !isUC6PollingContextCurrent(options.pollingContext)) return false;
+    if (options.eventContext && !isUC6JobEventContextCurrent(options.eventContext)) return false;
 
     const authoritativeDummyRenderLane = rawJob
       && typeof rawJob === 'object'
@@ -7601,6 +7869,7 @@ Customer: Thank you. Goodbye.`
     renderUC6PublicationSurfaceOnly();
     if (uc6State.publicationAbortController) uc6State.publicationAbortController.abort();
     uc6State.publicationAbortController = new AbortController();
+    startUC6JobObservation({ force: true });
     try {
       const payload = await uc6State.api.submitReusableAssetPublication(
         uc6State.jobId,
@@ -7642,6 +7911,9 @@ Customer: Thank you. Goodbye.`
       }
     } finally {
       uc6State.publicationRequestActive = false;
+      if (uc6State.publicationStatus === 'published' || uc6State.publicationStatus === 'ready' || uc6State.publicationStatus === 'error') {
+        stopUC6Polling();
+      }
       renderUC6PublicationSurfaceOnly();
     }
   }
@@ -8436,13 +8708,19 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6RenderUnknownStage(root) {
     const reconciliationPending = isUC6FreshRenderSubmissionReconciliationPending();
-    const pollingPaused = reconciliationPending && uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS;
+    const fallbackPaused = reconciliationPending
+      && uc6State.jobEventFallbackActive
+      && uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS;
     const card = createUc6Node('section', 'uc6-stage-card is-warning');
     card.append(createUc6Node('h2', '', '생성 요청 확인 중'));
     card.append(createUc6Node('p', 'uc6-stage-copy', '생성 요청의 응답을 확인하지 못했습니다. 서버에서 작업이 계속 진행 중일 수 있습니다. 중복 생성을 방지하기 위해 생성 요청은 다시 보내지 않고 현재 작업 상태만 확인합니다.'));
-    card.append(createUc6Node('p', 'uc6-inline-warning', pollingPaused
-      ? '자동 상태 확인을 잠시 중단했습니다. 생성 요청은 다시 보내지 않고 현재 작업 상태를 수동으로 확인할 수 있습니다.'
-      : '서버 작업 상태를 확인하고 있습니다.'));
+    card.append(createUc6Node('p', 'uc6-inline-warning', fallbackPaused
+      ? '실시간 연결과 제한된 상태 확인이 모두 일시적으로 중단되었습니다. 생성 요청은 다시 보내지 않고 수동 상태 확인만 사용할 수 있습니다.'
+      : uc6State.jobEventFallbackActive
+        ? '실시간 연결 복구가 어려워 제한된 상태 확인으로 작업을 계속 관찰하고 있습니다.'
+        : uc6State.jobEventConnected
+          ? '실시간 서버 이벤트로 작업 상태를 확인하고 있습니다.'
+          : '실시간 상태 연결을 준비하거나 복구하고 있습니다. 서버 작업은 계속 실행됩니다.'));
 
     const actions = createUc6Node('div', 'uc6-action-row');
     if (uc6State.flowLane === 'asset_render' && !uc6State.jobId) {
