@@ -44,7 +44,7 @@ export const UC6_PUBLIC_ERROR_MESSAGES = Object.freeze({
   browser_admin_uc6_analysis_conflict: '이미 처리 중인 분석 작업이 있습니다.',
   browser_admin_uc6_review_not_ready: '아직 관리자 검토 정보가 준비되지 않았습니다.',
   browser_admin_uc6_decision_invalid: '검토 결정 입력값을 확인하세요.',
-  browser_admin_uc6_decision_conflict: '이미 다른 검토 결정이 기록되었습니다.',
+  browser_admin_uc6_decision_conflict: '검토 결정을 현재 작업 상태에 적용할 수 없습니다. 작업 상태를 새로고침해 최신 상태를 확인하세요.',
   browser_admin_uc6_analysis_failed: '분석 작업이 실패했습니다. 재시도할 수 있습니다.',
   browser_admin_uc6_queue_unavailable: '분석 대기열을 일시적으로 사용할 수 없습니다.',
   browser_admin_uc6_final_delivery_not_approved: '승인 완료 후 최종 산출물 상태를 확인할 수 있습니다.',
