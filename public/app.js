@@ -64,7 +64,7 @@ const CONFIG = {
 // ==========================================
 // 🏷️ 앱 버전 표시 (배포/캐시 확인용)
 // ==========================================
-const APP_VERSION = 'app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1';
+const APP_VERSION = 'app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1';
 console.log(APP_VERSION);
 console.info('[UC5 R3D] source ingestion + dynamic sharded W03 frontend orchestration active');
 

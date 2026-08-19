@@ -1351,7 +1351,7 @@ test('authentication, token processing, endpoints, route constants, and webhooks
   const html = readSource('../public/index.html');
   const admin = readSource('../public/uc6-browser-admin.mjs');
   assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'), true);
+  assert.equal(app.includes('app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'), true);
   assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
   assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
@@ -2366,7 +2366,7 @@ test('R6C app source uses hierarchical dummy-render selection and preserves flat
   const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
 
   assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'), true);
+  assert.equal(app.includes('app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'), true);
   assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
   assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
   assert.equal(load.includes('getDummyDatabagPackages('), false);
@@ -4303,7 +4303,7 @@ test('R6G-B3 app retains accepted job identity, locks duplicate submission, and 
   const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
   const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
   const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1"), true);
+  assert.equal(app.includes("app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1"), true);
   assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
   assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
   assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
@@ -4439,7 +4439,7 @@ test('R6G-B5 render_unknown uses neutral warning copy while confirmed failure re
   const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
   const selection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
 
-  assert.equal(app.includes('app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'), true);
+  assert.equal(app.includes('app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'), true);
   assert.equal(unknown.includes("'uc6-stage-card is-warning'"), true);
   assert.equal(unknown.includes('생성 요청 확인 중'), true);
   assert.equal(unknown.includes('실시간 서버 이벤트로 작업 상태를 확인하고 있습니다.'), true);
@@ -4653,7 +4653,7 @@ test('Transport-C preserves Fresh, published Asset, artifact, and B5 UX contract
   const syntheticStage = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
   const unknown = extractFunctionBody(app, 'renderUC6RenderUnknownStage');
   const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
-  assert.equal(app.includes("const APP_VERSION = 'app.uc6-transport-c-unified-job-event-listener-2026-08-15-v1'"), true);
+  assert.equal(app.includes("const APP_VERSION = 'app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'"), true);
   assert.equal(freshSubmit.includes('submitFreshSyntheticScenarioRender(uc6State.jobId, { signal: controller.signal })'), true);
   assert.equal(freshSubmit.includes('scenario_key:'), false);
   assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.forEach'), true);
