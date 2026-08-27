@@ -626,8 +626,8 @@ function projectUc6FreshLinkedScenarioFamily(value) {
   if (value.scenario_count !== 3) invalidReusablePublicationContract();
   if (
     !Array.isArray(value.ordered_scenario_keys)
-    || value.ordered_scenario_keys.length !== UC6_SYNTHETIC_SCENARIO_KEYS.length
-    || value.ordered_scenario_keys.some((key, index) => key !== UC6_SYNTHETIC_SCENARIO_KEYS[index])
+    || value.ordered_scenario_keys.length !== UC6_PUBLISHED_SYNTHETIC_SCENARIO_KEYS.length
+    || value.ordered_scenario_keys.some((key, index) => key !== UC6_PUBLISHED_SYNTHETIC_SCENARIO_KEYS[index])
   ) invalidReusablePublicationContract();
   if (!SHA256_PATTERN.test(value.scenario_family_artifact_sha256)) invalidReusablePublicationContract();
 
@@ -645,7 +645,7 @@ function projectUc6FreshLinkedScenarioFamily(value) {
   return {
     synthetic_scenario_family_id: value.synthetic_scenario_family_id,
     scenario_count: 3,
-    ordered_scenario_keys: [...UC6_SYNTHETIC_SCENARIO_KEYS],
+    ordered_scenario_keys: [...UC6_PUBLISHED_SYNTHETIC_SCENARIO_KEYS],
     scenario_family_artifact_sha256: value.scenario_family_artifact_sha256,
     ...(value.published_scenario_family_id ? { published_scenario_family_id: value.published_scenario_family_id } : {}),
     ...(value.publication_manifest_sha256 ? { publication_manifest_sha256: value.publication_manifest_sha256 } : {}),
@@ -806,7 +806,8 @@ export function projectUc6FreshTemplateOnboardingJobStatus(payload, options = {}
 
 const UC6_SYNTHETIC_GENERATION_TASK_TYPE = 'fetchdoc_browser_admin_uc6_fresh_synthetic_scenario_generation';
 const UC6_SYNTHETIC_RENDER_TASK_TYPE = 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario';
-const UC6_SYNTHETIC_SCENARIO_KEYS = Object.freeze(['scenario_000', 'scenario_001', 'scenario_002']);
+const UC6_PUBLISHED_SYNTHETIC_SCENARIO_KEYS = Object.freeze(['scenario_000', 'scenario_001', 'scenario_002']);
+const UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS = Object.freeze(['scenario_000', 'scenario_001']);
 const UC6_SYNTHETIC_SUBMISSION_STATES = new Set([
   'synthetic_scenarios_queued',
   'synthetic_scenarios_running',
@@ -863,42 +864,18 @@ function projectUc6SyntheticDifferentiationBasis(value, depth = 0) {
 
 function projectUc6SyntheticScenarioOption(value) {
   if (!isPlainObject(value)) throw new TypeError('invalid_synthetic_scenario_option');
-  const allowed = new Set([
-    'scenario_key', 'label', 'scenario_summary', 'differentiation_basis',
-    'synthetic_scenario_family_id', 'package_id', 'package_version', 'template_family_id'
-  ]);
+  const allowed = new Set(['scenario_key', 'label', 'scenario_summary', 'differentiation_basis']);
   assertUc6AllowedFields(value, allowed, 'invalid_synthetic_scenario_option_fields');
-  if (!UC6_SYNTHETIC_SCENARIO_KEYS.includes(value.scenario_key)) throw new TypeError('invalid_synthetic_scenario_key');
-  for (const field of ['synthetic_scenario_family_id', 'package_id', 'package_version', 'template_family_id']) {
-    if (typeof value[field] !== 'string' || !BOUNDED_ID_PATTERN.test(value[field])) {
-      throw new TypeError(`invalid_synthetic_scenario_${field}`);
-    }
+  if (!UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.includes(value.scenario_key)) throw new TypeError('invalid_synthetic_scenario_key');
+  if (!Object.prototype.hasOwnProperty.call(value, 'differentiation_basis')) {
+    throw new TypeError('invalid_synthetic_differentiation_basis');
   }
-  const projected = {
+  return {
     scenario_key: value.scenario_key,
     label: validateUc6SafePublicText(value.label, { maxLength: 256, code: 'invalid_synthetic_scenario_label' }),
     scenario_summary: validateUc6SafePublicText(value.scenario_summary, { maxLength: 2048, code: 'invalid_synthetic_scenario_summary' }),
-    synthetic_scenario_family_id: value.synthetic_scenario_family_id,
-    package_id: value.package_id,
-    package_version: value.package_version,
-    template_family_id: value.template_family_id
+    differentiation_basis: projectUc6SyntheticDifferentiationBasis(value.differentiation_basis)
   };
-  if (Object.prototype.hasOwnProperty.call(value, 'differentiation_basis')) {
-    projected.differentiation_basis = projectUc6SyntheticDifferentiationBasis(value.differentiation_basis);
-  }
-  return projected;
-}
-
-function assertUc6SyntheticScenarioFamilyCoherence(options) {
-  if (!options.length) return;
-  const familyId = options[0].synthetic_scenario_family_id;
-  const templateFamilyId = options[0].template_family_id;
-  if (options.some((option) => option.synthetic_scenario_family_id !== familyId)) {
-    throw new TypeError('synthetic_scenario_family_mismatch');
-  }
-  if (options.some((option) => option.template_family_id !== templateFamilyId)) {
-    throw new TypeError('synthetic_template_family_mismatch');
-  }
 }
 
 export function projectUc6FreshSyntheticGenerationSubmission(payload, options = {}) {
@@ -906,8 +883,7 @@ export function projectUc6FreshSyntheticGenerationSubmission(payload, options = 
   const allowed = new Set([
     'schema_version', 'job_id', 'task_type', 'task_id', 'queue_status', 'created', 'state',
     'control_plane_contract_version', 'public_safety', 'source_pptx_sha256',
-    'synthetic_scenario_family_id', 'scenario_count', 'package_count', 'network_call_count',
-    'replayed', 'provider_attempt_count'
+    'bound_scenario', 'network_call_count', 'replayed', 'provider_attempt_count'
   ]);
   assertUc6AllowedFields(payload, allowed, 'invalid_synthetic_generation_submission_fields');
   const expectedJobId = normalizeUc6JobId(options.expectedJobId);
@@ -920,23 +896,11 @@ export function projectUc6FreshSyntheticGenerationSubmission(payload, options = 
   if (typeof payload.created !== 'boolean') throw new TypeError('invalid_synthetic_generation_submission_created');
   if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_generation_submission_public_safety');
 
-  const readyFields = [
-    'source_pptx_sha256', 'synthetic_scenario_family_id', 'scenario_count', 'package_count',
-    'network_call_count', 'replayed', 'provider_attempt_count'
-  ];
-  const readyFieldCount = readyFields.filter((field) => Object.prototype.hasOwnProperty.call(payload, field)).length;
   const isReadyReplay = payload.state === 'synthetic_scenarios_ready';
   if (isReadyReplay) {
     if (payload.queue_status !== 'ready') throw new TypeError('invalid_synthetic_generation_submission_queue_status');
     if (payload.task_id !== null) throw new TypeError('invalid_synthetic_generation_submission_task_id');
     if (payload.created !== false) throw new TypeError('invalid_synthetic_generation_submission_created');
-    if (readyFieldCount !== readyFields.length) throw new TypeError('invalid_synthetic_generation_ready_metadata');
-    if (!SHA256_PATTERN.test(payload.source_pptx_sha256)) throw new TypeError('invalid_synthetic_generation_source_sha');
-    if (!BOUNDED_ID_PATTERN.test(payload.synthetic_scenario_family_id)) throw new TypeError('invalid_synthetic_generation_family_id');
-    if (payload.scenario_count !== 3 || payload.package_count !== 3) throw new TypeError('invalid_synthetic_generation_ready_counts');
-    if (payload.network_call_count !== 0 || payload.replayed !== true || payload.provider_attempt_count !== 1) {
-      throw new TypeError('invalid_synthetic_generation_replay_metadata');
-    }
   } else {
     const expectedQueueStatus = {
       synthetic_scenarios_queued: 'pending',
@@ -949,7 +913,21 @@ export function projectUc6FreshSyntheticGenerationSubmission(payload, options = 
     if (!Number.isInteger(payload.task_id) || payload.task_id <= 0 || payload.task_id > Number.MAX_SAFE_INTEGER) {
       throw new TypeError('invalid_synthetic_generation_submission_task_id');
     }
-    if (readyFieldCount !== 0) throw new TypeError('invalid_synthetic_generation_ready_metadata');
+  }
+  if (payload.source_pptx_sha256 !== undefined && !SHA256_PATTERN.test(payload.source_pptx_sha256)) {
+    throw new TypeError('invalid_synthetic_generation_source_sha');
+  }
+  const boundScenario = payload.bound_scenario === undefined
+    ? undefined
+    : projectUc6SyntheticScenarioOption(payload.bound_scenario);
+  if (payload.network_call_count !== undefined && (!Number.isSafeInteger(payload.network_call_count) || payload.network_call_count < 0)) {
+    throw new TypeError('invalid_synthetic_generation_network_call_count');
+  }
+  if (payload.replayed !== undefined && typeof payload.replayed !== 'boolean') {
+    throw new TypeError('invalid_synthetic_generation_replayed');
+  }
+  if (payload.provider_attempt_count !== undefined && (!Number.isSafeInteger(payload.provider_attempt_count) || payload.provider_attempt_count < 0)) {
+    throw new TypeError('invalid_synthetic_generation_provider_attempt_count');
   }
   return {
     schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version),
@@ -961,15 +939,11 @@ export function projectUc6FreshSyntheticGenerationSubmission(payload, options = 
     state: payload.state,
     control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
     public_safety: payload.public_safety,
-    ...(isReadyReplay ? {
-      source_pptx_sha256: payload.source_pptx_sha256,
-      synthetic_scenario_family_id: payload.synthetic_scenario_family_id,
-      scenario_count: payload.scenario_count,
-      package_count: payload.package_count,
-      network_call_count: payload.network_call_count,
-      replayed: payload.replayed,
-      provider_attempt_count: payload.provider_attempt_count
-    } : {})
+    ...(payload.source_pptx_sha256 !== undefined ? { source_pptx_sha256: payload.source_pptx_sha256 } : {}),
+    ...(boundScenario !== undefined ? { bound_scenario: boundScenario } : {}),
+    ...(payload.network_call_count !== undefined ? { network_call_count: payload.network_call_count } : {}),
+    ...(payload.replayed !== undefined ? { replayed: payload.replayed } : {}),
+    ...(payload.provider_attempt_count !== undefined ? { provider_attempt_count: payload.provider_attempt_count } : {})
   };
 }
 
@@ -993,26 +967,20 @@ export function projectUc6FreshSyntheticScenarios(payload, options = {}) {
   if (!KNOWN_SELECTION_STATES.has(payload.selection_state)) throw new TypeError('invalid_synthetic_scenarios_selection_state');
   if (!Array.isArray(payload.scenario_options)) throw new TypeError('invalid_synthetic_scenario_options');
   if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_scenarios_public_safety');
-  if (payload.generation_state !== 'generation_ready') {
-    if (payload.scenario_options.length !== 0 || payload.selection_state !== 'unbound' || payload.bound_scenario !== null) {
-      throw new TypeError('invalid_synthetic_scenarios_not_ready_shape');
-    }
-  }
-  if (payload.generation_state === 'generation_ready' && payload.onboarding_state !== 'onboarding_ready') {
-    throw new TypeError('invalid_synthetic_scenarios_ready_onboarding_state');
-  }
   const scenarioOptions = payload.scenario_options.map(projectUc6SyntheticScenarioOption);
-  if (payload.generation_state === 'generation_ready') {
-    if (scenarioOptions.length !== 3) throw new TypeError('invalid_synthetic_scenario_count');
+  if (payload.onboarding_state === 'onboarding_ready') {
+    if (scenarioOptions.length !== UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.length) throw new TypeError('invalid_synthetic_scenario_count');
     scenarioOptions.forEach((option, index) => {
-      if (option.scenario_key !== UC6_SYNTHETIC_SCENARIO_KEYS[index]) throw new TypeError('invalid_synthetic_scenario_order');
+      if (option.scenario_key !== UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS[index]) throw new TypeError('invalid_synthetic_scenario_order');
     });
-    if (new Set(scenarioOptions.map((option) => option.scenario_key)).size !== 3) throw new TypeError('duplicate_synthetic_scenario_key');
-    assertUc6SyntheticScenarioFamilyCoherence(scenarioOptions);
+  } else if (scenarioOptions.length !== 0) {
+    throw new TypeError('invalid_synthetic_scenarios_onboarding_options');
+  }
+  if (payload.generation_state !== 'not_started' && payload.onboarding_state !== 'onboarding_ready') {
+    throw new TypeError('invalid_synthetic_scenarios_generation_onboarding_state');
   }
   let boundScenario = null;
   if (payload.selection_state === 'bound') {
-    if (payload.generation_state !== 'generation_ready') throw new TypeError('invalid_synthetic_bound_generation_state');
     boundScenario = projectUc6SyntheticScenarioOption(payload.bound_scenario);
     const authoritative = scenarioOptions.find((option) => option.scenario_key === boundScenario.scenario_key);
     if (!authoritative || JSON.stringify(authoritative) !== JSON.stringify(boundScenario)) {
@@ -1020,6 +988,8 @@ export function projectUc6FreshSyntheticScenarios(payload, options = {}) {
     }
   } else if (payload.bound_scenario !== null) {
     throw new TypeError('invalid_synthetic_unbound_scenario');
+  } else if (payload.generation_state !== 'not_started') {
+    throw new TypeError('invalid_synthetic_unbound_generation_state');
   }
   return {
     schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version),
@@ -1037,8 +1007,8 @@ export function projectUc6FreshSyntheticScenarios(payload, options = {}) {
 
 export function validateUc6SyntheticScenarioBindingCommand(scenarioKey) {
   const normalized = typeof scenarioKey === 'string' ? scenarioKey.trim() : '';
-  if (!UC6_SYNTHETIC_SCENARIO_KEYS.includes(normalized)) {
-    return { ok: false, code: 'synthetic_scenario_key_invalid', message: '합성 샘플 컨텍스트 선택값을 확인하세요.' };
+  if (!UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.includes(normalized)) {
+    return { ok: false, code: 'synthetic_scenario_key_invalid', message: '샘플 Persona 선택값을 확인하세요.' };
   }
   return { ok: true, body: { scenario_key: normalized } };
 }
@@ -1059,7 +1029,7 @@ export function projectUc6FreshSyntheticScenarioBinding(payload, options = {}) {
     throw new TypeError('synthetic_binding_source_sha_mismatch');
   }
   if (payload.selection_state !== 'bound') throw new TypeError('invalid_synthetic_binding_selection_state');
-  if (payload.disposition !== 'created' && payload.disposition !== 'replayed') throw new TypeError('invalid_synthetic_binding_disposition');
+  if (!['created', 'replayed', 'resolved'].includes(payload.disposition)) throw new TypeError('invalid_synthetic_binding_disposition');
   if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_binding_public_safety');
   const boundScenario = projectUc6SyntheticScenarioOption(payload.bound_scenario);
   if (boundScenario.scenario_key !== expectedScenarioKey.body.scenario_key) {
@@ -1083,7 +1053,7 @@ const UC6_FRESH_RENDER_QUEUE_STATUSES = Object.freeze({
   render_completed: new Set(['done', 'ready', 'completed']),
   failed: new Set(['failed'])
 });
-const UC6_FRESH_RENDER_UNSAFE_FIELD = /(?:^|_)(?:absolute_?path|internal|locator|provider|request_?id|secret|token|fallback_?text|slot_?id|generation_?unit_?id)(?:_|$)/i;
+const UC6_FRESH_RENDER_UNSAFE_FIELD = /(?:^|_)(?:absolute_?path|internal|locator|provider|request_?id|secret|token|fallback_?text|slot_?id|generation_?unit_?id|selection_?id|package_?id|package_?version|family_?id)(?:_|$)/i;
 
 function assertUc6FreshRenderPublicFields(value, code) {
   if (!isPlainObject(value)) throw new TypeError(code);
@@ -1249,7 +1219,7 @@ export function projectUc6FreshSyntheticRenderJobStatus(payload, options = {}) {
 export function projectUc6FreshSyntheticRenderControl(input = {}) {
   const authoritativeBound = input.selectionState === 'bound'
     && isPlainObject(input.boundScenario)
-    && UC6_SYNTHETIC_SCENARIO_KEYS.includes(input.boundScenario.scenario_key);
+    && UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.includes(input.boundScenario.scenario_key);
   const publicState = typeof input.publicState === 'string' ? input.publicState : '';
   const submitted = input.submitted === true;
   const ambiguous = input.ambiguous === true;
@@ -1257,12 +1227,12 @@ export function projectUc6FreshSyntheticRenderControl(input = {}) {
   const submissionLocked = submitted || ambiguous || inFlight;
   return {
     authoritativeBound,
-    canSubmit: authoritativeBound && publicState === 'synthetic_scenario_bound' && !submissionLocked,
+    canSubmit: authoritativeBound && publicState === 'synthetic_scenarios_ready' && !submissionLocked,
     submissionLocked,
     reconciliationRequired: ambiguous || publicState === 'render_unknown',
     renderPollable: publicState === 'render_queued'
       || publicState === 'render_running'
-      || (authoritativeBound && submitted && !ambiguous && publicState === 'synthetic_scenario_bound'),
+      || (authoritativeBound && submitted && !ambiguous && publicState === 'synthetic_scenarios_ready'),
     completed: publicState === 'render_completed',
     failed: publicState === 'failed'
   };

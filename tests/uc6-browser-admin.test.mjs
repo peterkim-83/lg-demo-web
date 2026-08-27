@@ -172,17 +172,12 @@ function r6eSyntheticScenario(index, overrides = {}) {
     label: `가상 샘플 ${index + 1}`,
     scenario_summary: `템플릿 호환 합성 샘플 컨텍스트 ${index + 1}`,
     differentiation_basis: index === 1 ? null : `차별화 기준 ${index + 1}`,
-    synthetic_scenario_family_id: 'synthetic_family_demo_v1',
-    package_id: `synthetic_package_${suffix}`,
-    package_version: '2026.08.13',
-    template_family_id: 'fresh_template_family_v1',
     ...overrides
   };
 }
 
-function r6eSyntheticGet(generationState = 'generation_ready', selectionState = 'unbound') {
-  const ready = generationState === 'generation_ready';
-  const scenarioOptions = ready ? [0, 1, 2].map((index) => r6eSyntheticScenario(index)) : [];
+function r6eSyntheticGet(generationState = 'not_started', selectionState = generationState === 'not_started' ? 'unbound' : 'bound') {
+  const scenarioOptions = [0, 1].map((index) => r6eSyntheticScenario(index));
   return {
     schema_version: 'backend_owned_r6e_c1_public_v1',
     job_id: JOB_ID,
@@ -217,9 +212,7 @@ function r6eSyntheticSubmission(state = 'synthetic_scenarios_queued') {
   };
   if (isReadyReplay) Object.assign(payload, {
     source_pptx_sha256: R6C_SOURCE_SHA,
-    synthetic_scenario_family_id: 'synthetic_family_demo_v1',
-    scenario_count: 3,
-    package_count: 3,
+    bound_scenario: r6eSyntheticScenario(1),
     network_call_count: 0,
     replayed: true,
     provider_attempt_count: 1
@@ -2770,7 +2763,7 @@ test('R6E-C2 synthetic endpoints use Firebase-only GET and one-shot POST boundar
   });
   assert.throws(() => invalidApi.bindFreshSyntheticScenario(JOB_ID, 'scenario_999'), { code: 'synthetic_scenario_key_invalid' });
   assert.equal(invalidCalls, 0);
-  assert.deepEqual(validateUc6SyntheticScenarioBindingCommand(' scenario_002 ').body, { scenario_key: 'scenario_002' });
+  assert.equal(validateUc6SyntheticScenarioBindingCommand(' scenario_002 ').ok, false);
 
   for (const method of ['submitFreshSyntheticScenarios', 'bindFreshSyntheticScenario']) {
     let attempts = 0;
@@ -2796,7 +2789,20 @@ test('R6E-C2 synthetic endpoints use Firebase-only GET and one-shot POST boundar
   assert.equal(unauthorizedAttempts, 1);
 });
 
-test('R6E-C2 generation submission projector keeps queue-backed states strict and detached', () => {
+test('ACTIVE Fresh HTTP 202 generation response remains queued processing, not an immediate error', async () => {
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async () => 'firebase-token',
+    fetchImpl: async () => response(202, r6eSyntheticSubmission('synthetic_scenarios_queued'))
+  });
+  const raw = await api.submitFreshSyntheticScenarios(JOB_ID);
+  const projected = projectUc6FreshSyntheticGenerationSubmission(raw, { expectedJobId: JOB_ID });
+  assert.equal(projected.state, 'synthetic_scenarios_queued');
+  assert.equal(projected.queue_status, 'pending');
+  assert.notEqual(projected.state, 'render_unknown');
+});
+
+test('ACTIVE Fresh generation submission keeps queue states strict without family or triplet counts', () => {
   for (const state of ['synthetic_scenarios_queued', 'synthetic_scenarios_running', 'synthetic_scenarios_failed']) {
     const payload = r6eSyntheticSubmission(state);
     const projected = projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID });
@@ -2821,17 +2827,25 @@ test('R6E-C2 generation submission projector keeps queue-backed states strict an
     assert.throws(() => projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID }), TypeError);
   }
 
-  for (const state of ['synthetic_scenarios_queued', 'synthetic_scenarios_running', 'synthetic_scenarios_failed']) {
-    const payload = r6eSyntheticSubmission(state);
-    payload.source_pptx_sha256 = R6C_SOURCE_SHA;
-    assert.throws(
-      () => projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID }),
-      /invalid_synthetic_generation_ready_metadata/
-    );
+  const queuedWithOperationalFields = r6eSyntheticSubmission();
+  Object.assign(queuedWithOperationalFields, {
+    source_pptx_sha256: R6C_SOURCE_SHA,
+    bound_scenario: r6eSyntheticScenario(0),
+    network_call_count: 1,
+    replayed: false,
+    provider_attempt_count: 1
+  });
+  const projectedQueued = projectUc6FreshSyntheticGenerationSubmission(queuedWithOperationalFields, { expectedJobId: JOB_ID });
+  assert.equal(projectedQueued.bound_scenario.scenario_key, 'scenario_000');
+  assert.equal(projectedQueued.network_call_count, 1);
+  for (const internalField of ['synthetic_scenario_family_id', 'scenario_count', 'package_count', 'selection_id']) {
+    const payload = r6eSyntheticSubmission();
+    payload[internalField] = internalField.endsWith('count') ? 3 : 'private';
+    assert.throws(() => projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID }), TypeError);
   }
 });
 
-test('R6E-C2 accepts the exact provider-free ready replay envelope without manufacturing a task', () => {
+test('ACTIVE Fresh accepts ready replay without manufacturing a task or exposing package lineage', () => {
   const readyReplay = {
     schema_version: 'backend_owned_r6e_c1_submission_v1',
     job_id: JOB_ID,
@@ -2843,9 +2857,7 @@ test('R6E-C2 accepts the exact provider-free ready replay envelope without manuf
     control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
     public_safety: 'PASS',
     source_pptx_sha256: R6C_SOURCE_SHA,
-    synthetic_scenario_family_id: 'synthetic_family_demo_v1',
-    scenario_count: 3,
-    package_count: 3,
+    bound_scenario: r6eSyntheticScenario(1),
     network_call_count: 0,
     replayed: true,
     provider_attempt_count: 1
@@ -2859,9 +2871,10 @@ test('R6E-C2 accepts the exact provider-free ready replay envelope without manuf
   assert.equal(projected.task_id, null);
   assert.equal(projected.created, false);
   assert.equal(projected.source_pptx_sha256, R6C_SOURCE_SHA);
-  assert.equal(projected.synthetic_scenario_family_id, 'synthetic_family_demo_v1');
-  assert.equal(projected.scenario_count, 3);
-  assert.equal(projected.package_count, 3);
+  assert.equal(projected.bound_scenario.scenario_key, 'scenario_001');
+  assert.equal('synthetic_scenario_family_id' in projected, false);
+  assert.equal('scenario_count' in projected, false);
+  assert.equal('package_count' in projected, false);
   assert.equal(projected.network_call_count, 0);
   assert.equal(projected.replayed, true);
   assert.equal(projected.provider_attempt_count, 1);
@@ -2871,23 +2884,16 @@ test('R6E-C2 accepts the exact provider-free ready replay envelope without manuf
   assert.equal(projectUc6FreshSyntheticGenerationSubmission(readyWithoutTaskType, { expectedJobId: JOB_ID }).task_type, undefined);
 });
 
-test('R6E-C2 rejects malformed or partial provider-free ready replay envelopes', () => {
+test('ACTIVE Fresh rejects malformed ready replay operational fields', () => {
   const invalidReadyMutations = [
     (v) => { v.queue_status = 'done'; },
     (v) => { v.task_id = 812; },
     (v) => { v.created = true; },
-    (v) => { delete v.provider_attempt_count; },
-    (v) => {
-      for (const field of ['source_pptx_sha256', 'synthetic_scenario_family_id', 'scenario_count', 'package_count', 'network_call_count', 'replayed', 'provider_attempt_count']) delete v[field];
-    },
-    (v) => {
-      for (const field of ['synthetic_scenario_family_id', 'scenario_count', 'package_count', 'network_call_count', 'replayed', 'provider_attempt_count']) delete v[field];
-    },
-    (v) => { v.scenario_count = 2; },
-    (v) => { v.package_count = 4; },
-    (v) => { v.network_call_count = 1; },
-    (v) => { v.replayed = false; },
-    (v) => { v.provider_attempt_count = 2; }
+    (v) => { v.source_pptx_sha256 = 'bad'; },
+    (v) => { v.bound_scenario.scenario_key = 'scenario_002'; },
+    (v) => { v.network_call_count = -1; },
+    (v) => { v.replayed = 'true'; },
+    (v) => { v.provider_attempt_count = -1; }
   ];
   for (const mutate of invalidReadyMutations) {
     const payload = r6eSyntheticSubmission('synthetic_scenarios_ready');
@@ -2896,12 +2902,13 @@ test('R6E-C2 rejects malformed or partial provider-free ready replay envelopes',
   }
 });
 
-test('R6E-C2 synthetic GET projector enforces exactly three ordered coherent public scenarios', () => {
+test('ACTIVE Fresh GET exposes exactly two ordered Persona cards before generation', () => {
   const payload = r6eSyntheticGet();
   const before = JSON.stringify(payload);
   const projected = projectUc6FreshSyntheticScenarios(payload, { expectedJobId: JOB_ID, expectedSourceSha: R6C_SOURCE_SHA });
   assert.equal(JSON.stringify(payload), before);
-  assert.deepEqual(projected.scenario_options.map((row) => row.scenario_key), ['scenario_000', 'scenario_001', 'scenario_002']);
+  assert.deepEqual(projected.scenario_options.map((row) => row.scenario_key), ['scenario_000', 'scenario_001']);
+  assert.equal(projected.generation_state, 'not_started');
   assert.notStrictEqual(projected.scenario_options, payload.scenario_options);
   assert.notStrictEqual(projected.scenario_options[0], payload.scenario_options[0]);
   assert.equal(projected.scenario_options[1].differentiation_basis, null);
@@ -2914,31 +2921,34 @@ test('R6E-C2 synthetic GET projector enforces exactly three ordered coherent pub
 
   const mutations = [
     (v) => { v.scenario_options.pop(); },
-    (v) => { v.scenario_options.push(r6eSyntheticScenario(2, { scenario_key: 'scenario_002' })); },
+    (v) => { v.scenario_options.push(r6eSyntheticScenario(2)); },
     (v) => { [v.scenario_options[0], v.scenario_options[1]] = [v.scenario_options[1], v.scenario_options[0]]; },
-    (v) => { v.scenario_options[2].scenario_key = 'scenario_001'; },
-    (v) => { v.scenario_options[2].synthetic_scenario_family_id = 'other_family'; },
-    (v) => { v.scenario_options[2].template_family_id = 'other_template'; },
+    (v) => { v.scenario_options[1].scenario_key = 'scenario_000'; },
+    (v) => { v.scenario_options[0].synthetic_scenario_family_id = 'other_family'; },
+    (v) => { v.scenario_options[0].package_id = 'internal_package'; },
+    (v) => { delete v.scenario_options[0].differentiation_basis; },
     (v) => { v.scenario_options[0].source_context = { secret: true }; },
     (v) => { v.scenario_options[0].scenario_summary = 'C:\\private\\source.json'; },
     (v) => { v.public_safety = 'FAIL'; },
-    (v) => { v.provider_receipt_id = 'private'; }
+    (v) => { v.provider_receipt_id = 'private'; },
+    (v) => { v.synthetic_scenario_family_id = 'private_family'; },
+    (v) => { v.scenario_count = 2; },
+    (v) => { v.package_count = 1; }
   ];
   for (const mutate of mutations) {
     const candidate = r6eSyntheticGet();
     mutate(candidate);
     assert.throws(() => projectUc6FreshSyntheticScenarios(candidate, { expectedJobId: JOB_ID }), TypeError);
   }
-  const notReadyWithOptions = r6eSyntheticGet('generation_running');
-  notReadyWithOptions.scenario_options = [r6eSyntheticScenario(0)];
-  assert.throws(() => projectUc6FreshSyntheticScenarios(notReadyWithOptions, { expectedJobId: JOB_ID }), TypeError);
+  assert.equal(projectUc6FreshSyntheticScenarios(r6eSyntheticGet('not_started'), { expectedJobId: JOB_ID }).scenario_options.length, 2);
   const unboundWithBoundScenario = r6eSyntheticGet();
   unboundWithBoundScenario.bound_scenario = r6eSyntheticScenario(0);
   assert.throws(() => projectUc6FreshSyntheticScenarios(unboundWithBoundScenario, { expectedJobId: JOB_ID }), TypeError);
+  assert.throws(() => projectUc6FreshSyntheticScenarios(r6eSyntheticGet('generation_running', 'unbound'), { expectedJobId: JOB_ID }), /unbound_generation_state/);
 });
 
-test('R6E-C2 binding projector requires the requested immutable scenario and safe metadata', () => {
-  for (const disposition of ['created', 'replayed']) {
+test('ACTIVE Fresh binding returns only immutable Persona public data', () => {
+  for (const disposition of ['created', 'replayed', 'resolved']) {
     const payload = r6eSyntheticBinding('scenario_001', disposition);
     const projected = projectUc6FreshSyntheticScenarioBinding(payload, {
       expectedJobId: JOB_ID,
@@ -2947,6 +2957,7 @@ test('R6E-C2 binding projector requires the requested immutable scenario and saf
     });
     assert.equal(projected.disposition, disposition);
     assert.equal(projected.bound_scenario.scenario_key, 'scenario_001');
+    assert.deepEqual(Object.keys(projected.bound_scenario), ['scenario_key', 'label', 'scenario_summary', 'differentiation_basis']);
     assert.notStrictEqual(projected.bound_scenario, payload.bound_scenario);
   }
   const mutations = [
@@ -2989,7 +3000,7 @@ test('R6E-C2 state mapping is synthetic-only for queued/running and terminal wit
   }
 });
 
-test('R6E-C2 persistence and app source enforce GET-first one-shot generation, three-card binding, and stop before render', () => {
+test('ACTIVE Fresh app source enforces Persona selection before one-shot source generation and render', () => {
   assert.deepEqual(projectUc6PersistedState({
     job_id: JOB_ID,
     fresh_onboarding_expected: true,
@@ -3021,12 +3032,15 @@ test('R6E-C2 persistence and app source enforce GET-first one-shot generation, t
   const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
   const polling = extractFunctionBody(app, 'pollUC6JobStatus');
   const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
+  const mapGenerationState = createExtractedFunction(app, 'mapUC6SyntheticGenerationStateToJobState');
 
   assert.equal(upload.includes('loadUC6PackageOptions'), false);
   assert.equal(upload.includes('reconcileUC6FreshSyntheticScenarios'), true);
-  assert.ok(reconcile.indexOf('loadUC6FreshSyntheticScenarios') < reconcile.indexOf('submitUC6FreshSyntheticGeneration'));
+  assert.equal(reconcile.includes('loadUC6FreshSyntheticScenarios'), true);
+  assert.equal(reconcile.includes('submitUC6FreshSyntheticGeneration'), false);
   assert.equal(loadSynthetic.includes('getFreshSyntheticScenarios'), true);
-  assert.equal(submitGeneration.includes('syntheticGenerationSubmitted || uc6State.syntheticGenerationSubmissionAmbiguous'), true);
+  assert.equal(submitGeneration.includes('uc6State.syntheticGenerationSubmitted'), true);
+  assert.equal(submitGeneration.includes('uc6State.syntheticGenerationSubmissionAmbiguous'), true);
   assert.ok(submitGeneration.indexOf('uc6State.syntheticGenerationSubmitted = true') < submitGeneration.indexOf('api.submitFreshSyntheticScenarios'));
   assert.equal((submitGeneration.match(/api\.submitFreshSyntheticScenarios/g) || []).length, 1);
   assert.equal(submitGeneration.includes('submitDummyDatabagRender'), false);
@@ -3034,21 +3048,29 @@ test('R6E-C2 persistence and app source enforce GET-first one-shot generation, t
   assert.equal(resume.includes('submitFreshSyntheticScenarios'), false);
   assert.equal(polling.includes('isUC6JobPollingPending()'), true);
   assert.equal(pollingDecision.includes('syntheticScenariosPollable'), true);
+  assert.equal(mapGenerationState('generation_ready', 'bound'), 'synthetic_scenarios_ready');
+  assert.equal(mapGenerationState('not_started', 'bound'), 'synthetic_scenario_bound');
 
-  assert.equal(renderSynthetic.includes('uc6State.syntheticScenarioOptions.length === 3'), true);
+  assert.equal(renderSynthetic.includes('uc6State.syntheticScenarioOptions.length === 2'), true);
+  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_000'"), true);
+  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_001'"), true);
   assert.equal(renderSynthetic.includes("data.uc6SyntheticScenario"), false);
   assert.equal(renderSynthetic.includes('action.dataset.uc6SyntheticScenario = scenario.scenario_key'), true);
   assert.equal(renderSynthetic.includes('실제 고객 정보가 아닙니다'), true);
   assert.equal(renderSynthetic.includes("isBound || uc6State.operationInFlight || uc6State.syntheticBindingSubmissionAmbiguous"), true);
-  assert.equal(renderSynthetic.includes('uc6-submitRenderBtn'), false);
+  assert.equal(renderSynthetic.includes('uc6-submitFreshSyntheticGenerationBtn'), true);
+  assert.equal(renderSynthetic.includes('uc6-submitFreshRenderBtn'), true);
   assert.equal(renderPackage.includes('renderUC6FreshSyntheticScenarioStage'), true);
 
   assert.equal(bind.includes('bindFreshSyntheticScenario'), true);
   assert.equal(bind.includes('expectedScenarioKey: option.scenario_key'), true);
+  assert.equal(bind.includes("uc6State.syntheticGenerationState !== 'not_started'"), true);
   assert.equal(bind.includes("uc6State.jobState = 'synthetic_scenario_bound'"), true);
   assert.equal(bind.includes('submitDummyDatabagRender'), false);
   assert.equal(bind.includes('submitReusableAssetRender'), false);
   assert.equal(bind.includes('startUC6Polling'), false);
+  assert.equal(submitGeneration.includes("uc6State.syntheticSelectionState !== 'bound'"), true);
+  assert.equal(submitGeneration.includes("uc6State.syntheticGenerationState !== 'not_started'"), true);
   assert.equal(loadLegacy.includes('getDummyDatabagPackageFamilies'), true, 'static/curated package family flow remains');
   assert.equal(loadAsset.includes('getReusableAssetPackages'), true, 'reusable Asset flow remains');
 });
@@ -3151,7 +3173,7 @@ test('R6E-D2 render endpoint is normalized and submits one Firebase-only bodyles
   assert.equal(attempts, 1, 'ambiguous POST is never replayed');
 });
 
-test('R6E-D2 submission projection validates public identity and state-specific retained completion', () => {
+test('ACTIVE Fresh render submission accepts Persona-only binding and retains queue semantics', () => {
   for (const state of ['render_queued', 'render_running', 'failed']) {
     const projected = projectUc6FreshSyntheticRenderSubmission(r6eD2RenderSubmission(state), {
       expectedJobId: JOB_ID,
@@ -3159,7 +3181,7 @@ test('R6E-D2 submission projection validates public identity and state-specific 
     });
     assert.equal(projected.state, state);
     assert.equal(projected.selection_state, 'bound');
-    assert.equal(projected.bound_scenario.package_id, 'synthetic_package_001');
+    assert.deepEqual(Object.keys(projected.bound_scenario), ['scenario_key', 'label', 'scenario_summary', 'differentiation_basis']);
   }
   const retained = projectUc6FreshSyntheticRenderSubmission(r6eD2RenderSubmission('render_completed'), {
     expectedJobId: JOB_ID,
@@ -3175,7 +3197,7 @@ test('R6E-D2 submission projection validates public identity and state-specific 
     (v) => { v.selection_state = 'unbound'; },
     (v) => { v.public_safety = 'FAIL'; },
     (v) => { v.provider_request_id = 'private'; },
-    (v) => { v.bound_scenario.package_id = ''; }
+    (v) => { v.bound_scenario.package_id = 'private_package'; }
   ]) {
     const payload = r6eD2RenderSubmission();
     mutate(payload);
@@ -3219,14 +3241,14 @@ test('R6E-D2 render control enables only authoritative bound selection and locks
   const base = {
     selectionState: 'bound',
     boundScenario: r6eSyntheticScenario(1),
-    publicState: 'synthetic_scenario_bound',
+    publicState: 'synthetic_scenarios_ready',
     submitted: false,
     ambiguous: false,
     inFlight: false
   };
   assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, selectionState: 'unbound' }).canSubmit, false);
   assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, boundScenario: null }).canSubmit, false);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'synthetic_scenarios_ready' }).canSubmit, false);
+  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'synthetic_scenario_bound' }).canSubmit, false);
   assert.equal(projectUc6FreshSyntheticRenderControl(base).canSubmit, true);
   assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, inFlight: true }).canSubmit, false);
   assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, submitted: true }).canSubmit, false);
@@ -4657,7 +4679,7 @@ test('Transport-C preserves Fresh, published Asset, artifact, and B5 UX contract
   assert.equal(freshSubmit.includes('submitFreshSyntheticScenarioRender(uc6State.jobId, { signal: controller.signal })'), true);
   assert.equal(freshSubmit.includes('scenario_key:'), false);
   assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.forEach'), true);
-  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.length === 3'), true);
+  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.length === 2'), true);
   assert.equal(publishedSubmit.includes('published_scenario_family_id: uc6State.selectedPublishedScenarioFamilyId'), true);
   assert.equal(publishedSubmit.includes('scenario_key: uc6State.selectedPublishedScenarioKey'), true);
   assert.equal(publishedSubmit.includes('package_id:'), false);

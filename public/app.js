@@ -5143,11 +5143,11 @@ Customer: Thank you. Goodbye.`
     onboarding_running: 'Fresh onboarding 실행 중',
     onboarding_ready: 'Fresh onboarding 준비 완료',
     onboarding_blocked: 'Fresh onboarding 차단',
-    synthetic_scenarios_queued: '합성 샘플 컨텍스트 생성 대기 중',
-    synthetic_scenarios_running: '합성 샘플 컨텍스트 생성 중',
-    synthetic_scenarios_ready: '합성 샘플 컨텍스트 선택 준비 완료',
-    synthetic_scenario_bound: '합성 샘플 컨텍스트 선택 완료',
-    synthetic_scenarios_failed: '합성 샘플 컨텍스트 생성 실패',
+    synthetic_scenarios_queued: '샘플 소스 데이터 생성 대기 중',
+    synthetic_scenarios_running: '샘플 소스 데이터 생성 중',
+    synthetic_scenarios_ready: '샘플 소스 데이터 준비 완료',
+    synthetic_scenario_bound: '샘플 Persona 선택 완료',
+    synthetic_scenarios_failed: '샘플 소스 데이터 생성 실패',
     render_queued: '생성 대기 중',
     render_running: '생성 실행 중',
     render_completed: '생성 완료',
@@ -5974,7 +5974,7 @@ Customer: Thank you. Goodbye.`
       if (projected.state === 'onboarding_ready') {
         uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 합성 샘플 컨텍스트 상태를 확인하고 있습니다.';
         saveUC6LocalState();
-        const synthetic = await reconcileUC6FreshSyntheticScenarios({ signal: controller.signal, allowSubmit: true });
+        const synthetic = await reconcileUC6FreshSyntheticScenarios({ signal: controller.signal });
         if (
           synthetic?.generation_state === 'generation_queued'
           || synthetic?.generation_state === 'generation_running'
@@ -6331,14 +6331,16 @@ Customer: Thank you. Goodbye.`
   }
 
   function mapUC6SyntheticGenerationStateToJobState(generationState, selectionState = 'unbound') {
-    if (selectionState === 'bound') return 'synthetic_scenario_bound';
-    return {
+    const generationJobState = {
       not_started: 'onboarding_ready',
       generation_queued: 'synthetic_scenarios_queued',
       generation_running: 'synthetic_scenarios_running',
       generation_ready: 'synthetic_scenarios_ready',
       generation_failed: 'synthetic_scenarios_failed'
     }[generationState] || 'onboarding_ready';
+    return generationState === 'not_started' && selectionState === 'bound'
+      ? 'synthetic_scenario_bound'
+      : generationJobState;
   }
 
   function applyUC6FreshSyntheticProjection(projected) {
@@ -6356,26 +6358,26 @@ Customer: Thank you. Goodbye.`
     }
     if (projected.selection_state === 'bound') uc6State.syntheticBindingSubmissionAmbiguous = false;
 
-    if (projected.selection_state === 'bound') {
+    if (projected.generation_state === 'generation_queued') {
+      uc6State.stageMessage = '선택한 Persona의 샘플 소스 데이터 생성 대기 중';
+    } else if (projected.generation_state === 'generation_running') {
+      uc6State.stageMessage = '선택한 Persona의 샘플 소스 데이터 생성 중';
+    } else if (projected.generation_state === 'generation_ready') {
       uc6State.stageMessage = uc6State.freshRenderSubmissionAmbiguous
         ? '샘플 문서 생성 요청의 접수 여부를 확인하고 있습니다. POST를 다시 보내지 않습니다.'
         : uc6State.freshRenderSubmitted
           ? '샘플 문서 생성 요청이 전송되었습니다. 서버 상태를 확인하고 있습니다.'
-          : '샘플 컨텍스트 선택이 완료되었습니다. 명시적으로 샘플 문서 생성을 시작할 수 있습니다.';
+          : '샘플 소스 데이터가 준비되었습니다. 샘플 문서 생성을 시작할 수 있습니다.';
+    } else if (projected.generation_state === 'generation_failed') {
+      uc6State.stageMessage = '샘플 소스 데이터 생성에 실패했습니다. 서버 상태를 다시 확인하거나 새 문서를 시작하세요.';
+    } else if (projected.selection_state === 'bound') {
+      uc6State.stageMessage = 'Persona 선택이 완료되었습니다. 샘플 소스 데이터 생성을 시작하세요.';
     } else if (projected.generation_state === 'not_started') {
-      uc6State.stageMessage = uc6State.syntheticGenerationSubmissionAmbiguous
-        ? '생성 요청 결과가 아직 확인되지 않았습니다. POST를 다시 보내지 않고 서버 상태만 확인합니다.'
-        : '합성 샘플 컨텍스트 생성 요청을 준비하고 있습니다.';
-    } else if (projected.generation_state === 'generation_queued') {
-      uc6State.stageMessage = '샘플 컨텍스트 생성 대기 중';
-    } else if (projected.generation_state === 'generation_running') {
-      uc6State.stageMessage = '샘플 컨텍스트 생성 중';
-    } else if (projected.generation_state === 'generation_ready') {
       uc6State.stageMessage = uc6State.syntheticBindingSubmissionAmbiguous
-        ? '선택 요청 결과를 확인하지 못했습니다. 다른 시나리오를 선택하지 말고 작업 상태를 새로고침하세요.'
-        : '생성된 세 가지 합성 샘플 컨텍스트 중 하나를 선택하세요.';
+        ? '선택 요청 결과를 확인하지 못했습니다. 다른 Persona를 선택하지 말고 작업 상태를 새로고침하세요.'
+        : '두 가지 샘플 Persona 중 하나를 선택하세요.';
     } else {
-      uc6State.stageMessage = '합성 샘플 컨텍스트 생성에 실패했습니다. 서버 상태를 다시 확인하거나 새 문서를 시작하세요.';
+      uc6State.stageMessage = '샘플 Persona 상태를 확인하고 있습니다.';
     }
     saveUC6LocalState();
     renderUC6All();
@@ -6391,42 +6393,53 @@ Customer: Thank you. Goodbye.`
     return projected;
   }
 
-  async function submitUC6FreshSyntheticGeneration(signal) {
-    if (uc6State.syntheticGenerationSubmitted || uc6State.syntheticGenerationSubmissionAmbiguous) return null;
+  async function submitUC6FreshSyntheticGeneration() {
+    if (
+      !isUc6Authorized()
+      || uc6State.operationInFlight
+      || uc6State.syntheticSelectionState !== 'bound'
+      || !uc6State.boundSyntheticScenario
+      || uc6State.syntheticGenerationState !== 'not_started'
+      || uc6State.syntheticGenerationSubmitted
+      || uc6State.syntheticGenerationSubmissionAmbiguous
+    ) return null;
+    uc6State.operationInFlight = true;
     uc6State.syntheticGenerationSubmitted = true;
-    uc6State.stageMessage = '합성 샘플 컨텍스트 생성 요청을 전송하고 있습니다.';
+    uc6State.stageMessage = '선택한 Persona의 샘플 소스 데이터 생성 요청을 전송하고 있습니다.';
     saveUC6LocalState();
     renderUC6All();
     startUC6JobObservation({ force: true });
+    const controller = createUC6OperationController();
     try {
-      const raw = await uc6State.api.submitFreshSyntheticScenarios(uc6State.jobId, { signal });
+      const raw = await uc6State.api.submitFreshSyntheticScenarios(uc6State.jobId, { signal: controller.signal });
       const projected = projectUc6FreshSyntheticGenerationSubmission(raw, { expectedJobId: uc6State.jobId });
       uc6State.syntheticGenerationSubmission = projected;
       uc6State.syntheticGenerationSubmissionAmbiguous = false;
       uc6State.jobState = projected.state;
       saveUC6LocalState();
-      return await loadUC6FreshSyntheticScenarios(signal);
+      return await loadUC6FreshSyntheticScenarios(controller.signal);
     } catch (error) {
-      if (error?.name !== 'Uc6AmbiguousSubmissionError' && error?.code !== 'ambiguous_submission') throw error;
-      uc6State.syntheticGenerationSubmissionAmbiguous = true;
-      uc6State.stageMessage = '생성 요청의 접수 여부를 확인할 수 없습니다. POST를 다시 보내지 않고 서버 상태만 확인합니다.';
+      if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
+        uc6State.syntheticGenerationSubmissionAmbiguous = true;
+        uc6State.stageMessage = '샘플 소스 데이터 생성 요청의 접수 여부를 확인할 수 없습니다. POST를 다시 보내지 않고 서버 상태만 확인합니다.';
+        saveUC6LocalState();
+        renderUC6All();
+        return loadUC6FreshSyntheticScenarios(controller.signal);
+      }
+      if (!handleUC6AuthorizationFailure(error) && error?.name !== 'AbortError') {
+        uc6State.stageMessage = uc6MessageFromError(error);
+        setUC6LiveMessage(uc6State.stageMessage);
+      }
+      return null;
+    } finally {
+      uc6State.operationInFlight = false;
       saveUC6LocalState();
       renderUC6All();
-      return loadUC6FreshSyntheticScenarios(signal);
     }
   }
 
-  async function reconcileUC6FreshSyntheticScenarios({ signal, allowSubmit = false } = {}) {
-    const projected = await loadUC6FreshSyntheticScenarios(signal);
-    if (
-      projected.generation_state === 'not_started'
-      && allowSubmit
-      && !uc6State.syntheticGenerationSubmitted
-      && !uc6State.syntheticGenerationSubmissionAmbiguous
-    ) {
-      return submitUC6FreshSyntheticGeneration(signal);
-    }
-    return projected;
+  async function reconcileUC6FreshSyntheticScenarios({ signal } = {}) {
+    return loadUC6FreshSyntheticScenarios(signal);
   }
 
   async function bindUC6FreshSyntheticScenario(scenarioKey) {
@@ -6435,7 +6448,7 @@ Customer: Thank you. Goodbye.`
       || uc6State.operationInFlight
       || uc6State.syntheticSelectionState === 'bound'
       || uc6State.syntheticBindingSubmissionAmbiguous
-      || uc6State.syntheticGenerationState !== 'generation_ready'
+      || uc6State.syntheticGenerationState !== 'not_started'
     ) return;
     const validation = validateUc6SyntheticScenarioBindingCommand(scenarioKey);
     const option = validation.ok
@@ -6466,7 +6479,7 @@ Customer: Thank you. Goodbye.`
       uc6State.freshRenderSubmitted = false;
       uc6State.freshRenderSubmissionAmbiguous = false;
       uc6State.jobState = 'synthetic_scenario_bound';
-      uc6State.stageMessage = '샘플 컨텍스트 선택 완료. 준비가 되면 샘플 문서 생성을 시작하세요.';
+      uc6State.stageMessage = 'Persona 선택 완료. 샘플 소스 데이터 생성을 시작하세요.';
       stopUC6Polling();
       saveUC6LocalState();
       setUC6LiveMessage(uc6State.stageMessage);
@@ -7372,7 +7385,7 @@ Customer: Thank you. Goodbye.`
         if (projected.state === 'onboarding_ready') {
           uc6State.stageMessage = 'Fresh onboarding이 완료되었습니다. 합성 샘플 컨텍스트 상태를 확인하고 있습니다.';
           saveUC6LocalState();
-          await reconcileUC6FreshSyntheticScenarios({ signal: options.signal, allowSubmit: true });
+          await reconcileUC6FreshSyntheticScenarios({ signal: options.signal });
         } else if (projected.state === 'onboarding_blocked') {
           stopUC6Polling({ abortRequest: false });
           uc6State.packageOptions = null;
@@ -7381,7 +7394,7 @@ Customer: Thank you. Goodbye.`
           saveUC6LocalState();
           renderUC6All();
         } else if (String(projected.state).startsWith('synthetic_')) {
-          const synthetic = await reconcileUC6FreshSyntheticScenarios({ signal: options.signal, allowSubmit: false });
+          const synthetic = await reconcileUC6FreshSyntheticScenarios({ signal: options.signal });
           if (
             synthetic.selection_state === 'bound'
             && uc6State.freshRenderSubmissionAmbiguous
@@ -8367,19 +8380,21 @@ Customer: Thank you. Goodbye.`
 
   function renderUC6FreshSyntheticScenarioStage(root) {
     const card = createUc6Node('section', 'uc6-stage-card uc6-fresh-synthetic-stage');
-    card.append(createUc6Node('h2', '', '합성 샘플 컨텍스트 선택'));
+    card.append(createUc6Node('h2', '', '샘플 Persona 선택'));
     card.append(createUc6Node(
       'p',
       'uc6-stage-copy',
-      '소스 PPTX 분석을 바탕으로 템플릿과 호환되는 세 가지 가상 샘플 컨텍스트를 생성합니다. 하나를 선택하면 샘플 문서 생성에 사용할 데이터가 고정됩니다. 실제 고객 정보가 아닙니다.'
+      '두 가지 가상 Persona 중 하나를 선택한 뒤 샘플 소스 데이터를 생성하고, 준비가 완료되면 샘플 문서를 생성하세요. 실제 고객 정보가 아닙니다.'
     ));
 
     const isBound = uc6State.syntheticSelectionState === 'bound' && !!uc6State.boundSyntheticScenario;
-    const isReady = uc6State.syntheticGenerationState === 'generation_ready' && uc6State.syntheticScenarioOptions.length === 3;
-    if (!isReady) {
+    const hasPersonaOptions = uc6State.syntheticScenarioOptions.length === 2
+      && uc6State.syntheticScenarioOptions[0]?.scenario_key === 'scenario_000'
+      && uc6State.syntheticScenarioOptions[1]?.scenario_key === 'scenario_001';
+    if (!hasPersonaOptions) {
       const failed = uc6State.syntheticGenerationState === 'generation_failed';
       const ambiguous = uc6State.syntheticGenerationSubmissionAmbiguous;
-      card.append(createUc6Node('p', failed || ambiguous ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.stageMessage || '합성 샘플 컨텍스트 상태를 확인하고 있습니다.'));
+      card.append(createUc6Node('p', failed || ambiguous ? 'uc6-inline-error' : 'uc6-stage-message', uc6State.stageMessage || '샘플 Persona 상태를 확인하고 있습니다.'));
       const actions = createUc6Node('div', 'uc6-action-row');
       actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '작업 상태 새로고침', 'btn btn-outline', !isUc6Authorized() || !uc6State.jobId || uc6State.operationInFlight));
       actions.append(createUC6ActionButton('uc6-clearBtn', '새 문서 선택', 'btn btn-outline', uc6State.operationInFlight));
@@ -8391,7 +8406,7 @@ Customer: Thank you. Goodbye.`
     if (isBound) {
       const bound = uc6State.boundSyntheticScenario;
       const boundPanel = createUc6Node('section', 'uc6-selection-layer uc6-bound-selection');
-      boundPanel.append(createUc6Node('h3', 'uc6-selection-layer-title', '샘플 컨텍스트 선택 완료'));
+      boundPanel.append(createUc6Node('h3', 'uc6-selection-layer-title', '샘플 Persona 선택 완료'));
       boundPanel.append(createUc6Node('strong', 'uc6-package-title', bound.label));
       boundPanel.append(createUc6Node('p', 'uc6-package-desc', bound.scenario_summary));
       const basis = formatUC6SyntheticDifferentiationBasis(bound.differentiation_basis);
@@ -8412,7 +8427,7 @@ Customer: Thank you. Goodbye.`
       if (basis) scenarioCard.append(createUc6Node('p', 'uc6-help-text', basis));
       const action = createUC6ActionButton(
         '',
-        selected ? '선택 완료' : isBound ? '선택 불가' : uc6State.selectedSyntheticScenarioKey === scenario.scenario_key && uc6State.operationInFlight ? '선택 처리 중...' : '이 시나리오 선택',
+        selected ? '선택 완료' : isBound ? '선택 불가' : uc6State.selectedSyntheticScenarioKey === scenario.scenario_key && uc6State.operationInFlight ? '선택 처리 중...' : '이 Persona 선택',
         selected ? 'btn btn-primary' : 'btn btn-outline',
         isBound || uc6State.operationInFlight || uc6State.syntheticBindingSubmissionAmbiguous
       );
@@ -8427,10 +8442,21 @@ Customer: Thank you. Goodbye.`
       uc6State.syntheticBindingSubmissionAmbiguous
         ? 'uc6-inline-error'
         : uc6State.freshRenderSubmissionAmbiguous ? 'uc6-inline-warning' : 'uc6-stage-message',
-      uc6State.stageMessage || (isBound ? '선택이 서버에 고정되었습니다. 준비가 되면 샘플 문서 생성을 시작하세요.' : '정확히 하나의 합성 샘플 컨텍스트를 선택하세요.')
+      uc6State.stageMessage || (isBound ? 'Persona 선택이 고정되었습니다.' : '정확히 하나의 샘플 Persona를 선택하세요.')
     ));
     const actions = createUc6Node('div', 'uc6-action-row');
-    if (isBound) {
+    if (isBound && uc6State.syntheticGenerationState === 'not_started') {
+      actions.append(createUC6ActionButton(
+        'uc6-submitFreshSyntheticGenerationBtn',
+        uc6State.operationInFlight || uc6State.syntheticGenerationSubmitted ? '샘플 소스 데이터 생성 요청 중...' : '샘플 소스 데이터 생성',
+        'btn btn-primary',
+        !isUc6Authorized()
+          || uc6State.operationInFlight
+          || uc6State.syntheticGenerationSubmitted
+          || uc6State.syntheticGenerationSubmissionAmbiguous
+      ));
+    }
+    if (isBound && uc6State.syntheticGenerationState === 'generation_ready') {
       const control = projectUc6FreshSyntheticRenderControl({
         selectionState: uc6State.syntheticSelectionState,
         boundScenario: uc6State.boundSyntheticScenario,
@@ -8449,6 +8475,9 @@ Customer: Thank you. Goodbye.`
     }
     if (uc6State.syntheticBindingSubmissionAmbiguous) {
       actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '선택 상태 새로고침', 'btn btn-outline', uc6State.operationInFlight));
+    }
+    if (uc6State.syntheticGenerationSubmissionAmbiguous || uc6State.syntheticGenerationState === 'generation_failed') {
+      actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '소스 데이터 상태 새로고침', 'btn btn-outline', uc6State.operationInFlight));
     }
     if (uc6State.freshRenderSubmissionAmbiguous) {
       actions.append(createUC6ActionButton('uc6-reconcileStatusBtn', '생성 접수 상태 다시 확인', 'btn btn-outline', uc6State.operationInFlight));
@@ -9621,6 +9650,7 @@ Customer: Thank you. Goodbye.`
       else if (target.id === 'uc6-restartAssetRenderBtn') restartUC6AssetRenderSelection();
       else if (target.id === 'uc6-uploadBtn') uploadUC6PptxJob();
       else if (target.dataset.uc6SyntheticScenario) bindUC6FreshSyntheticScenario(target.dataset.uc6SyntheticScenario);
+      else if (target.id === 'uc6-submitFreshSyntheticGenerationBtn') submitUC6FreshSyntheticGeneration();
       else if (target.id === 'uc6-submitFreshRenderBtn') submitUC6FreshSyntheticRender();
       else if (target.id === 'uc6-retryFreshDeliveryBtn') {
         const controller = createUC6OperationController();
