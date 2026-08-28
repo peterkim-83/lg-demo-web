@@ -8213,7 +8213,6 @@ Customer: Thank you. Goodbye.`
       const facts = createUc6Node('div', 'uc6-compact-facts');
       facts.append(createUC6SummaryItem('Generation units', asset.generation_unit_count));
       facts.append(createUC6SummaryItem('Slots', asset.slot_count));
-      facts.append(createUC6SummaryItem('호환 패키지', asset.compatible_dummy_databag_package_count));
       item.append(facts);
       const button = createUC6ActionButton('', selected ? '선택됨' : '이 Asset 선택', selected ? 'btn btn-primary' : 'btn btn-outline', uc6State.operationInFlight);
       button.removeAttribute('id');

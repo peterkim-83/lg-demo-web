@@ -1932,6 +1932,33 @@ test('A8-H Asset identifiers, catalog, package options, and persistence are stri
   assert.equal(catalog.asset_count, 1);
   assert.equal(catalog.assets[0].review_state, 'approved_for_reuse');
 
+  const currentCatalogRow = {
+    asset_id: A8H_ASSET_ID,
+    status: 'published',
+    review_state: 'approved_for_reuse',
+    publication_state: 'published',
+    source_pptx_sha256: A8H_SOURCE_SHA,
+    generation_unit_count: 41,
+    slot_count: 155,
+    slide_count: 7,
+    approved_at: '2026-08-06T01:02:03Z'
+  };
+  const currentCatalog = projectUc6ReusableAssetCatalog({
+    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_catalog_v1',
+    asset_count: 1,
+    assets: [currentCatalogRow],
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+    public_safety: 'PASS'
+  });
+  assert.deepEqual(currentCatalog.assets[0], currentCatalogRow, 'current backend catalog row has no legacy package/family fields');
+  assert.throws(() => projectUc6ReusableAssetCatalog({
+    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_catalog_v1',
+    asset_count: 1,
+    assets: [{ ...currentCatalogRow, unexpected_public_field: true }],
+    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
+    public_safety: 'PASS'
+  }), /invalid_reusable_asset_item_fields/);
+
   const options = projectUc6ReusableAssetPackageOptions(a8hPackageOptions(), { expectedAssetId: A8H_ASSET_ID });
   assert.equal(options.package_count, 1);
   assert.equal(options.packages[0].source_pptx_sha256, A8H_SOURCE_SHA);
@@ -1950,6 +1977,10 @@ test('A8-H Asset identifiers, catalog, package options, and persistence are stri
     selected_package_id: 'ax_growth_acceleration',
     selected_package_version: 'v1'
   });
+
+  const app = readSource('../public/app.js');
+  const assetCard = extractFunctionBody(app, 'renderUC6AssetSelectionStage');
+  assert.equal(assetCard.includes('호환 패키지'), false);
 });
 
 test('A8-H render command and submission preserve Asset identity without retry fields', () => {
@@ -4858,6 +4889,8 @@ test('UC6 cutover projects retired-family-free publication and bootstraps publis
   assert.equal(selectAsset.includes('bootstrapReusableAssetRuntimeJob'), true);
   assert.equal(selectAsset.includes('loadUC6ReusableAssetPackages'), false);
   assert.equal(selectAsset.includes('loadUC6PublishedAssetLinkedScenarioFamily'), false);
+  assert.equal(selectAsset.includes("assetSourceLane = 'static_package'"), false);
+  assert.equal(selectAsset.includes('linkedScenarioFamilyStatus'), false);
   assert.equal(runtimeResult.includes('runtimeAsset'), true);
   assert.equal(runtimeResult.includes('검토나 게시 절차가 없습니다'), true);
 });

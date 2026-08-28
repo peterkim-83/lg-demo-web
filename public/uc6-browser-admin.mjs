@@ -1285,7 +1285,7 @@ function projectUc6ReusableAssetRow(row) {
     'generation_unit_count', 'slot_count', 'slide_count', 'approved_at',
     'template_family_ids', 'compatible_dummy_databag_package_count'
   ]);
-  if (Object.keys(row).some((key) => !allowed.has(key)) || Object.keys(row).length !== allowed.size) {
+  if (Object.keys(row).some((key) => !allowed.has(key))) {
     throw new TypeError('invalid_reusable_asset_item_fields');
   }
   const assetId = normalizeUc6ReusableAssetId(row.asset_id);
@@ -1300,19 +1300,26 @@ function projectUc6ReusableAssetRow(row) {
   }
   const approvedAt = validateUc6SafePublicText(row.approved_at, { maxLength: 64, code: 'invalid_reusable_asset_approved_at' });
   if (!Number.isFinite(Date.parse(approvedAt))) throw new TypeError('invalid_reusable_asset_approved_at');
-  if (!Array.isArray(row.template_family_ids) || row.template_family_ids.length > 32) {
-    throw new TypeError('invalid_reusable_asset_template_families');
-  }
-  const seenFamilies = new Set();
-  const templateFamilyIds = row.template_family_ids.map((value) => {
-    if (typeof value !== 'string' || !BOUNDED_ID_PATTERN.test(value) || seenFamilies.has(value)) {
-      throw new TypeError('invalid_reusable_asset_template_family');
+  let templateFamilyIds;
+  if (Object.prototype.hasOwnProperty.call(row, 'template_family_ids')) {
+    if (!Array.isArray(row.template_family_ids) || row.template_family_ids.length > 32) {
+      throw new TypeError('invalid_reusable_asset_template_families');
     }
-    seenFamilies.add(value);
-    return value;
-  });
-  if (!Number.isInteger(row.compatible_dummy_databag_package_count) || row.compatible_dummy_databag_package_count < 0) {
-    throw new TypeError('invalid_reusable_asset_package_count');
+    const seenFamilies = new Set();
+    templateFamilyIds = row.template_family_ids.map((value) => {
+      if (typeof value !== 'string' || !BOUNDED_ID_PATTERN.test(value) || seenFamilies.has(value)) {
+        throw new TypeError('invalid_reusable_asset_template_family');
+      }
+      seenFamilies.add(value);
+      return value;
+    });
+  }
+  let compatiblePackageCount;
+  if (Object.prototype.hasOwnProperty.call(row, 'compatible_dummy_databag_package_count')) {
+    if (!Number.isInteger(row.compatible_dummy_databag_package_count) || row.compatible_dummy_databag_package_count < 0) {
+      throw new TypeError('invalid_reusable_asset_package_count');
+    }
+    compatiblePackageCount = row.compatible_dummy_databag_package_count;
   }
   return {
     asset_id: assetId,
@@ -1324,8 +1331,8 @@ function projectUc6ReusableAssetRow(row) {
     slot_count: row.slot_count,
     slide_count: row.slide_count,
     approved_at: approvedAt,
-    template_family_ids: templateFamilyIds,
-    compatible_dummy_databag_package_count: row.compatible_dummy_databag_package_count
+    ...(templateFamilyIds !== undefined ? { template_family_ids: templateFamilyIds } : {}),
+    ...(compatiblePackageCount !== undefined ? { compatible_dummy_databag_package_count: compatiblePackageCount } : {})
   };
 }
 
