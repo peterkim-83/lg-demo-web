@@ -19,6 +19,7 @@ import {
   projectUc6FreshRenderDeliveryControl,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
+  projectUc6ReusableAssetRuntimeBootstrap,
   projectUc6ReusableAssetPackageOptions,
   projectUc6ReusableAssetRenderJobStatus,
   projectUc6ReusableAssetRenderSubmission,
@@ -5222,6 +5223,7 @@ Customer: Thank you. Goodbye.`
     freshOnboardingExpected: false,
     onboardingSubmissionAmbiguous: false,
     freshSyntheticExpected: false,
+    assetRuntimeExpected: false,
     syntheticGenerationSubmission: null,
     syntheticGenerationSubmitted: false,
     syntheticGenerationSubmissionAmbiguous: false,
@@ -5381,6 +5383,14 @@ Customer: Thank you. Goodbye.`
       return 'unavailable';
     }
     if (flowLane === 'asset_render') {
+      if (
+        state === 'onboarding_ready'
+        || state === 'synthetic_scenarios_queued'
+        || state === 'synthetic_scenarios_running'
+        || state === 'synthetic_scenarios_ready'
+        || state === 'synthetic_scenario_bound'
+        || state === 'synthetic_scenarios_failed'
+      ) return 'package';
       if (state === 'render_queued' || state === 'render_running') return 'render';
       if (state === 'render_unknown') return 'render_unknown';
       if (state === 'failed') return 'render_error';
@@ -5532,6 +5542,7 @@ Customer: Thank you. Goodbye.`
         flow_lane: uc6State.flowLane,
         fresh_onboarding_expected: uc6State.freshOnboardingExpected,
         fresh_synthetic_expected: uc6State.freshSyntheticExpected,
+        asset_runtime_expected: uc6State.assetRuntimeExpected,
         synthetic_generation_submitted: uc6State.syntheticGenerationSubmitted,
         synthetic_generation_submission_ambiguous: uc6State.syntheticGenerationSubmissionAmbiguous,
         synthetic_binding_submission_ambiguous: uc6State.syntheticBindingSubmissionAmbiguous,
@@ -5705,6 +5716,7 @@ Customer: Thank you. Goodbye.`
     uc6State.freshOnboardingExpected = false;
     uc6State.onboardingSubmissionAmbiguous = false;
     resetUC6FreshSyntheticState();
+    uc6State.assetRuntimeExpected = false;
     uc6State.selectedPackageFamilyId = '';
     uc6State.selectedPackageId = '';
     uc6State.selectedPackageVersion = '';
@@ -5892,6 +5904,7 @@ Customer: Thank you. Goodbye.`
       if (uc6State.jobId && uc6State.jobId !== persistedJobId) resetUC6FreshSyntheticState();
       uc6State.freshOnboardingExpected = persisted.fresh_onboarding_expected === true;
       uc6State.freshSyntheticExpected = persisted.fresh_synthetic_expected === true;
+      uc6State.assetRuntimeExpected = persisted.asset_runtime_expected === true;
       uc6State.syntheticGenerationSubmitted = persisted.synthetic_generation_submitted === true;
       uc6State.syntheticGenerationSubmissionAmbiguous = persisted.synthetic_generation_submission_ambiguous === true;
       uc6State.syntheticBindingSubmissionAmbiguous = persisted.synthetic_binding_submission_ambiguous === true;
@@ -6054,10 +6067,8 @@ Customer: Thank you. Goodbye.`
         : '현재 사용할 수 있는 게시 Asset이 없습니다.';
       saveUC6LocalState();
       renderUC6All();
-      if (selected) await Promise.allSettled([
-        loadUC6ReusableAssetPackages(signal),
-        loadUC6PublishedAssetLinkedScenarioFamily(signal)
-      ]);
+      // A selected published Asset now bootstraps a requester-owned runtime job.
+      // Do not fall back to legacy package or Scenario Family launch discovery.
     } catch (error) {
       if (handleUC6AuthorizationFailure(error)) return;
       if (error?.name === 'AbortError') return;
@@ -6073,22 +6084,39 @@ Customer: Thank you. Goodbye.`
     const asset = uc6State.reusableAssetCatalog?.assets?.find((row) => row.asset_id === assetId);
     if (!asset) return;
     uc6State.selectedAssetId = asset.asset_id;
-    uc6State.selectedPackageId = '';
-    uc6State.selectedPackageVersion = '';
-    uc6State.assetPackageOptions = null;
-    uc6State.assetSourceLane = 'static_package';
-    uc6State.linkedScenarioFamily = null;
-    uc6State.linkedScenarioFamilyStatus = 'loading';
-    uc6State.linkedScenarioFamilyMessage = '연결된 게시 Scenario Family를 확인하고 있습니다.';
-    uc6State.selectedPublishedScenarioFamilyId = '';
-    uc6State.selectedPublishedScenarioKey = '';
-    uc6State.stageMessage = '선택한 Asset에 사용할 수 있는 Source Context를 확인하고 있습니다.';
-    saveUC6LocalState();
+    uc6State.assetRuntimeExpected = true;
+    uc6State.freshSyntheticExpected = true;
+    uc6State.operationInFlight = true;
+    uc6State.stageMessage = '게시된 Asset의 요청자 전용 런타임 작업을 준비하고 있습니다.';
     renderUC6All();
-    await Promise.allSettled([
-      loadUC6ReusableAssetPackages(),
-      loadUC6PublishedAssetLinkedScenarioFamily()
-    ]);
+    const controller = createUC6OperationController();
+    try {
+      const bootstrapIdentity = `asset-runtime-${globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`}`.slice(0, 160);
+      const raw = await uc6State.api.bootstrapReusableAssetRuntimeJob(asset.asset_id, { bootstrap_identity: bootstrapIdentity }, { signal: controller.signal });
+      const runtime = projectUc6ReusableAssetRuntimeBootstrap(raw, { expectedAssetId: asset.asset_id });
+      uc6State.jobId = runtime.job_id;
+      uc6State.jobState = runtime.state;
+      uc6State.stageMessage = '런타임 작업이 준비되었습니다. Persona Catalog를 확인하고 있습니다.';
+      uc6State.consecutivePollErrors = 0;
+      saveUC6LocalState();
+      renderUC6All();
+      await loadUC6FreshSyntheticScenarios(controller.signal);
+      if (isUC6JobPollingPending()) startUC6JobObservation({ force: true });
+    } catch (error) {
+      if (error?.name === 'Uc6AmbiguousSubmissionError' || error?.code === 'ambiguous_submission') {
+        uc6State.assetSubmissionAmbiguous = true;
+        uc6State.stageMessage = '런타임 작업 생성 여부를 확인하지 못했습니다. 중복 생성을 방지하기 위해 Asset을 다시 선택하지 마세요.';
+      } else if (!handleUC6AuthorizationFailure(error) && error?.name !== 'AbortError') {
+        uc6State.assetRuntimeExpected = false;
+        uc6State.freshSyntheticExpected = false;
+        uc6State.stageMessage = uc6MessageFromError(error);
+      }
+      setUC6LiveMessage(uc6State.stageMessage);
+    } finally {
+      uc6State.operationInFlight = false;
+      saveUC6LocalState();
+      renderUC6All();
+    }
   }
 
   async function loadUC6PublishedAssetLinkedScenarioFamily(signal) {
@@ -6264,7 +6292,7 @@ Customer: Thank you. Goodbye.`
     });
     if (
       !isUc6Authorized()
-      || uc6State.flowLane !== 'dummy_render'
+      || (uc6State.flowLane !== 'dummy_render' && !(uc6State.flowLane === 'asset_render' && uc6State.assetRuntimeExpected))
       || !uc6State.freshSyntheticExpected
       || !uc6State.jobId
       || !uc6State.renderStatus
@@ -6375,7 +6403,7 @@ Customer: Thank you. Goodbye.`
     } else if (projected.generation_state === 'not_started') {
       uc6State.stageMessage = uc6State.syntheticBindingSubmissionAmbiguous
         ? '선택 요청 결과를 확인하지 못했습니다. 다른 Persona를 선택하지 말고 작업 상태를 새로고침하세요.'
-        : '두 가지 샘플 Persona 중 하나를 선택하세요.';
+        : '현재 Persona Catalog에서 하나를 선택하세요.';
     } else {
       uc6State.stageMessage = '샘플 Persona 상태를 확인하고 있습니다.';
     }
@@ -6450,7 +6478,7 @@ Customer: Thank you. Goodbye.`
       || uc6State.syntheticBindingSubmissionAmbiguous
       || uc6State.syntheticGenerationState !== 'not_started'
     ) return;
-    const validation = validateUc6SyntheticScenarioBindingCommand(scenarioKey);
+    const validation = validateUc6SyntheticScenarioBindingCommand(scenarioKey, uc6State.syntheticScenarioOptions);
     const option = validation.ok
       ? uc6State.syntheticScenarioOptions.find((row) => row.scenario_key === validation.body.scenario_key)
       : null;
@@ -6838,7 +6866,7 @@ Customer: Thank you. Goodbye.`
   }
 
   function isUC6FreshSyntheticPollingPending() {
-    return uc6State.flowLane === 'dummy_render'
+    return (uc6State.flowLane === 'dummy_render' || (uc6State.flowLane === 'asset_render' && uc6State.assetRuntimeExpected))
       && uc6State.freshSyntheticExpected === true
       && (
         uc6State.syntheticGenerationState === 'generation_queued'
@@ -6852,7 +6880,7 @@ Customer: Thank you. Goodbye.`
   }
 
   function isUC6FreshRenderSubmissionReconciliationPending() {
-    return uc6State.flowLane === 'dummy_render'
+    return (uc6State.flowLane === 'dummy_render' || (uc6State.flowLane === 'asset_render' && uc6State.assetRuntimeExpected))
       && uc6State.freshSyntheticExpected === true
       && uc6State.freshRenderSubmitted === true
       && uc6State.freshRenderSubmissionAmbiguous === true
@@ -6862,7 +6890,7 @@ Customer: Thank you. Goodbye.`
   }
 
   function isUC6FreshExecutionTerminal() {
-    if (uc6State.flowLane !== 'dummy_render' || uc6State.freshSyntheticExpected !== true) return false;
+    if ((uc6State.flowLane !== 'dummy_render' && !(uc6State.flowLane === 'asset_render' && uc6State.assetRuntimeExpected)) || uc6State.freshSyntheticExpected !== true) return false;
     return projectUc6FreshRenderDeliveryControl({
       publicState: uc6State.jobState,
       deliveryStatus: uc6State.reviewArtifactsStatus
@@ -6876,7 +6904,7 @@ Customer: Thank you. Goodbye.`
       || isUC6FreshSyntheticPollingPending()
       || isUC6FreshRenderSubmissionReconciliationPending()
       || ((uc6State.flowLane === 'dummy_render' || uc6State.flowLane === 'asset_render')
-        ? (mapped.renderPollable || (uc6State.flowLane === 'dummy_render' && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
+        ? (mapped.renderPollable || ((uc6State.flowLane === 'dummy_render' || uc6State.assetRuntimeExpected) && (mapped.onboardingPollable || mapped.syntheticScenariosPollable)))
         : mapped.pollable);
   }
 
@@ -7299,6 +7327,38 @@ Customer: Thank you. Goodbye.`
     }
 
     if (uc6State.flowLane === 'asset_render') {
+      if (uc6State.assetRuntimeExpected) {
+        if (authoritativeFreshRenderLane) {
+          const projected = projectUc6FreshSyntheticRenderJobStatus(rawJob, { expectedJobId: uc6State.jobId });
+          uc6State.jobState = projected.state;
+          uc6State.source = projected.source;
+          uc6State.renderStatus = projected.state === 'render_completed' ? projected : null;
+          uc6State.freshRenderSubmitted = true;
+          uc6State.freshRenderSubmissionAmbiguous = false;
+          uc6State.lastPollingTimestamp = Date.now();
+          if (projected.state === 'render_completed') {
+            stopUC6Polling({ abortRequest: false });
+            uc6State.stageMessage = '문서 생성이 완료되었습니다. 다운로드를 준비하고 있습니다.';
+            if (uc6State.reviewArtifactsStatus !== 'ready') await loadUC6FreshRenderDeliveryState(options.signal);
+          } else {
+            uc6State.stageMessage = projected.state === 'render_queued'
+              ? '문서 생성 요청이 대기열에 있습니다.'
+              : '선택한 Persona의 소스 데이터로 PPTX와 PDF를 생성하고 있습니다.';
+          }
+          saveUC6LocalState();
+          renderUC6All();
+          return;
+        }
+        uc6State.jobState = rawJob.state || uc6State.jobState;
+        uc6State.lastPollingTimestamp = Date.now();
+        if (String(uc6State.jobState).startsWith('synthetic_') || uc6State.jobState === 'onboarding_ready') {
+          await reconcileUC6FreshSyntheticScenarios({ signal: options.signal });
+        } else {
+          saveUC6LocalState();
+          renderUC6All();
+        }
+        return;
+      }
       const projectorOptions = { expectedJobId: uc6State.jobId, expectedAssetId: uc6State.selectedAssetId };
       const projected = uc6State.assetSourceLane === 'published_scenario_family'
         ? projectUc6PublishedAssetScenarioRenderJobStatus(rawJob, projectorOptions)
@@ -7658,6 +7718,7 @@ Customer: Thank you. Goodbye.`
       || (!options.explicitRefresh && uc6State.publicationStatus !== 'idle')
     ) return;
     uc6State.reviewSurfaceRequestActive = true;
+    const recoveringPublicationError = uc6State.publicationStatus === 'error' || uc6State.publicationStatus === 'reconciliation_required';
     uc6State.publicationStatus = 'loading';
     uc6State.publicationMessage = 'Fresh 관리자 게시 준비 상태를 확인하고 있습니다.';
     renderUC6FreshPublicationSurfaceOnly();
@@ -7668,8 +7729,10 @@ Customer: Thank you. Goodbye.`
       uc6State.publication = publication;
       uc6State.publicationStatus = publication.publication_state === 'published' ? 'published' : 'review_pending';
       uc6State.publicationMessage = publication.publication_state === 'published'
-        ? '재사용 Asset과 연결된 Scenario Family 게시가 완료되었습니다.'
-        : '표시된 최종 PPTX/PDF를 검토한 뒤 명시적으로 게시하세요.';
+        ? '원본 재사용 PPTX mold와 검증된 템플릿 지능의 Asset 게시가 완료되었습니다.'
+        : '표시된 최종 PPTX/PDF를 검토한 뒤 원본 재사용 PPTX mold와 검증된 템플릿 지능을 명시적으로 게시하세요.';
+      if (publication.publication_state === 'unpublished' && recoveringPublicationError) uc6State.publicationReviewConfirmed = false;
+      setUC6LiveMessage(uc6State.publicationMessage);
       if (publication.publication_state === 'published') {
         uc6State.publicationReviewConfirmed = true;
         if (publication.published_asset?.decision_identity) {
@@ -8384,13 +8447,11 @@ Customer: Thank you. Goodbye.`
     card.append(createUc6Node(
       'p',
       'uc6-stage-copy',
-      '두 가지 가상 Persona 중 하나를 선택한 뒤 샘플 소스 데이터를 생성하고, 준비가 완료되면 샘플 문서를 생성하세요. 실제 고객 정보가 아닙니다.'
+      '현재 Persona Catalog에서 하나를 선택한 뒤 소스 데이터를 생성하고, 준비가 완료되면 문서를 생성하세요. 실제 고객 정보가 아닙니다.'
     ));
 
     const isBound = uc6State.syntheticSelectionState === 'bound' && !!uc6State.boundSyntheticScenario;
-    const hasPersonaOptions = uc6State.syntheticScenarioOptions.length === 2
-      && uc6State.syntheticScenarioOptions[0]?.scenario_key === 'scenario_000'
-      && uc6State.syntheticScenarioOptions[1]?.scenario_key === 'scenario_001';
+    const hasPersonaOptions = uc6State.syntheticScenarioOptions.length > 0;
     if (!hasPersonaOptions) {
       const failed = uc6State.syntheticGenerationState === 'generation_failed';
       const ambiguous = uc6State.syntheticGenerationSubmissionAmbiguous;
@@ -8488,7 +8549,7 @@ Customer: Thank you. Goodbye.`
   }
 
   function renderUC6PackageStage(root) {
-    if (uc6State.freshSyntheticExpected) {
+    if (uc6State.freshSyntheticExpected || (uc6State.flowLane === 'asset_render' && uc6State.assetRuntimeExpected)) {
       renderUC6FreshSyntheticScenarioStage(root);
       return;
     }
@@ -8913,29 +8974,6 @@ Customer: Thank you. Goodbye.`
     ]) hashes.append(createUc6Node('dt', '', label), createUc6Node('dd', 'uc6-hash-display', value));
     panel.append(hashes);
 
-    const family = publication?.linked_scenario_family;
-    if (family) {
-      const familySection = createUc6Node('section', 'uc6-detail-group');
-      familySection.append(createUc6Node('h3', '', '연결된 Scenario Family'));
-      familySection.append(createUc6Node('p', '', '이번 검토에 선택한 하나뿐 아니라 검증된 합성 시나리오 3개 전체가 순서대로 연결되어 이후 재사용됩니다.'));
-      const familyFacts = createUc6Node('dl', 'uc6-a8f-review-facts');
-      const familyRows = [
-        ['원본 Family ID', family.synthetic_scenario_family_id],
-        ['시나리오 수', family.scenario_count],
-        ['정렬된 시나리오', family.ordered_scenario_keys.join(' · ')],
-        ['Family artifact SHA-256', family.scenario_family_artifact_sha256],
-        ['게시 Family ID', family.published_scenario_family_id],
-        ['게시 manifest SHA-256', family.publication_manifest_sha256],
-        ['불변 연결 ID', family.link_identity]
-      ].filter(([, value]) => hasUC6Value(value));
-      familyRows.forEach(([label, value]) => familyFacts.append(
-        createUc6Node('dt', '', label),
-        createUc6Node('dd', label.includes('SHA-256') ? 'uc6-hash-display' : '', value)
-      ));
-      familySection.append(familyFacts);
-      panel.append(familySection);
-    }
-
     if (isPublished) {
       const asset = publication.published_asset;
       const receipt = createUc6Node('section', 'uc6-a8f-publication-receipt');
@@ -8967,7 +9005,7 @@ Customer: Thank you. Goodbye.`
       confirm.id = 'uc6-publicationReviewConfirmed';
       confirm.checked = uc6State.publicationReviewConfirmed;
       confirm.disabled = uc6State.publicationStatus !== 'review_pending' || uc6State.publicationRequestActive;
-      confirmLabel.append(confirm, createUc6Node('span', '', '표시된 최종 PPTX/PDF SHA-256과 전체 Scenario Family를 검토했습니다.'));
+      confirmLabel.append(confirm, createUc6Node('span', '', '표시된 최종 PPTX/PDF SHA-256을 검토했으며 원본 재사용 PPTX mold와 검증된 템플릿 지능의 게시을 확인했습니다.'));
       panel.append(confirmLabel);
 
       const note = document.createElement('textarea');
@@ -9018,7 +9056,8 @@ Customer: Thank you. Goodbye.`
     if (uc6State.liveMessage) setUc6Text(uc6Els.liveStatus, uc6State.liveMessage, '');
   }
 
-  function renderUC6FreshSyntheticRenderResultStage(root) {
+  function renderUC6FreshSyntheticRenderResultStage(root, options = {}) {
+    const runtimeAsset = options.runtimeAsset === true;
     const status = uc6State.renderStatus;
     if (
       !status
@@ -9032,8 +9071,10 @@ Customer: Thank you. Goodbye.`
     }
 
     const card = createUc6Node('section', 'uc6-stage-card uc6-r6e-d2-result-stage');
-    card.append(createUc6Node('h2', '', '샘플 문서 생성 완료'));
-    card.append(createUc6Node('p', 'uc6-stage-copy', '선택한 합성 샘플 컨텍스트로 생성된 최종 PPTX와 PDF가 준비되었습니다. 결과를 검토한 뒤 재사용 게시 여부를 명시적으로 결정하세요.'));
+    card.append(createUc6Node('h2', '', runtimeAsset ? '문서 생성 완료' : '샘플 문서 생성 완료'));
+    card.append(createUc6Node('p', 'uc6-stage-copy', runtimeAsset
+      ? '선택한 Persona의 새 소스 데이터로 생성된 최종 PPTX와 PDF가 준비되었습니다. 이 일반 사용자 결과에는 검토나 게시 절차가 없습니다.'
+      : '선택한 합성 샘플 컨텍스트로 생성된 최종 PPTX와 PDF가 준비되었습니다. 결과를 검토한 뒤 재사용 게시 여부를 명시적으로 결정하세요.'));
 
     const summary = createUc6Node('div', 'uc6-compact-facts');
     if (uc6State.boundSyntheticScenario?.label) summary.append(createUC6SummaryItem('샘플 컨텍스트', uc6State.boundSyntheticScenario.label));
@@ -9085,7 +9126,7 @@ Customer: Thank you. Goodbye.`
     downloadStatus.id = 'uc6-reviewArtifactDownloadStatus';
     downloadStatus.hidden = !uc6State.reviewArtifactDownloadMessage;
     card.append(downloadStatus);
-    card.append(createUC6FreshPublicationPanel(status, uc6State.publication));
+    if (!runtimeAsset) card.append(createUC6FreshPublicationPanel(status, uc6State.publication));
     const actions = createUc6Node('div', 'uc6-action-row uc6-r6g-b1-final-actions');
     if (uc6State.reviewArtifactsStatus === 'error') {
       actions.append(createUC6ActionButton(
@@ -9103,6 +9144,10 @@ Customer: Thank you. Goodbye.`
   function renderUC6ResultStage(root) {
     if (uc6State.flowLane === 'dummy_render' && uc6State.freshSyntheticExpected) {
       renderUC6FreshSyntheticRenderResultStage(root);
+      return;
+    }
+    if (uc6State.flowLane === 'asset_render' && uc6State.assetRuntimeExpected) {
+      renderUC6FreshSyntheticRenderResultStage(root, { runtimeAsset: true });
       return;
     }
     if (uc6State.flowLane === 'asset_render') {
@@ -9205,7 +9250,7 @@ Customer: Thank you. Goodbye.`
     else if (stage === 'asset') renderUC6AssetSelectionStage(root);
     else if (stage === 'intake') renderUC6IntakeStage(root);
     else if (stage === 'package') {
-      if (uc6State.flowLane === 'asset_render') renderUC6AssetPackageStage(root);
+      if (uc6State.flowLane === 'asset_render' && !uc6State.assetRuntimeExpected) renderUC6AssetPackageStage(root);
       else renderUC6PackageStage(root);
     }
     else if (stage === 'render') renderUC6RenderStage(root);

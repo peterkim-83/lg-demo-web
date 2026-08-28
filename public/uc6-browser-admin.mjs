@@ -19,6 +19,7 @@ export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
   dummyDatabagPackageFamilies: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/dummy-databag-package-families`,
   render: (jobId) => `/fetchdoc/browser-admin/uc6/jobs/${encodeURIComponent(normalizeUc6JobId(jobId))}/render`,
   reusableAssets: '/fetchdoc/browser-admin/uc6/reusable-assets',
+  reusableAssetJobs: (assetId) => `/fetchdoc/browser-admin/uc6/reusable-assets/${encodeURIComponent(normalizeUc6ReusableAssetId(assetId))}/jobs`,
   reusableAssetPackages: (assetId) => `/fetchdoc/browser-admin/uc6/reusable-assets/${encodeURIComponent(normalizeUc6ReusableAssetId(assetId))}/dummy-databag-packages`,
   reusableAssetRenders: (assetId) => `/fetchdoc/browser-admin/uc6/reusable-assets/${encodeURIComponent(normalizeUc6ReusableAssetId(assetId))}/renders`,
   linkedScenarioFamily: (assetId) => `/fetchdoc/browser-admin/uc6/reusable-assets/${encodeURIComponent(normalizeUc6ReusableAssetId(assetId))}/linked-scenario-family`,
@@ -257,6 +258,7 @@ export function projectUc6PersistedState(value) {
   }
   if (typeof input.fresh_onboarding_expected === 'boolean') projected.fresh_onboarding_expected = input.fresh_onboarding_expected;
   if (typeof input.fresh_synthetic_expected === 'boolean') projected.fresh_synthetic_expected = input.fresh_synthetic_expected;
+  if (typeof input.asset_runtime_expected === 'boolean') projected.asset_runtime_expected = input.asset_runtime_expected;
   if (typeof input.synthetic_generation_submitted === 'boolean') projected.synthetic_generation_submitted = input.synthetic_generation_submitted;
   if (typeof input.synthetic_generation_submission_ambiguous === 'boolean') {
     projected.synthetic_generation_submission_ambiguous = input.synthetic_generation_submission_ambiguous;
@@ -654,25 +656,9 @@ function projectUc6FreshLinkedScenarioFamily(value) {
 }
 
 export function projectUc6FreshReusableAssetPublication(payload, options = {}) {
-  const publication = projectUc6ReusableAssetPublicationBase(payload, options, UC6_FRESH_PUBLICATION_SCHEMA_VERSION);
-  const linkedScenarioFamily = projectUc6FreshLinkedScenarioFamily(payload?.linked_scenario_family);
-  if (publication.publication_state === 'unpublished') {
-    if (
-      Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'published_scenario_family_id')
-      || Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'publication_manifest_sha256')
-      || Object.prototype.hasOwnProperty.call(linkedScenarioFamily, 'link_identity')
-    ) invalidReusablePublicationContract();
-  } else if (
-    !linkedScenarioFamily.published_scenario_family_id
-    || !linkedScenarioFamily.publication_manifest_sha256
-    || !linkedScenarioFamily.link_identity
-  ) {
-    invalidReusablePublicationContract();
-  }
-  return {
-    ...publication,
-    linked_scenario_family: linkedScenarioFamily
-  };
+  // Fresh publication promotes the original mold and validated template intelligence.
+  // Scenario-family data was intentionally removed from the public control-plane contract.
+  return projectUc6ReusableAssetPublicationBase(payload, options, UC6_FRESH_PUBLICATION_SCHEMA_VERSION);
 }
 
 export function validateUc6ReusableAssetPublicationCommand(command) {
@@ -806,8 +792,9 @@ export function projectUc6FreshTemplateOnboardingJobStatus(payload, options = {}
 
 const UC6_SYNTHETIC_GENERATION_TASK_TYPE = 'fetchdoc_browser_admin_uc6_fresh_synthetic_scenario_generation';
 const UC6_SYNTHETIC_RENDER_TASK_TYPE = 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario';
+const UC6_SCENARIO_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+// Retained only by legacy readback helpers; it is not part of the active Persona Catalog contract.
 const UC6_PUBLISHED_SYNTHETIC_SCENARIO_KEYS = Object.freeze(['scenario_000', 'scenario_001', 'scenario_002']);
-const UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS = Object.freeze(['scenario_000', 'scenario_001']);
 const UC6_SYNTHETIC_SUBMISSION_STATES = new Set([
   'synthetic_scenarios_queued',
   'synthetic_scenarios_running',
@@ -866,7 +853,7 @@ function projectUc6SyntheticScenarioOption(value) {
   if (!isPlainObject(value)) throw new TypeError('invalid_synthetic_scenario_option');
   const allowed = new Set(['scenario_key', 'label', 'scenario_summary', 'differentiation_basis']);
   assertUc6AllowedFields(value, allowed, 'invalid_synthetic_scenario_option_fields');
-  if (!UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.includes(value.scenario_key)) throw new TypeError('invalid_synthetic_scenario_key');
+  if (typeof value.scenario_key !== 'string' || !UC6_SCENARIO_KEY_PATTERN.test(value.scenario_key)) throw new TypeError('invalid_synthetic_scenario_key');
   if (!Object.prototype.hasOwnProperty.call(value, 'differentiation_basis')) {
     throw new TypeError('invalid_synthetic_differentiation_basis');
   }
@@ -969,10 +956,9 @@ export function projectUc6FreshSyntheticScenarios(payload, options = {}) {
   if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_scenarios_public_safety');
   const scenarioOptions = payload.scenario_options.map(projectUc6SyntheticScenarioOption);
   if (payload.onboarding_state === 'onboarding_ready') {
-    if (scenarioOptions.length !== UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.length) throw new TypeError('invalid_synthetic_scenario_count');
-    scenarioOptions.forEach((option, index) => {
-      if (option.scenario_key !== UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS[index]) throw new TypeError('invalid_synthetic_scenario_order');
-    });
+    if (!scenarioOptions.length || new Set(scenarioOptions.map((option) => option.scenario_key)).size !== scenarioOptions.length) {
+      throw new TypeError('invalid_synthetic_scenario_catalog');
+    }
   } else if (scenarioOptions.length !== 0) {
     throw new TypeError('invalid_synthetic_scenarios_onboarding_options');
   }
@@ -1005,12 +991,46 @@ export function projectUc6FreshSyntheticScenarios(payload, options = {}) {
   };
 }
 
-export function validateUc6SyntheticScenarioBindingCommand(scenarioKey) {
+export function validateUc6SyntheticScenarioBindingCommand(scenarioKey, scenarioOptions = null) {
   const normalized = typeof scenarioKey === 'string' ? scenarioKey.trim() : '';
-  if (!UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.includes(normalized)) {
+  if (!UC6_SCENARIO_KEY_PATTERN.test(normalized)) {
     return { ok: false, code: 'synthetic_scenario_key_invalid', message: '샘플 Persona 선택값을 확인하세요.' };
   }
+  if (Array.isArray(scenarioOptions) && !scenarioOptions.some((option) => option?.scenario_key === normalized)) {
+    return { ok: false, code: 'synthetic_scenario_not_in_catalog', message: '현재 Persona Catalog에 없는 선택입니다.' };
+  }
   return { ok: true, body: { scenario_key: normalized } };
+}
+
+export function validateUc6ReusableAssetBootstrapCommand(command) {
+  const bootstrapIdentity = String(command?.bootstrap_identity || '').trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{15,159}$/.test(bootstrapIdentity) || bootstrapIdentity.includes('..')) {
+    return { ok: false, code: 'bootstrap_identity_invalid', message: '런타임 작업 식별자를 다시 생성하세요.' };
+  }
+  return { ok: true, body: { bootstrap_identity: bootstrapIdentity } };
+}
+
+export function projectUc6ReusableAssetRuntimeBootstrap(payload, options = {}) {
+  if (!isPlainObject(payload)) throw new TypeError('invalid_reusable_asset_bootstrap_payload');
+  const expectedAssetId = normalizeUc6ReusableAssetId(options.expectedAssetId);
+  const allowed = new Set(['schema_version', 'asset_id', 'job_id', 'state', 'created', 'replayed', 'control_plane_contract_version', 'public_safety']);
+  assertUc6AllowedFields(payload, allowed, 'invalid_reusable_asset_bootstrap_fields');
+  if (payload.asset_id !== expectedAssetId || payload.public_safety !== 'PASS') throw new TypeError('invalid_reusable_asset_bootstrap_asset');
+  if (typeof payload.job_id !== 'string') throw new TypeError('invalid_reusable_asset_bootstrap_job');
+  const jobId = normalizeUc6JobId(payload.job_id);
+  if (typeof payload.state !== 'string' || !BOUNDED_ID_PATTERN.test(payload.state)) throw new TypeError('invalid_reusable_asset_bootstrap_state');
+  if (payload.created !== undefined && typeof payload.created !== 'boolean') throw new TypeError('invalid_reusable_asset_bootstrap_created');
+  if (payload.replayed !== undefined && typeof payload.replayed !== 'boolean') throw new TypeError('invalid_reusable_asset_bootstrap_replayed');
+  return {
+    ...(payload.schema_version !== undefined ? { schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version) } : {}),
+    asset_id: expectedAssetId,
+    job_id: jobId,
+    state: payload.state,
+    ...(payload.created !== undefined ? { created: payload.created } : {}),
+    ...(payload.replayed !== undefined ? { replayed: payload.replayed } : {}),
+    control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
+    public_safety: 'PASS'
+  };
 }
 
 export function projectUc6FreshSyntheticScenarioBinding(payload, options = {}) {
@@ -1219,7 +1239,8 @@ export function projectUc6FreshSyntheticRenderJobStatus(payload, options = {}) {
 export function projectUc6FreshSyntheticRenderControl(input = {}) {
   const authoritativeBound = input.selectionState === 'bound'
     && isPlainObject(input.boundScenario)
-    && UC6_ACTIVE_SYNTHETIC_PERSONA_KEYS.includes(input.boundScenario.scenario_key);
+    && typeof input.boundScenario.scenario_key === 'string'
+    && UC6_SCENARIO_KEY_PATTERN.test(input.boundScenario.scenario_key);
   const publicState = typeof input.publicState === 'string' ? input.publicState : '';
   const submitted = input.submitted === true;
   const ambiguous = input.ambiguous === true;
@@ -3161,6 +3182,23 @@ export function createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl, getIdToken, al
     },
     getReusableAssets(options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssets, { method: 'GET', signal: options.signal });
+    },
+    bootstrapReusableAssetRuntimeJob(assetId, command, options = {}) {
+      const validation = validateUc6ReusableAssetBootstrapCommand(command);
+      if (!validation.ok) {
+        const err = new Error(validation.message);
+        err.name = 'Uc6ReusableAssetBootstrapValidationError';
+        err.code = validation.code;
+        err.publicMessage = validation.message;
+        throw err;
+      }
+      return requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssetJobs(assetId), {
+        method: 'POST',
+        json: validation.body,
+        signal: options.signal,
+        ambiguousMessage: 'Network failure during reusable Asset runtime bootstrap; outcome is ambiguous.',
+        ambiguousPublicMessage: '런타임 작업 생성 요청의 접수 여부를 확인할 수 없습니다. Asset을 다시 선택하지 말고 상태를 새로고침하세요.'
+      });
     },
     getReusableAssetPackages(assetId, options = {}) {
       return request(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssetPackages(assetId), { method: 'GET', signal: options.signal });

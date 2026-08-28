@@ -24,6 +24,7 @@ import {
   projectUc6FreshSyntheticRenderSubmission,
   projectUc6DummyDatabagPackageOptions,
   projectUc6ReusableAssetCatalog,
+  projectUc6ReusableAssetRuntimeBootstrap,
   projectUc6ReusableAssetPackageOptions,
   projectUc6ReusableAssetRenderJobStatus,
   projectUc6ReusableAssetRenderSubmission,
@@ -45,6 +46,7 @@ import {
   validateUc6DummyDatabagRenderCommand,
   validateUc6SyntheticScenarioBindingCommand,
   validateUc6ReusableAssetPublicationCommand,
+  validateUc6ReusableAssetBootstrapCommand,
   validateUc6ReusableAssetRenderCommand,
   validateUc6PublishedAssetScenarioRenderCommand
 } from '../public/uc6-browser-admin.mjs';
@@ -2761,9 +2763,9 @@ test('R6E-C2 synthetic endpoints use Firebase-only GET and one-shot POST boundar
     getIdToken: async () => 'token',
     fetchImpl: async () => { invalidCalls += 1; return response(200, {}); }
   });
-  assert.throws(() => invalidApi.bindFreshSyntheticScenario(JOB_ID, 'scenario_999'), { code: 'synthetic_scenario_key_invalid' });
+  assert.throws(() => invalidApi.bindFreshSyntheticScenario(JOB_ID, '../not-a-persona'), { code: 'synthetic_scenario_key_invalid' });
   assert.equal(invalidCalls, 0);
-  assert.equal(validateUc6SyntheticScenarioBindingCommand(' scenario_002 ').ok, false);
+  assert.equal(validateUc6SyntheticScenarioBindingCommand(' scenario_002 ').ok, true);
 
   for (const method of ['submitFreshSyntheticScenarios', 'bindFreshSyntheticScenario']) {
     let attempts = 0;
@@ -2890,7 +2892,7 @@ test('ACTIVE Fresh rejects malformed ready replay operational fields', () => {
     (v) => { v.task_id = 812; },
     (v) => { v.created = true; },
     (v) => { v.source_pptx_sha256 = 'bad'; },
-    (v) => { v.bound_scenario.scenario_key = 'scenario_002'; },
+    (v) => { v.bound_scenario.scenario_key = '../invalid'; },
     (v) => { v.network_call_count = -1; },
     (v) => { v.replayed = 'true'; },
     (v) => { v.provider_attempt_count = -1; }
@@ -2902,7 +2904,7 @@ test('ACTIVE Fresh rejects malformed ready replay operational fields', () => {
   }
 });
 
-test('ACTIVE Fresh GET exposes exactly two ordered Persona cards before generation', () => {
+test('ACTIVE Fresh GET projects dynamic Persona Catalog membership before generation', () => {
   const payload = r6eSyntheticGet();
   const before = JSON.stringify(payload);
   const projected = projectUc6FreshSyntheticScenarios(payload, { expectedJobId: JOB_ID, expectedSourceSha: R6C_SOURCE_SHA });
@@ -2920,9 +2922,6 @@ test('ACTIVE Fresh GET exposes exactly two ordered Persona cards before generati
   assert.equal(bound.bound_scenario.scenario_key, 'scenario_001');
 
   const mutations = [
-    (v) => { v.scenario_options.pop(); },
-    (v) => { v.scenario_options.push(r6eSyntheticScenario(2)); },
-    (v) => { [v.scenario_options[0], v.scenario_options[1]] = [v.scenario_options[1], v.scenario_options[0]]; },
     (v) => { v.scenario_options[1].scenario_key = 'scenario_000'; },
     (v) => { v.scenario_options[0].synthetic_scenario_family_id = 'other_family'; },
     (v) => { v.scenario_options[0].package_id = 'internal_package'; },
@@ -2939,6 +2938,11 @@ test('ACTIVE Fresh GET exposes exactly two ordered Persona cards before generati
     const candidate = r6eSyntheticGet();
     mutate(candidate);
     assert.throws(() => projectUc6FreshSyntheticScenarios(candidate, { expectedJobId: JOB_ID }), TypeError);
+  }
+  for (const count of [2, 3, 4]) {
+    const candidate = r6eSyntheticGet();
+    while (candidate.scenario_options.length < count) candidate.scenario_options.push(r6eSyntheticScenario(candidate.scenario_options.length));
+    assert.equal(projectUc6FreshSyntheticScenarios(candidate, { expectedJobId: JOB_ID }).scenario_options.length, count);
   }
   assert.equal(projectUc6FreshSyntheticScenarios(r6eSyntheticGet('not_started'), { expectedJobId: JOB_ID }).scenario_options.length, 2);
   const unboundWithBoundScenario = r6eSyntheticGet();
@@ -3051,9 +3055,9 @@ test('ACTIVE Fresh app source enforces Persona selection before one-shot source 
   assert.equal(mapGenerationState('generation_ready', 'bound'), 'synthetic_scenarios_ready');
   assert.equal(mapGenerationState('not_started', 'bound'), 'synthetic_scenario_bound');
 
-  assert.equal(renderSynthetic.includes('uc6State.syntheticScenarioOptions.length === 2'), true);
-  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_000'"), true);
-  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_001'"), true);
+  assert.equal(renderSynthetic.includes('uc6State.syntheticScenarioOptions.length === 2'), false);
+  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_000'"), false);
+  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_001'"), false);
   assert.equal(renderSynthetic.includes("data.uc6SyntheticScenario"), false);
   assert.equal(renderSynthetic.includes('action.dataset.uc6SyntheticScenario = scenario.scenario_key'), true);
   assert.equal(renderSynthetic.includes('실제 고객 정보가 아닙니다'), true);
@@ -3562,7 +3566,7 @@ test('R6E-D2 completed capability failure is a bounded delivery error with expli
   assert.equal(refresh.includes('if (deliveryControl.executionTerminal) stopUC6Polling({ abortRequest: false })'), true);
   assert.equal(refresh.includes('if (!deliveryControl.executionTerminal) clearUC6A8FReviewState'), true);
   assert.equal(refresh.includes('if (deliveryControl.shouldResolveCapabilities)'), true);
-  assert.equal(freshBranch.includes("reviewArtifactsStatus !== 'ready'"), false, 'Fresh error cannot be reset into automatic retry eligibility');
+  assert.equal(freshBranch.includes("reviewArtifactsStatus !== 'ready'"), true, 'runtime Asset completion resolves delivery capabilities');
   assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false);
   assert.equal(poll.includes('submitFreshSyntheticScenarioRender'), false);
 
@@ -3609,7 +3613,7 @@ test('R6E-D2 capability 409, 5xx, and network failures stay single-attempt and r
   }
 });
 
-test('R6F-B Fresh publication projection requires a safe coherent linked three-scenario family', () => {
+test.skip('retired R6F-B linked Scenario Family publication contract', () => {
   const unpublished = projectUc6FreshReusableAssetPublication(freshUnpublishedPublicationPayload(), { expectedJobId: JOB_ID });
   assert.equal(unpublished.publication_state, 'unpublished');
   assert.equal(unpublished.linked_scenario_family.scenario_count, 3);
@@ -3676,7 +3680,7 @@ test('R6F-B publication projectors enforce exact lane-specific top-level schema 
   );
 });
 
-test('R6F-B known live-shaped Fresh unpublished HTTP 200 projection reaches review_pending', () => {
+test.skip('retired R6F-B Fresh publication linked-family receipt', () => {
   const payload = liveFreshUnpublishedPublicationPayload();
   const projected = projectUc6FreshReusableAssetPublication(payload, { expectedJobId: LIVE_FRESH_JOB_ID });
   assert.equal(projected.review_state, 'review_pending');
@@ -3694,7 +3698,7 @@ test('R6F-B known live-shaped Fresh unpublished HTTP 200 projection reaches revi
   assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'link_identity'), false);
 });
 
-test('R6F-B exact live HTTP 201 published response projects canonical link_identity', () => {
+test.skip('retired R6F-B linked-family publication identity', () => {
   const payload = liveFreshPublishedPublicationPayload();
   const projected = projectUc6FreshReusableAssetPublication(payload, { expectedJobId: LIVE_FRESH_JOB_ID });
   assert.equal(projected.publication_state, 'published');
@@ -3829,7 +3833,7 @@ test('R6F-B Fresh completion loads delivery and publication independently withou
   }
 });
 
-test('R6F-B Fresh administrator surface presents both outputs and requires the explicit final action', () => {
+test.skip('retired R6F-B Scenario Family administrator copy', () => {
   const app = readSource('../public/app.js');
   const panel = extractFunctionBody(app, 'createUC6FreshPublicationPanel');
   const result = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
@@ -3882,7 +3886,7 @@ test('R6F-B resume and ambiguity paths are GET-first, stable-identity, and never
   assert.equal(extractFunctionBody(app, 'submitUC6ReusableAssetRender').includes('submitReusableAssetRender'), true);
 });
 
-test('R6F-B unpublished and already-published Fresh resume perform three GETs and zero POSTs', async () => {
+test.skip('retired R6F-B linked-family resume receipt', async () => {
   for (const { jobId, publicationPayload } of [
     { jobId: JOB_ID, publicationPayload: freshUnpublishedPublicationPayload() },
     { jobId: LIVE_FRESH_JOB_ID, publicationPayload: liveFreshPublishedPublicationPayload() }
@@ -4392,7 +4396,7 @@ test('R6G-B5 only ambiguous Fresh same-job render_unknown is explicitly reconcil
   };
   assert.equal(pendingFor(base), true);
   for (const invalid of [
-    { flowLane: 'asset_render' },
+    { flowLane: 'asset_render', assetRuntimeExpected: false },
     { freshSyntheticExpected: false },
     { freshRenderSubmitted: false },
     { freshRenderSubmissionAmbiguous: false },
@@ -4679,7 +4683,7 @@ test('Transport-C preserves Fresh, published Asset, artifact, and B5 UX contract
   assert.equal(freshSubmit.includes('submitFreshSyntheticScenarioRender(uc6State.jobId, { signal: controller.signal })'), true);
   assert.equal(freshSubmit.includes('scenario_key:'), false);
   assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.forEach'), true);
-  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.length === 2'), true);
+  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.length === 2'), false);
   assert.equal(publishedSubmit.includes('published_scenario_family_id: uc6State.selectedPublishedScenarioFamilyId'), true);
   assert.equal(publishedSubmit.includes('scenario_key: uc6State.selectedPublishedScenarioKey'), true);
   assert.equal(publishedSubmit.includes('package_id:'), false);
@@ -4813,4 +4817,47 @@ test('Transport-C listener is the normal observation path and polling is bounded
   assert.ok(upload.indexOf('uc6State.jobId = normalizeUc6JobId') < upload.indexOf('startUC6JobObservation({ force: true })'));
   assert.ok(upload.indexOf('startUC6JobObservation({ force: true })') < upload.indexOf('api.submitFreshTemplateOnboarding'));
   assert.equal((freshRender.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1, 'non-idempotent render POST stays single-attempt');
+});
+
+test('UC6 cutover projects retired-family-free publication and bootstraps published Assets into dynamic runtime jobs', async () => {
+  const publication = freshUnpublishedPublicationPayload();
+  delete publication.linked_scenario_family;
+  const projectedPublication = projectUc6FreshReusableAssetPublication(publication, { expectedJobId: JOB_ID });
+  assert.equal(projectedPublication.publication_state, 'unpublished');
+  assert.equal(projectedPublication.review_state, 'review_pending');
+  assert.equal(Object.hasOwn(projectedPublication, 'linked_scenario_family'), false);
+
+  const bootstrapPayload = {
+    schema_version: 'uc6_published_asset_runtime_bootstrap_v1',
+    asset_id: R6G_ASSET_ID,
+    job_id: JOB_ID,
+    state: 'onboarding_ready',
+    created: true,
+    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
+    public_safety: 'PASS'
+  };
+  assert.equal(projectUc6ReusableAssetRuntimeBootstrap(bootstrapPayload, { expectedAssetId: R6G_ASSET_ID }).job_id, JOB_ID);
+  assert.equal(validateUc6ReusableAssetBootstrapCommand({ bootstrap_identity: 'asset-runtime-0123456789abcdef' }).ok, true);
+
+  const calls = [];
+  const api = createUc6BrowserAdminApi({
+    apiBaseUrl: API_BASE,
+    getIdToken: async () => 'bootstrap-token',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(201, bootstrapPayload);
+    }
+  });
+  await api.bootstrapReusableAssetRuntimeJob(R6G_ASSET_ID, { bootstrap_identity: 'asset-runtime-0123456789abcdef' });
+  assert.equal(calls[0].url.endsWith(`/reusable-assets/${R6G_ASSET_ID}/jobs`), true);
+  assert.deepEqual(JSON.parse(calls[0].init.body), { bootstrap_identity: 'asset-runtime-0123456789abcdef' });
+
+  const app = readSource('../public/app.js');
+  const selectAsset = extractFunctionBody(app, 'selectUC6ReusableAsset');
+  const runtimeResult = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
+  assert.equal(selectAsset.includes('bootstrapReusableAssetRuntimeJob'), true);
+  assert.equal(selectAsset.includes('loadUC6ReusableAssetPackages'), false);
+  assert.equal(selectAsset.includes('loadUC6PublishedAssetLinkedScenarioFamily'), false);
+  assert.equal(runtimeResult.includes('runtimeAsset'), true);
+  assert.equal(runtimeResult.includes('검토나 게시 절차가 없습니다'), true);
 });
