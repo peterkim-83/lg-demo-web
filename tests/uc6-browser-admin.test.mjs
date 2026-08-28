@@ -4859,10 +4859,12 @@ test('UC6 cutover projects retired-family-free publication and bootstraps publis
   assert.equal(Object.hasOwn(projectedPublication, 'linked_scenario_family'), false);
 
   const bootstrapPayload = {
-    schema_version: 'uc6_published_asset_runtime_bootstrap_v1',
-    asset_id: R6G_ASSET_ID,
+    schema_version: 'uc6_fresh_published_asset_runtime_bootstrap_projection_v1',
     job_id: JOB_ID,
-    state: 'onboarding_ready',
+    state: 'persona_selection_ready',
+    source_pptx_sha256: R6C_SOURCE_SHA,
+    asset: { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6C_SOURCE_SHA, generation_unit_count: 41, slot_count: 155, slide_count: 7 },
+    disposition: 'created',
     created: true,
     control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
     public_safety: 'PASS'
@@ -4885,6 +4887,15 @@ test('UC6 cutover projects retired-family-free publication and bootstraps publis
 
   const app = readSource('../public/app.js');
   const selectAsset = extractFunctionBody(app, 'selectUC6ReusableAsset');
+  const stageMapper = extractFunctionBody(app, 'mapUC6PublicStateToStage');
+  const packageStage = extractFunctionBody(app, 'renderUC6PackageStage');
+  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
+  assert.equal(executeExtractedFunction(app, 'mapUC6PublicStateToStage', {
+    authorizationState: 'authorized', publicState: 'persona_selection_ready', flowLane: 'asset_render', selectedAssetId: R6G_ASSET_ID
+  }), 'package');
+  assert.equal(packageStage.includes('assetRuntimeExpected'), true);
+  assert.equal(stageMapper.includes("state === 'persona_selection_ready'"), true);
+  assert.equal(resume.includes('asset_runtime_expected'), true);
   const runtimeResult = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
   assert.equal(selectAsset.includes('bootstrapReusableAssetRuntimeJob'), true);
   assert.equal(selectAsset.includes('loadUC6ReusableAssetPackages'), false);

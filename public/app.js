@@ -5384,7 +5384,8 @@ Customer: Thank you. Goodbye.`
     }
     if (flowLane === 'asset_render') {
       if (
-        state === 'onboarding_ready'
+        state === 'persona_selection_ready'
+        || state === 'onboarding_ready'
         || state === 'synthetic_scenarios_queued'
         || state === 'synthetic_scenarios_running'
         || state === 'synthetic_scenarios_ready'
@@ -6096,6 +6097,10 @@ Customer: Thank you. Goodbye.`
       const runtime = projectUc6ReusableAssetRuntimeBootstrap(raw, { expectedAssetId: asset.asset_id });
       uc6State.jobId = runtime.job_id;
       uc6State.jobState = runtime.state;
+      uc6State.source = {
+        sha256: runtime.source_pptx_sha256,
+        slide_count: runtime.asset?.slide_count
+      };
       uc6State.stageMessage = '런타임 작업이 준비되었습니다. Persona Catalog를 확인하고 있습니다.';
       uc6State.consecutivePollErrors = 0;
       saveUC6LocalState();
@@ -6107,8 +6112,10 @@ Customer: Thank you. Goodbye.`
         uc6State.assetSubmissionAmbiguous = true;
         uc6State.stageMessage = '런타임 작업 생성 여부를 확인하지 못했습니다. 중복 생성을 방지하기 위해 Asset을 다시 선택하지 마세요.';
       } else if (!handleUC6AuthorizationFailure(error) && error?.name !== 'AbortError') {
-        uc6State.assetRuntimeExpected = false;
-        uc6State.freshSyntheticExpected = false;
+        if (!uc6State.jobId) {
+          uc6State.assetRuntimeExpected = false;
+          uc6State.freshSyntheticExpected = false;
+        }
         uc6State.stageMessage = uc6MessageFromError(error);
       }
       setUC6LiveMessage(uc6State.stageMessage);
@@ -7351,7 +7358,11 @@ Customer: Thank you. Goodbye.`
         }
         uc6State.jobState = rawJob.state || uc6State.jobState;
         uc6State.lastPollingTimestamp = Date.now();
-        if (String(uc6State.jobState).startsWith('synthetic_') || uc6State.jobState === 'onboarding_ready') {
+        if (
+          uc6State.jobState === 'persona_selection_ready'
+          || String(uc6State.jobState).startsWith('synthetic_')
+          || uc6State.jobState === 'onboarding_ready'
+        ) {
           await reconcileUC6FreshSyntheticScenarios({ signal: options.signal });
         } else {
           saveUC6LocalState();

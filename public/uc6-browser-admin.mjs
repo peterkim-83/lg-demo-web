@@ -77,7 +77,7 @@ const TERMINAL_STATES = new Set(['approved', 'revision_requested', 'rejected']);
 const POLLABLE_STATES = new Set(['analysis_queued', 'analysis_running']);
 const RENDER_POLLABLE_STATES = new Set(['render_queued', 'render_running']);
 const ONBOARDING_POLLABLE_STATES = new Set(['onboarding_queued', 'onboarding_running']);
-const KNOWN_ONBOARDING_STATES = new Set(['onboarding_queued', 'onboarding_running', 'onboarding_ready', 'onboarding_blocked']);
+const KNOWN_ONBOARDING_STATES = new Set(['onboarding_queued', 'onboarding_running', 'onboarding_ready', 'onboarding_blocked', 'persona_selection_ready']);
 const SYNTHETIC_POLLABLE_STATES = new Set(['synthetic_scenarios_queued', 'synthetic_scenarios_running']);
 const KNOWN_SYNTHETIC_JOB_STATES = new Set([
   'synthetic_scenarios_queued',
@@ -86,6 +86,7 @@ const KNOWN_SYNTHETIC_JOB_STATES = new Set([
   'synthetic_scenario_bound',
   'synthetic_scenarios_failed'
 ]);
+const KNOWN_RUNTIME_PERSONA_STATES = new Set(['persona_selection_ready']);
 const KNOWN_FRESH_JOB_STATES = new Set([...KNOWN_ONBOARDING_STATES, ...KNOWN_SYNTHETIC_JOB_STATES]);
 const KNOWN_RENDER_STATES = new Set(['render_queued', 'render_running', 'render_completed', 'failed']);
 const KNOWN_COMPATIBILITY_STATES = new Set(['compatible', 'incompatible_source_pptx']);
@@ -217,6 +218,9 @@ export function mapUc6StateToView(state) {
     return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, syntheticScenariosPollable: true };
   }
   if (KNOWN_SYNTHETIC_JOB_STATES.has(normalized)) {
+    return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, syntheticScenariosPollable: false };
+  }
+  if (KNOWN_RUNTIME_PERSONA_STATES.has(normalized)) {
     return { state: normalized, known: true, pollable: false, terminal: false, reviewReady: false, canRetry: false, canSubmitAnalysis: false, canDecide: false, syntheticScenariosPollable: false };
   }
   if (normalized === 'onboarding_ready' || normalized === 'onboarding_blocked') {
@@ -955,14 +959,15 @@ export function projectUc6FreshSyntheticScenarios(payload, options = {}) {
   if (!Array.isArray(payload.scenario_options)) throw new TypeError('invalid_synthetic_scenario_options');
   if (payload.public_safety !== 'PASS') throw new TypeError('invalid_synthetic_scenarios_public_safety');
   const scenarioOptions = payload.scenario_options.map(projectUc6SyntheticScenarioOption);
-  if (payload.onboarding_state === 'onboarding_ready') {
+  const personaCatalogReady = payload.onboarding_state === 'onboarding_ready' || payload.onboarding_state === 'persona_selection_ready';
+  if (personaCatalogReady) {
     if (!scenarioOptions.length || new Set(scenarioOptions.map((option) => option.scenario_key)).size !== scenarioOptions.length) {
       throw new TypeError('invalid_synthetic_scenario_catalog');
     }
   } else if (scenarioOptions.length !== 0) {
     throw new TypeError('invalid_synthetic_scenarios_onboarding_options');
   }
-  if (payload.generation_state !== 'not_started' && payload.onboarding_state !== 'onboarding_ready') {
+  if (payload.generation_state !== 'not_started' && !personaCatalogReady) {
     throw new TypeError('invalid_synthetic_scenarios_generation_onboarding_state');
   }
   let boundScenario = null;
@@ -1013,19 +1018,47 @@ export function validateUc6ReusableAssetBootstrapCommand(command) {
 export function projectUc6ReusableAssetRuntimeBootstrap(payload, options = {}) {
   if (!isPlainObject(payload)) throw new TypeError('invalid_reusable_asset_bootstrap_payload');
   const expectedAssetId = normalizeUc6ReusableAssetId(options.expectedAssetId);
-  const allowed = new Set(['schema_version', 'asset_id', 'job_id', 'state', 'created', 'replayed', 'control_plane_contract_version', 'public_safety']);
+  const allowed = new Set([
+    'schema_version', 'asset_id', 'job_id', 'state', 'source_pptx_sha256', 'asset', 'disposition',
+    'created', 'replayed', 'control_plane_contract_version', 'public_safety'
+  ]);
   assertUc6AllowedFields(payload, allowed, 'invalid_reusable_asset_bootstrap_fields');
-  if (payload.asset_id !== expectedAssetId || payload.public_safety !== 'PASS') throw new TypeError('invalid_reusable_asset_bootstrap_asset');
+  if (payload.public_safety !== 'PASS') throw new TypeError('invalid_reusable_asset_bootstrap_public_safety');
   if (typeof payload.job_id !== 'string') throw new TypeError('invalid_reusable_asset_bootstrap_job');
   const jobId = normalizeUc6JobId(payload.job_id);
-  if (typeof payload.state !== 'string' || !BOUNDED_ID_PATTERN.test(payload.state)) throw new TypeError('invalid_reusable_asset_bootstrap_state');
+  if (payload.state !== 'persona_selection_ready') throw new TypeError('invalid_reusable_asset_bootstrap_state');
+  if (!SHA256_PATTERN.test(payload.source_pptx_sha256)) throw new TypeError('invalid_reusable_asset_bootstrap_source_sha');
+  let asset = null;
+  if (payload.asset !== undefined) {
+    if (!isPlainObject(payload.asset)) throw new TypeError('invalid_reusable_asset_bootstrap_asset');
+    const assetAllowed = new Set(['asset_id', 'source_pptx_sha256', 'generation_unit_count', 'slot_count', 'slide_count']);
+    assertUc6AllowedFields(payload.asset, assetAllowed, 'invalid_reusable_asset_bootstrap_asset_fields');
+    if (normalizeUc6ReusableAssetId(payload.asset.asset_id) !== expectedAssetId || payload.asset.source_pptx_sha256 !== payload.source_pptx_sha256) {
+      throw new TypeError('invalid_reusable_asset_bootstrap_asset');
+    }
+    for (const field of ['generation_unit_count', 'slot_count', 'slide_count']) {
+      if (!Number.isSafeInteger(payload.asset[field]) || payload.asset[field] <= 0) throw new TypeError(`invalid_reusable_asset_bootstrap_${field}`);
+    }
+    asset = {
+      asset_id: expectedAssetId,
+      source_pptx_sha256: payload.source_pptx_sha256,
+      generation_unit_count: payload.asset.generation_unit_count,
+      slot_count: payload.asset.slot_count,
+      slide_count: payload.asset.slide_count
+    };
+  } else if (payload.asset_id !== expectedAssetId) {
+    throw new TypeError('invalid_reusable_asset_bootstrap_asset');
+  }
+  if (payload.disposition !== undefined && !['created', 'replayed'].includes(payload.disposition)) throw new TypeError('invalid_reusable_asset_bootstrap_disposition');
   if (payload.created !== undefined && typeof payload.created !== 'boolean') throw new TypeError('invalid_reusable_asset_bootstrap_created');
   if (payload.replayed !== undefined && typeof payload.replayed !== 'boolean') throw new TypeError('invalid_reusable_asset_bootstrap_replayed');
   return {
     ...(payload.schema_version !== undefined ? { schema_version: validateUc6OpaqueSchemaVersion(payload.schema_version) } : {}),
-    asset_id: expectedAssetId,
     job_id: jobId,
-    state: payload.state,
+    state: 'persona_selection_ready',
+    source_pptx_sha256: payload.source_pptx_sha256,
+    ...(asset ? { asset } : { asset_id: expectedAssetId }),
+    ...(payload.disposition !== undefined ? { disposition: payload.disposition } : {}),
     ...(payload.created !== undefined ? { created: payload.created } : {}),
     ...(payload.replayed !== undefined ? { replayed: payload.replayed } : {}),
     control_plane_contract_version: validateUc6ControlPlaneVersion(payload.control_plane_contract_version),
