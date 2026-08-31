@@ -1,4907 +1,627 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-
+import { readFile } from 'node:fs/promises';
 import {
   UC6_BROWSER_ADMIN_ENDPOINTS,
-  UC6_GENERIC_PUBLIC_ERROR_MESSAGE,
   createUc6BrowserAdminApi,
-  classifyUc6AuthorizationFailure,
-  mapUc6StateToView,
   normalizeUc6ApiBaseUrl,
-  normalizeUc6JobId,
-  normalizeUc6ReusableAssetId,
-  projectUc6DummyDatabagPackageFamilyOptions,
-  projectUc6FreshTemplateOnboardingJobStatus,
-  projectUc6FreshTemplateOnboardingSubmission,
-  projectUc6FreshSyntheticGenerationSubmission,
-  projectUc6FreshSyntheticScenarios,
-  projectUc6FreshSyntheticScenarioBinding,
-  projectUc6FreshSyntheticRenderControl,
-  projectUc6FreshRenderDeliveryControl,
-  projectUc6FreshReusableAssetPublication,
-  projectUc6FreshSyntheticRenderJobStatus,
-  projectUc6FreshSyntheticRenderSubmission,
-  projectUc6DummyDatabagPackageOptions,
-  projectUc6ReusableAssetCatalog,
-  projectUc6ReusableAssetRuntimeBootstrap,
-  projectUc6ReusableAssetPackageOptions,
-  projectUc6ReusableAssetRenderJobStatus,
-  projectUc6ReusableAssetRenderSubmission,
-  projectUc6PublishedAssetLinkedScenarioFamily,
-  projectUc6PublishedAssetScenarioRenderJobStatus,
-  projectUc6PublishedAssetScenarioRenderResult,
-  projectUc6PublishedAssetScenarioRenderSubmission,
-  projectUc6DummyDatabagRenderJobStatus,
-  projectUc6DummyDatabagRenderSubmission,
-  projectUc6FinalDeliveryCapabilities,
-  parseUc6PublicError,
+  parseUc6PublicErrorPayload,
   parseUc6JobEventFrame,
+  projectUc6BootstrapMutationControl,
+  projectUc6CanonicalJob,
+  projectUc6FinalDeliveryCapabilities,
+  projectUc6FreshSyntheticScenarioBinding,
+  projectUc6FreshSyntheticGenerationSubmission,
+  projectUc6FreshSyntheticRenderSubmission,
+  projectUc6OnboardingObservationControl,
+  projectUc6MutationObservationControl,
+  projectUc6PersonaBindingMutationControl,
   projectUc6PersistedState,
-  projectUc6ReviewIssuePresentation,
-  projectUc6ReusableAssetPublication,
-  runUc6CreateJobAndSubmitInitialAnalysis,
-  splitDecisionTextLines,
-  validateUc6DecisionCommand,
-  validateUc6DummyDatabagRenderCommand,
+  projectUc6PublicationMutationControl,
+  projectUc6FreshSyntheticScenarios,
+  projectUc6ReusableAssetRuntimeBootstrap,
   validateUc6SyntheticScenarioBindingCommand,
-  validateUc6ReusableAssetPublicationCommand,
   validateUc6ReusableAssetBootstrapCommand,
-  validateUc6ReusableAssetRenderCommand,
-  validateUc6PublishedAssetScenarioRenderCommand
+  validateUc6ReusableAssetPublicationCommand
 } from '../public/uc6-browser-admin.mjs';
 
-const API_BASE = 'https://api.peter-n8n.duckdns.org/';
-const JOB_ID = 'fd_uc6_admin_test_12345';
-const LIVE_FRESH_JOB_ID = 'fd_uc6_admin_20260813T001514Z_c0eb81ff7c57c63e';
-const R6C_SOURCE_SHA = 'a'.repeat(64);
-const R6C_CONTROL_PLANE_VERSION = 'uc6_11c8r2_browser_admin_uc6_control_plane_v1';
+const API = 'http://127.0.0.1:8787/';
+const JOB = 'fd_uc6_admin_test_job_001';
+const ASSET = `reusable_template_asset__${'a'.repeat(40)}`;
+const OTHER_ASSET = `reusable_template_asset__${'c'.repeat(40)}`;
+const SHA = 'b'.repeat(64);
+const PERSONA_CATALOG_SCHEMA = 'uc6_postprod_q4_r3e_3g_browser_admin_fresh_selected_persona_options_v1';
+const PERSONA_BINDING_SCHEMA = 'uc6_postprod_q4_r3e_3e_browser_admin_fresh_selected_persona_selection_projection_v1';
+const SOURCE_GENERATION_SCHEMA = 'uc6_postprod_q4_r3e_3g_browser_admin_fresh_selected_persona_source_generation_submission_v1';
+const SOURCE_GENERATION_TASK = 'fetchdoc_browser_admin_uc6_fresh_synthetic_scenario_generation';
+const RENDER_SUBMISSION_SCHEMA = 'uc6_postprod_q4_r3e_3g_browser_admin_fresh_selected_persona_render_submission_v1';
+const RENDER_SUBMISSION_TASK = 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario';
+const RUNTIME_BOOTSTRAP_SCHEMA = 'uc6_fresh_published_asset_runtime_bootstrap_projection_v1';
+const CONTRACT = 'uc6_11c8r2_browser_admin_uc6_control_plane_v1';
 
-function cloneFixture(value) {
+const PERSONA = Object.freeze({
+  scenario_key: 'executive',
+  label: 'Executive',
+  scenario_summary: 'Executive summary focus',
+  differentiation_basis: { emphasis: 'outcomes' }
+});
+
+function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function r6cVariant(profileId, packageId, order) {
+function response(body = {}, status = 200, contentType = 'application/json') {
   return {
-    schema_version: 'uc6_a8c_dummy_databag_package_public_projection_v1',
-    package_id: packageId,
-    package_version: '2026.08.11',
-    title: `Scenario ${order}`,
-    description: `Synthetic public scenario ${order}.`,
-    template_family_id: profileId,
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    supported_canonical_source_group_count: order,
-    status: 'active',
-    canonical_sha256: String(order).repeat(64)
-  };
-}
-
-function r6cFamily(packageFamilyId, title, variants) {
-  return {
-    schema_version: 'uc6_a9_0g2a_r6a_dummy_databag_package_family_projection_v1',
-    package_family_id: packageFamilyId,
-    title,
-    description: `${title} public description.`,
-    variant_count: variants.length,
-    variants
-  };
-}
-
-function r6cAxFixture() {
-  const profileId = 'ax_agentic_selling_v3';
-  return {
-    schema_version: 'uc6_a9_0g2a_r6a_browser_admin_dummy_databag_package_family_options_v1',
-    job_id: JOB_ID,
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    compatibility_state: 'compatible',
-    template_profile: {
-      profile_id: profileId,
-      profile_version: 'v3',
-      generation_unit_count: 54,
-      fillable_slot_count: 177
-    },
-    package_family_count: 1,
-    package_families: [r6cFamily('ax_demo_scenarios', 'AX demo scenarios', [
-      r6cVariant(profileId, 'ax_customer_retention', 1),
-      r6cVariant(profileId, 'ax_growth_acceleration', 2),
-      r6cVariant(profileId, 'ax_operational_recovery', 3)
-    ])],
-    selection_state: 'unbound',
-    bound_package_family_id: null,
-    bound_package: null,
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS'
-  };
-}
-
-function r6cNovaGridFixture() {
-  const profileId = 'novagrid_energy_proposal_v2';
-  return {
-    ...r6cAxFixture(),
-    template_profile: {
-      profile_id: profileId,
-      profile_version: 'v2',
-      generation_unit_count: 42,
-      fillable_slot_count: 120
-    },
-    package_families: [r6cFamily('novagrid_customer_scenarios', 'NovaGrid customer scenarios', [
-      r6cVariant(profileId, 'novagrid_helios_foods', 4),
-      r6cVariant(profileId, 'novagrid_orion_metals', 5),
-      r6cVariant(profileId, 'novagrid_asteron_mobility', 6)
-    ])]
-  };
-}
-
-function r6d3OnboardingSubmission(state = 'onboarding_queued') {
-  const queueStatus = {
-    onboarding_queued: 'pending',
-    onboarding_running: 'processing',
-    onboarding_ready: 'done',
-    onboarding_blocked: 'failed'
-  }[state];
-  return {
-    schema_version: 'uc6_a9_0g2a_r6d2a_browser_admin_fresh_template_onboarding_submission_v1',
-    job_id: JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_fresh_template_onboarding',
-    task_id: 731,
-    queue_status: queueStatus,
-    created: state === 'onboarding_queued',
-    state,
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS'
-  };
-}
-
-function r6d3OnboardingJob(state = 'onboarding_queued') {
-  return {
-    job_id: JOB_ID,
-    state,
-    source: {
-      sha256: R6C_SOURCE_SHA,
-      size_bytes: 2048,
-      slide_count: 12,
-      filename: 'fresh-source.pptx'
-    },
-    onboarding: { state, private_runtime_data: 'not-projected' },
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION
-  };
-}
-
-function r6eSyntheticScenario(index, overrides = {}) {
-  const suffix = String(index).padStart(3, '0');
-  return {
-    scenario_key: `scenario_${suffix}`,
-    label: `가상 샘플 ${index + 1}`,
-    scenario_summary: `템플릿 호환 합성 샘플 컨텍스트 ${index + 1}`,
-    differentiation_basis: index === 1 ? null : `차별화 기준 ${index + 1}`,
-    ...overrides
-  };
-}
-
-function r6eSyntheticGet(generationState = 'not_started', selectionState = generationState === 'not_started' ? 'unbound' : 'bound') {
-  const scenarioOptions = [0, 1].map((index) => r6eSyntheticScenario(index));
-  return {
-    schema_version: 'backend_owned_r6e_c1_public_v1',
-    job_id: JOB_ID,
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    onboarding_state: 'onboarding_ready',
-    generation_state: generationState,
-    scenario_options: scenarioOptions,
-    selection_state: selectionState,
-    bound_scenario: selectionState === 'bound' ? cloneFixture(scenarioOptions[1]) : null,
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS'
-  };
-}
-
-function r6eSyntheticSubmission(state = 'synthetic_scenarios_queued') {
-  const isReadyReplay = state === 'synthetic_scenarios_ready';
-  const payload = {
-    schema_version: 'backend_owned_r6e_c1_submission_v1',
-    job_id: JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_fresh_synthetic_scenario_generation',
-    task_id: isReadyReplay ? null : 812,
-    queue_status: {
-      synthetic_scenarios_queued: 'pending',
-      synthetic_scenarios_running: 'processing',
-      synthetic_scenarios_ready: 'ready',
-      synthetic_scenarios_failed: 'failed'
-    }[state],
-    created: isReadyReplay ? false : state === 'synthetic_scenarios_queued',
-    state,
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS'
-  };
-  if (isReadyReplay) Object.assign(payload, {
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    bound_scenario: r6eSyntheticScenario(1),
-    network_call_count: 0,
-    replayed: true,
-    provider_attempt_count: 1
-  });
-  return payload;
-}
-
-function r6eSyntheticBinding(scenarioKey = 'scenario_001', disposition = 'created') {
-  const index = Number(scenarioKey.slice(-3));
-  return {
-    schema_version: 'backend_owned_r6e_c1_binding_v1',
-    job_id: JOB_ID,
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    selection_state: 'bound',
-    bound_scenario: r6eSyntheticScenario(index),
-    disposition,
-    public_safety: 'PASS'
-  };
-}
-
-function r6d3FreshProfile() {
-  return {
-    schema_version: 'uc6_a9_0g2a_r6d2b_fresh_same_job_r1_template_profile_projection_v1',
-    profile_origin: 'fresh_same_job',
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    delivery_bundle_id: 'fresh_delivery_bundle_001',
-    generation_unit_count: 18,
-    fillable_slot_count: 47,
-    authoritative_generation_unit_delivery_sha256: 'b'.repeat(64),
-    private_renderer_fallback_lineage_sha256: 'c'.repeat(64),
-    authoritative_delivery_boundary_validation_sha256: 'd'.repeat(64),
-    required_authoritative_source_groups: ['customer_context', 'growth_targets'],
-    supporting_source_groups: ['market_signals']
-  };
-}
-
-function r6d3FreshFamilyFixture() {
-  const compatibilityFamilyId = 'fresh_package_compatibility_v1';
-  return {
-    schema_version: 'uc6_a9_0g2a_r6d2b_browser_admin_dummy_databag_package_family_options_v1',
-    job_id: JOB_ID,
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    onboarding_state: 'onboarding_ready',
-    compatibility_state: 'compatible',
-    template_profile: r6d3FreshProfile(),
-    compatibility_metadata: {
-      template_family_id: compatibilityFamilyId,
-      source_matched_package_count: 2
-    },
-    package_family_count: 1,
-    package_families: [r6cFamily('fresh_customer_scenarios', 'Fresh customer scenarios', [
-      r6cVariant(compatibilityFamilyId, 'fresh_growth_case', 8),
-      r6cVariant(compatibilityFamilyId, 'fresh_recovery_case', 9)
-    ])],
-    selection_state: 'binding_deferred',
-    bound_package_family_id: null,
-    bound_package: null,
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS'
-  };
-}
-
-function response(status, body) {
-  return {
-    status,
     ok: status >= 200 && status < 300,
-    async json() {
-      if (body instanceof Error) throw body;
-      return body;
-    }
+    status,
+    headers: { get: (name) => name.toLowerCase() === 'content-type' ? contentType : null },
+    body: contentType.startsWith('text/event-stream') ? { getReader() {} } : null,
+    async json() { return body; }
   };
 }
 
-function makeBlobFile(name = 'source.pptx') {
-  const blob = new Blob(['pptx']);
-  Object.defineProperty(blob, 'name', { value: name });
-  return blob;
-}
-
-function validFinalDeliveryPayload(overrides = {}) {
-  const payload = {
-    job_id: JOB_ID,
-    artifacts: [
-      {
-        alias: 'final_render_output_pdf',
-        media_type: 'application/pdf',
-        ready: true,
-        suggested_filename: 'final.pdf',
-        capabilities: {
-          download: { available: true, href: '/fetchdoc/browser-admin/uc6/jobs/fd_uc6_admin_test_12345/artifacts/pdf?sig=ok' },
-          view: { available: true, href: '/fetchdoc/browser-admin/uc6/jobs/fd_uc6_admin_test_12345/artifacts/pdf/view?sig=ok' }
-        }
-      },
-      {
-        alias: 'final_render_output_pptx',
-        media_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        ready: true,
-        suggested_filename: 'final.pptx',
-        capabilities: {
-          download: { available: true, href: '/fetchdoc/browser-admin/uc6/jobs/fd_uc6_admin_test_12345/artifacts/pptx?sig=ok' },
-          view: { available: false, href: null }
-        }
-      }
-    ]
-  };
-  return Object.assign(payload, overrides);
-}
-
-
-function unpublishedPublicationPayload(overrides = {}) {
-  return Object.assign({
-    schema_version: 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1',
-    job_id: JOB_ID,
-    render_state: 'render_completed',
-    review_state: 'review_pending',
-    publication_state: 'unpublished',
-    publication_requires_manual_admin_action: true,
-    reviewed_final_pptx_sha256: 'a'.repeat(64),
-    reviewed_final_pdf_sha256: 'b'.repeat(64),
-    published_asset: null,
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-    public_safety: 'PASS'
-  }, overrides);
-}
-
-function publishedPublicationPayload(overrides = {}) {
-  return Object.assign({
-    schema_version: 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1',
-    job_id: JOB_ID,
-    render_state: 'render_completed',
-    review_state: 'approved_for_reuse',
-    publication_state: 'published',
-    publication_requires_manual_admin_action: false,
-    published_asset: {
-      asset_id: 'reusable_template_asset__' + 'c'.repeat(40),
-      template_job_id: 'fd_uc6_e2e4c2c_a7r6a_20260803T090516Z_62cee54d',
-      decision: 'approve_for_reuse_and_publish',
-      decision_identity: 'a8f-test-001',
-      approved_at: '2026-08-05T08:00:00Z',
-      reviewed_final_pptx_sha256: 'a'.repeat(64),
-      reviewed_final_pdf_sha256: 'b'.repeat(64),
-      source_pptx_sha256: 'c'.repeat(64),
-      generation_unit_count: 54,
-      slot_count: 177,
-      slide_count: 7,
-      asset_manifest_sha256: 'd'.repeat(64),
-      catalog_entry_sha256: 'e'.repeat(64),
-      approval_receipt_sha256: 'f'.repeat(64)
-    },
-    idempotent_replay: false,
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-    public_safety: 'PASS'
-  }, overrides);
-}
-
-function freshLinkedScenarioFamily(overrides = {}) {
-  return Object.assign({
-    synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
-    scenario_count: 3,
-    ordered_scenario_keys: ['scenario_000', 'scenario_001', 'scenario_002'],
-    scenario_family_artifact_sha256: '1'.repeat(64)
-  }, overrides);
-}
-
-function freshUnpublishedPublicationPayload(overrides = {}) {
-  return Object.assign(unpublishedPublicationPayload(), {
-    schema_version: 'uc6_a9_0g2a_r6f_a_fresh_reusable_asset_publication_projection_v1',
-    linked_scenario_family: freshLinkedScenarioFamily()
-  }, overrides);
-}
-
-function freshPublishedPublicationPayload(overrides = {}) {
-  return Object.assign(publishedPublicationPayload(), {
-    schema_version: 'uc6_a9_0g2a_r6f_a_fresh_reusable_asset_publication_projection_v1',
-    linked_scenario_family: freshLinkedScenarioFamily({
-      published_scenario_family_id: 'scenario_family_publication_8290144ea5219754',
-      publication_manifest_sha256: '2'.repeat(64),
-      link_identity: 'asset_scenario_family_link_8290144ea5219754'
-    })
-  }, overrides);
-}
-
-function liveFreshUnpublishedPublicationPayload(overrides = {}) {
-  return Object.assign(freshUnpublishedPublicationPayload(), {
-    job_id: LIVE_FRESH_JOB_ID,
-    reviewed_final_pptx_sha256: '7eec8e9cf43d379561f7a6c7dcd63fc934159100d4a1deccd209ac268a06d2fc',
-    reviewed_final_pdf_sha256: 'a6b1298ceca55203e8f4c5520aa7c7df0ceb95f3ac8abbdf9ac8007bf086b9b3',
-    linked_scenario_family: freshLinkedScenarioFamily({
-      synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
-      scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3'
-    })
-  }, overrides);
-}
-
-function liveFreshPublishedPublicationPayload(overrides = {}) {
-  return Object.assign(freshPublishedPublicationPayload(), {
-    job_id: LIVE_FRESH_JOB_ID,
-    published_asset: {
-      asset_id: 'reusable_template_asset__b1cdbd6ca2ff94b40e90b5cf55cbd596a224aca1',
-      template_job_id: LIVE_FRESH_JOB_ID,
-      decision: 'approve_for_reuse_and_publish',
-      decision_identity: 'a8f-50fdd541629f450199a43a6dbf7772e4',
-      approved_at: '2026-08-13T16:16:48.254988Z',
-      reviewed_final_pptx_sha256: '7eec8e9cf43d379561f7a6c7dcd63fc934159100d4a1deccd209ac268a06d2fc',
-      reviewed_final_pdf_sha256: 'a6b1298ceca55203e8f4c5520aa7c7df0ceb95f3ac8abbdf9ac8007bf086b9b3',
-      source_pptx_sha256: 'c7f6aa39870873fce264bafe69c452741f3f08044835f99e504ddf2b02022b08',
-      generation_unit_count: 28,
-      slot_count: 59,
-      slide_count: 5,
-      asset_manifest_sha256: '4484e41ad1880c7d091340fa95562ca354440510ac2d334fc7cc03f393da6c62',
-      catalog_entry_sha256: '8ee77664e07fa5eff2e303cd2041ce08fa7aeb47be191bf143273ade999bd3c0',
-      approval_receipt_sha256: '13d5f398c900fd487477fa9f1c3d4e1c7bc02268fecac5b5a919030abb7a8076'
-    },
-    idempotent_replay: false,
-    linked_scenario_family: freshLinkedScenarioFamily({
-      published_scenario_family_id: 'published_scenario_family__95e6dc2b2aa7044913c50a0b6355d28a3fb139e5',
-      synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
-      scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3',
-      publication_manifest_sha256: '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12',
-      link_identity: 'reusable_asset_scenario_family_link__eeff53ae3e65cea12e9d61e31af56f2bad1580d5'
-    })
-  }, overrides);
-}
-
-function allNotReadyFinalDeliveryPayload() {
-  const payload = validFinalDeliveryPayload();
-  for (const artifact of payload.artifacts) {
-    artifact.ready = false;
-    artifact.capabilities.download = { available: false, href: null };
-    artifact.capabilities.view = { available: false, href: null };
-  }
-  return payload;
-}
-
-function extractFunctionBody(source, name) {
-  const start = source.indexOf(`function ${name}(`);
-  assert.notEqual(start, -1, `${name} missing`);
-  const bodyStart = source.indexOf(') {', start);
-  assert.notEqual(bodyStart, -1, `${name} body opener missing`);
-  const open = bodyStart + 2;
-  assert.notEqual(open, -1, `${name} body missing`);
-  let depth = 0;
-  for (let i = open; i < source.length; i += 1) {
-    if (source[i] === '{') depth += 1;
-    if (source[i] === '}') depth -= 1;
-    if (depth === 0) return source.slice(open + 1, i);
-  }
-  throw new Error(`${name} body unterminated`);
-}
-
-function extractFunctionSource(source, name) {
-  const start = source.indexOf(`function ${name}(`);
-  assert.notEqual(start, -1, `${name} missing`);
-  const bodyStart = source.indexOf(') {', start);
-  assert.notEqual(bodyStart, -1, `${name} body opener missing`);
-  const open = bodyStart + 2;
-  assert.notEqual(open, -1, `${name} body missing`);
-  let depth = 0;
-  for (let i = open; i < source.length; i += 1) {
-    if (source[i] === '{') depth += 1;
-    if (source[i] === '}') depth -= 1;
-    if (depth === 0) return source.slice(start, i + 1);
-  }
-  throw new Error(`${name} body unterminated`);
-}
-
-function readSource(relativePath) {
-  return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
-}
-
-function executeExtractedFunction(source, name, scope = {}) {
-  const entries = Object.entries(scope);
-  return Function(...entries.map(([key]) => key), extractFunctionBody(source, name))(
-    ...entries.map(([, value]) => value)
-  );
-}
-
-function createExtractedFunction(source, name, scope = {}) {
-  const entries = Object.entries(scope);
-  const extracted = extractFunctionSource(source, name);
-  const functionStart = source.indexOf(`function ${name}(`);
-  const declaration = source.slice(Math.max(0, functionStart - 6), functionStart) === 'async '
-    ? `async ${extracted}`
-    : extracted;
-  return Function(
-    ...entries.map(([key]) => key),
-    `${declaration}; return ${name};`
-  )(...entries.map(([, value]) => value));
-}
-
-test('API base validation accepts only production HTTPS and explicit loopback HTTP', () => {
-  assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org'), API_BASE);
-  assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org/'), API_BASE);
-  assert.throws(() => normalizeUc6ApiBaseUrl('https://user:pw@api.peter-n8n.duckdns.org'), /credentials|invalid_api_base/);
-  assert.throws(() => normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org?x=1'), /query|invalid_api_base/);
-  assert.throws(() => normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org#x'), /fragment|invalid_api_base/);
-  assert.throws(() => normalizeUc6ApiBaseUrl('ftp://api.peter-n8n.duckdns.org'), /scheme|invalid_api_base/);
-  assert.equal(normalizeUc6ApiBaseUrl('http://127.0.0.1:8787', { allowLoopbackHttp: true }), 'http://127.0.0.1:8787/');
-  assert.throws(() => normalizeUc6ApiBaseUrl('http://api.peter-n8n.duckdns.org'), /origin|invalid_api_base/);
-  assert.throws(() => normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org/fetchdoc'), /path|invalid_api_base/);
-});
-
-test('token and request boundary headers are bounded for each request', async () => {
-  const calls = [];
-  const events = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => {
-      events.push('token');
-      return `token-${events.length}`;
-    },
-    fetchImpl: async (url, init) => {
-      events.push('fetch');
-      calls.push({ url, init });
-      return response(200, { status: 'authorized' });
-    }
-  });
-
-  await api.getSession();
-  await api.getJob(JOB_ID);
-  assert.deepEqual(events, ['token', 'fetch', 'token', 'fetch']);
-  assert.equal(calls[0].init.headers.Authorization, 'Bearer token-1');
-  assert.equal((calls[0].init.headers.Authorization.match(/Bearer/g) || []).length, 1);
-  const internalHeader = ['X', 'Internal', 'Token'].join('-');
-  assert.equal(calls[0].init.headers[internalHeader], undefined);
-  assert.equal(calls[0].init.credentials, 'omit');
-  assert.equal(calls[0].init.cache, 'no-store');
-  assert.equal(projectUc6PersistedState({ job_id: JOB_ID, id_token: 'secret', token: 'secret' }).id_token, undefined);
-  assert.equal(projectUc6PersistedState({ job_id: JOB_ID, publication_decision_identity: 'a8f-test-001' }).publication_decision_identity, 'a8f-test-001');
-  assert.equal(projectUc6PersistedState({ job_id: JOB_ID, publication_decision_identity: '../bad' }).publication_decision_identity, undefined);
-});
-
-test('401 forced refresh retries once; 403 and network POST failures are not replayed', async () => {
-  const calls401 = [];
-  const tokenForces = [];
-  const api401 = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async (forceRefresh) => {
-      tokenForces.push(forceRefresh);
-      return forceRefresh ? 'fresh' : 'stale';
-    },
-    fetchImpl: async (url, init) => {
-      calls401.push({ url, init });
-      return calls401.length === 1
-        ? response(401, { detail: { code: 'browser_admin_token_expired' } })
-        : response(200, { status: 'authorized' });
-    }
-  });
-  assert.deepEqual(await api401.getSession(), { status: 'authorized' });
-  assert.equal(calls401.length, 2);
-  assert.deepEqual(tokenForces, [false, true]);
-
-  const callsSecond401 = [];
-  const apiSecond401 = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async (url, init) => {
-      callsSecond401.push({ url, init });
-      return response(401, { detail: { code: 'browser_admin_token_expired' } });
-    }
-  });
-  await assert.rejects(() => apiSecond401.getSession(), { code: 'browser_admin_token_expired' });
-  assert.equal(callsSecond401.length, 2);
-
-  const calls403 = [];
-  const api403 = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async (url, init) => {
-      calls403.push({ url, init });
-      return response(403, { detail: { code: 'browser_admin_role_required' } });
-    }
-  });
-  await assert.rejects(() => api403.getSession(), { code: 'browser_admin_role_required' });
-  assert.equal(calls403.length, 1);
-
-  const callsNetwork = [];
-  const apiNetwork = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async (url, init) => {
-      callsNetwork.push({ url, init });
-      throw new Error('network down');
-    }
-  });
-  await assert.rejects(() => apiNetwork.submitAnalysis(JOB_ID, { retryFailed: false }), /network down/);
-  assert.equal(callsNetwork.length, 1);
-});
-
-test('final-delivery endpoint uses exact GET route and unchanged authorization boundary', async () => {
-  const calls = [];
-  const forces = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async (forceRefresh) => {
-      forces.push(forceRefresh);
-      return forceRefresh ? 'fresh-token' : 'initial-token';
-    },
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(200, validFinalDeliveryPayload());
-    }
-  });
-
-  const payload = await api.getFinalDeliveryCapabilities(JOB_ID);
-  assert.equal(payload.job_id, JOB_ID);
-  assert.equal(UC6_BROWSER_ADMIN_ENDPOINTS.finalDeliveryCapabilities(JOB_ID), `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/final-delivery-capabilities`);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/final-delivery-capabilities`);
-  assert.equal(calls[0].init.method, 'GET');
-  assert.equal(calls[0].init.cache, 'no-store');
-  assert.equal(calls[0].init.credentials, 'omit');
-  assert.equal(calls[0].init.headers.Authorization, 'Bearer initial-token');
-  assert.equal(calls[0].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
-  assert.equal(forces.length, 1);
-  assert.deepEqual(forces, [false]);
-});
-
-test('final-delivery GET applies one forced token refresh on HTTP 401', async () => {
-  const calls = [];
-  const forces = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async (forceRefresh) => {
-      forces.push(forceRefresh);
-      return forceRefresh ? 'fresh-token' : 'stale-token';
-    },
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return calls.length === 1
-        ? response(401, { detail: { code: 'browser_admin_token_expired' } })
-        : response(200, validFinalDeliveryPayload());
-    }
-  });
-
-  await api.getFinalDeliveryCapabilities(JOB_ID);
-  assert.equal(calls.length, 2);
-  assert.deepEqual(forces, [false, true]);
-  assert.equal(calls[0].init.headers.Authorization, 'Bearer stale-token');
-  assert.equal(calls[1].init.headers.Authorization, 'Bearer fresh-token');
-});
-
-test('routes, methods, multipart boundary, and bounded JSON bodies are exact', async () => {
-  const calls = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(init.method === 'POST' && url.endsWith('/analysis') ? 202 : 200, { ok: true, state: 'analysis_queued' });
-    }
-  });
-
-  await api.getSession();
-  await api.createJob(makeBlobFile());
-  await api.submitAnalysis(JOB_ID, { retryFailed: false });
-  await api.getJob(JOB_ID);
-  await api.getReview(JOB_ID);
-  await api.getFinalDeliveryCapabilities(JOB_ID);
-  await api.submitDecision(JOB_ID, { state: 'review_ready', decision: 'request_revision', review_notes: ['note'], requested_revisions: [] });
-
-  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/session`);
-  assert.equal(calls[0].init.method, 'GET');
-  assert.equal(calls[1].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs`);
-  assert.equal(calls[1].init.method, 'POST');
-  assert.equal(calls[1].init.body.get('file').name, 'source.pptx');
-  assert.equal(calls[1].init.headers['Content-Type'], undefined);
-  assert.equal(calls[2].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/analysis`);
-  assert.equal(JSON.parse(calls[2].init.body).retry_failed, false);
-  assert.equal(calls[3].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}`);
-  assert.equal(calls[3].init.method, 'GET');
-  assert.equal(calls[4].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/review`);
-  assert.equal(calls[5].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/final-delivery-capabilities`);
-  assert.equal(calls[5].init.method, 'GET');
-  assert.equal(calls[6].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/review-decision`);
-  assert.deepEqual(JSON.parse(calls[6].init.body), { decision: 'request_revision', review_notes: ['note'], requested_revisions: [] });
-  assert.throws(() => normalizeUc6JobId('bad/../id'), /invalid_job_id/);
-  for (const call of calls) {
-    const serialized = typeof call.init.body === 'string' ? call.init.body : '';
-    const taskTypeKey = ['task', 'type'].join('_');
-    const retryTaskKey = ['retry', 'expected', 'task', 'id'].join('_');
-    assert.equal(serialized.includes(taskTypeKey), false);
-    assert.equal(serialized.includes(retryTaskKey), false);
-  }
-});
-
-test('upload orchestration creates a job, publishes state callback, and submits one initial analysis', async () => {
-  const file = makeBlobFile();
-  const signal = new AbortController().signal;
-  const events = [];
-  const api = {
-    async createJob(receivedFile, options) {
-      events.push(['create', receivedFile === file, options.signal === signal]);
-      return { job_id: ` ${JOB_ID} `, state: 'source_ready', source: { size_bytes: 4, slide_count: 2 } };
-    },
-    async submitAnalysis(jobId, options) {
-      events.push(['analysis', jobId, options.retryFailed, options.signal === signal]);
-      return { job_id: jobId, state: 'analysis_queued' };
-    }
-  };
-  const callbacks = [];
-  const result = await runUc6CreateJobAndSubmitInitialAnalysis({
-    api,
-    file,
-    signal,
-    onJobCreated(jobId, created) {
-      callbacks.push({ jobId, state: created.state, eventCount: events.length });
-    }
-  });
-  assert.equal(events.filter((event) => event[0] === 'create').length, 1);
-  assert.equal(events.filter((event) => event[0] === 'analysis').length, 1);
-  assert.equal(events[1][2], false);
-  assert.equal(callbacks.length, 1);
-  assert.equal(callbacks[0].eventCount, 1);
-  assert.equal(result.jobId, JOB_ID);
-  assert.equal(result.analysisResponse.state, 'analysis_queued');
-  assert.equal(events[0][2], true);
-  assert.equal(events[1][3], true);
-});
-
-test('upload orchestration does not analyze on create failure and does not replay analysis failure', async () => {
-  const createFailureEvents = [];
-  await assert.rejects(() => runUc6CreateJobAndSubmitInitialAnalysis({
-    api: {
-      async createJob() {
-        createFailureEvents.push('create');
-        throw new Error('create failed');
-      },
-      async submitAnalysis() {
-        createFailureEvents.push('analysis');
-      }
-    },
-    file: makeBlobFile(),
-    onJobCreated() {
-      createFailureEvents.push('callback');
-    }
-  }), /create failed/);
-  assert.deepEqual(createFailureEvents, ['create']);
-
-  const analysisFailureEvents = [];
-  await assert.rejects(() => runUc6CreateJobAndSubmitInitialAnalysis({
-    api: {
-      async createJob() {
-        analysisFailureEvents.push('create');
-        return { job_id: JOB_ID, state: 'source_ready' };
-      },
-      async submitAnalysis() {
-        analysisFailureEvents.push('analysis');
-        throw new Error('analysis failed');
-      }
-    },
-    file: makeBlobFile(),
-    onJobCreated() {
-      analysisFailureEvents.push('callback');
-    }
-  }), /analysis failed/);
-  assert.deepEqual(analysisFailureEvents, ['create', 'callback', 'analysis']);
-  assert.equal(analysisFailureEvents.filter((event) => event === 'analysis').length, 1);
-});
-
-test('authorization failure classification is bounded', () => {
-  assert.equal(classifyUc6AuthorizationFailure({ status: 401 }), 'signed_out');
-  for (const code of [
-    'browser_admin_bearer_token_required',
-    'browser_admin_authorization_header_invalid',
-    'browser_admin_token_invalid',
-    'browser_admin_token_expired'
-  ]) {
-    assert.equal(classifyUc6AuthorizationFailure({ code }), 'signed_out');
-  }
-  assert.equal(classifyUc6AuthorizationFailure({ status: 403 }), 'access_denied');
-  for (const code of [
-    'browser_admin_role_required',
-    'browser_admin_email_unverified',
-    'browser_admin_email_not_allowed'
-  ]) {
-    assert.equal(classifyUc6AuthorizationFailure({ code }), 'access_denied');
-  }
-  for (const err of [
-    { code: 'browser_admin_uc6_queue_unavailable' },
-    { code: 'browser_admin_uc6_service_unavailable' },
-    { code: 'browser_admin_uc6_invalid_upload' },
-    new Error('network'),
-    Object.assign(new Error('aborted'), { name: 'AbortError' })
-  ]) {
-    assert.equal(classifyUc6AuthorizationFailure(err), null);
-  }
-});
-
-test('public error parser never exposes raw HTML, text, tokens, or internal paths', async () => {
-  const known = await parseUc6PublicError(response(400, { detail: { code: 'browser_admin_uc6_invalid_pptx' } }));
-  assert.equal(known.code, 'browser_admin_uc6_invalid_pptx');
-  assert.notEqual(known.message, UC6_GENERIC_PUBLIC_ERROR_MESSAGE);
-
-  const unknownJson = await parseUc6PublicError(response(500, { detail: { code: 'unexpected', message: 'Bearer secret /data/fetchdoc' } }));
-  assert.equal(unknownJson.code, 'unknown_public_error');
-  assert.equal(unknownJson.message, UC6_GENERIC_PUBLIC_ERROR_MESSAGE);
-
-  const html = await parseUc6PublicError(response(502, new Error('<html>token /data/fetchdoc</html>')));
-  assert.equal(html.message, UC6_GENERIC_PUBLIC_ERROR_MESSAGE);
-  assert.equal(html.message.includes('<html>'), false);
-  assert.equal(html.message.includes('Bearer'), false);
-  assert.equal(html.message.includes('/data/'), false);
-});
-
-test('decision line splitting and local decision validation enforce bounded input', () => {
-  assert.deepEqual(splitDecisionTextLines('a\r\nb\n\n c '), ['a', 'b', 'c']);
-  assert.deepEqual(splitDecisionTextLines('a\rb'), ['a', 'b']);
-  assert.equal(splitDecisionTextLines(Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n')).length, 20);
-  assert.throws(() => splitDecisionTextLines(Array.from({ length: 21 }, (_, i) => `line ${i}`).join('\n')), /too_many/);
-  assert.throws(() => splitDecisionTextLines('x'.repeat(1001)), /too_long/);
-  assert.equal(validateUc6DecisionCommand({ state: 'review_ready', decision: 'approve', review_notes: [], requested_revisions: ['change'] }).ok, false);
-  assert.equal(validateUc6DecisionCommand({ state: 'review_ready', decision: 'request_revision', review_notes: [], requested_revisions: [] }).ok, false);
-  assert.equal(validateUc6DecisionCommand({ state: 'review_ready', decision: 'reject', review_notes: [], requested_revisions: [] }).ok, false);
-  assert.equal(validateUc6DecisionCommand({ state: 'review_blocked', decision: 'approve', review_notes: [], requested_revisions: [] }).ok, false);
-  assert.equal(validateUc6DecisionCommand({ state: 'review_ready_with_warnings', decision: 'approve', review_notes: ['ok'], requested_revisions: [] }).ok, true);
-});
-
-test('state mapping is fail-closed and separates poll, retry, review, terminal states', () => {
-  assert.equal(mapUc6StateToView('analysis_queued').pollable, true);
-  assert.equal(mapUc6StateToView('analysis_running').pollable, true);
-  assert.equal(mapUc6StateToView('failed').canRetry, true);
-  assert.equal(mapUc6StateToView('review_ready').reviewReady, true);
-  assert.equal(mapUc6StateToView('review_ready_with_warnings').reviewReady, true);
-  assert.equal(mapUc6StateToView('review_blocked').reviewReady, true);
-  assert.equal(mapUc6StateToView('approved').terminal, true);
-  assert.equal(mapUc6StateToView('revision_requested').terminal, true);
-  assert.equal(mapUc6StateToView('rejected').terminal, true);
-  assert.equal(mapUc6StateToView('mystery').known, false);
-  assert.equal(mapUc6StateToView('mystery').pollable, false);
-});
-
-test('persistence projection keeps only public allowlisted fields', () => {
-  const projected = projectUc6PersistedState({
-    job_id: JOB_ID,
-    last_known_public_state: 'analysis_running',
-    last_polling_timestamp: 123,
-    selected_panel: 'review',
-    id_token: 'token',
-    token: 'token',
-    firebase_user: { uid: 'uid' },
-    uid: 'uid',
-    email: 'a@example.com',
-    source: { sha256: 'sha' },
-    review: { public_review_surface: {} },
-    finalDelivery: validFinalDeliveryPayload(),
-    final_delivery: { href: '/signed?sig=secret' },
-    capability_href: '/signed?sig=secret',
-    raw_capability_response: { artifacts: [] },
-    task_id: 'task',
-    queue_payload: { x: true }
-  });
-  assert.deepEqual(projected, {
-    job_id: JOB_ID,
-    last_known_public_state: 'analysis_running',
-    last_polling_timestamp: 123,
-    selected_panel: 'review'
-  });
-});
-
-function assertNoObjectLeak(value) {
-  const strings = [];
-  const visit = (item) => {
-    if (typeof item === 'string') strings.push(item);
-    else if (Array.isArray(item)) item.forEach(visit);
-    else if (item && typeof item === 'object') Object.values(item).forEach(visit);
-  };
-  visit(value);
-  const display = strings.join('\n');
-  assert.equal(display.includes('[object Object]'), false);
-  assert.equal(display.includes('{"'), false);
-  assert.equal(display.includes('Bearer'), false);
-  assert.equal(display.includes('/data/'), false);
-  assert.equal(display.includes('/app/'), false);
-  assert.equal(display.includes('file://'), false);
-  assert.equal(/[A-Za-z]:[\\/]/.test(display), false);
-  assert.equal(/(^|\n)(\\\\|\/\/)/.test(display), false);
-  assert.equal(display.includes('x-internal-token'), false);
-  assert.equal(display.includes('internal_secret_token'), false);
-  assert.equal(display.includes('traceback'), false);
-  assert.equal(display.includes('http://'), false);
-  assert.equal(display.includes('https://'), false);
-}
-
-test('A8-E persistence requires paired package identity and a bounded timestamp', () => {
-  assert.deepEqual(projectUc6PersistedState({
-    job_id: JOB_ID,
-    flow_lane: 'dummy_render',
-    selected_package_id: 'pkg1',
-    last_polling_timestamp: -1
-  }), {
-    job_id: JOB_ID,
-    flow_lane: 'dummy_render'
-  });
-  assert.deepEqual(projectUc6PersistedState({
-    job_id: JOB_ID,
-    flow_lane: 'dummy_render',
-    selected_package_id: 'pkg1',
-    selected_package_version: 'v1',
-    last_polling_timestamp: 123
-  }), {
-    job_id: JOB_ID,
-    last_polling_timestamp: 123,
-    flow_lane: 'dummy_render',
-    selected_package_id: 'pkg1',
-    selected_package_version: 'v1'
-  });
-});
-
-test('review issue projection presents production-shaped warning preview safely', () => {
-  const review = {
-    warning_count: 231,
-    blocking_issue_count: 0,
-    public_review_surface: {
-      top_warnings: Array.from({ length: 5 }, (_, index) => ({
-        warning_id: index === 0 ? 'warning__missing_segment_mapping__slide_1' : `warning__reason_${index + 1}__slide_${index + 1}`,
-        reason_code: index === 0 ? 'missing_segment_mapping' : `warning_reason_${index + 1}`,
-        target_ref: `slide_${index + 1}`,
-        ignored_payload: { secret: 'Bearer token' }
-      }))
-    }
-  };
-  const projected = projectUc6ReviewIssuePresentation(review);
-  assert.equal(projected.warnings.totalCount, 231);
-  assert.equal(projected.warnings.previewCount, 5);
-  assert.equal(projected.warnings.omittedCount, 226);
-  assert.equal(projected.blockers.totalCount, 0);
-  assert.equal(projected.warnings.items[0].title, 'Missing segment mapping');
-  assert.equal(projected.warnings.items[0].technicalId, 'warning__missing_segment_mapping__slide_1');
-  assert.equal(projected.warnings.items[0].reasonCode, 'missing_segment_mapping');
-  assert.equal(projected.warnings.items[0].contextLabel, '대상');
-  assert.equal(projected.warnings.items[0].contextValue, 'slide_1');
-  assertNoObjectLeak(projected);
-});
-
-test('review issue projection presents production-shaped blockers prominently and bounded', () => {
-  const projected = projectUc6ReviewIssuePresentation({
-    blocking_issue_count: 2,
-    warning_count: 0,
-    public_review_surface: {
-      top_blockers: [
-        {
-          blocker_id: 'block-1',
-          reason_code: 'missing_required_asset',
-          severity: 'high',
-          affected_segment_ids: ['seg-a', 'seg-b', { ignored: true }]
-        },
-        {
-          blocker_id: 'block-2',
-          reason_code: 'render_blocked',
-          affected_segment_ids: ['seg-c']
-        }
-      ]
-    }
-  });
-  assert.equal(projected.blockers.totalCount, 2);
-  assert.equal(projected.blockers.previewCount, 2);
-  assert.equal(projected.blockers.omittedCount, 0);
-  assert.equal(projected.blockers.items[0].kind, 'blocker');
-  assert.equal(projected.blockers.items[0].title, 'Missing required asset');
-  assert.equal(projected.blockers.items[0].contextLabel, '영향 구간');
-  assert.equal(projected.blockers.items[0].contextValue, 'seg-a, seg-b');
-  assert.equal(projected.blockers.items[0].technicalId, 'block-1');
-  assertNoObjectLeak(projected);
-});
-
-test('review issue projection truncates previews, supports scalar fixtures, and normalizes counts', () => {
-  const projected = projectUc6ReviewIssuePresentation({
-    blocking_issue_count: -4,
-    warning_count: 8,
-    public_review_surface: {
-      top_blockers: ['legacy blocker'],
-      top_warnings: Array.from({ length: 9 }, (_, index) => `warning ${index + 1}`)
-    }
-  });
-  assert.equal(projected.blockers.totalCount, 1);
-  assert.equal(projected.blockers.previewCount, 1);
-  assert.equal(projected.blockers.omittedCount, 0);
-  assert.equal(projected.blockers.items[0].title, 'legacy blocker');
-  assert.equal(projected.warnings.totalCount, 8);
-  assert.equal(projected.warnings.previewCount, 5);
-  assert.equal(projected.warnings.omittedCount, 3);
-  assert.deepEqual(projected.warnings.items.map((item) => item.title), ['warning 1', 'warning 2', 'warning 3', 'warning 4', 'warning 5']);
-});
-
-test('review issue projection ignores malformed nested objects and bounds unsafe text', () => {
-  const longReason = `reason_${'x'.repeat(220)}`;
-  const projected = projectUc6ReviewIssuePresentation({
-    blocking_issue_count: 1,
-    warning_count: 3,
-    public_review_surface: {
-      top_blockers: [{ message: { nested: true }, reason_code: { nested: true }, blocker_id: { nested: true } }],
-      top_warnings: [
-        { summary: 'Readable\u0000 warning\n title', reason_code: longReason, warning_id: `warn-${'y'.repeat(200)}`, target_ref: { name: 'Deck target', ignored: { object: true } } },
-        { message: { nested: true }, target_ref: { slide_id: { nested: true } } },
-        { label: true, code: false, target_ref: 'not-object' }
-      ]
-    }
-  });
-  assert.equal(projected.blockers.previewCount, 0);
-  assert.equal(projected.blockers.totalCount, 1);
-  assert.equal(projected.blockers.omittedCount, 1);
-  assert.equal(projected.warnings.totalCount, 3);
-  assert.equal(projected.warnings.previewCount, 2);
-  assert.equal(projected.warnings.omittedCount, 1);
-  assert.equal(projected.warnings.items[0].title, 'Readable warning title');
-  assert.equal(projected.warnings.items[0].reasonCode.length <= 128, true);
-  assert.equal(projected.warnings.items[0].technicalId.length <= 128, true);
-  assert.equal(projected.warnings.items[0].contextValue, '대상 Deck target');
-  assert.equal(projected.warnings.items[1].title, 'true');
-  assert.equal(projected.warnings.items[1].reasonCode, 'false');
-  assertNoObjectLeak(projected);
-});
-
-test('review issue projection omits unsafe scalar display values', () => {
-  const projected = projectUc6ReviewIssuePresentation({
-    blocking_issue_count: 3,
-    warning_count: 10,
-    public_review_surface: {
-      top_blockers: [
-        '/data/fetchdoc/jobs/private',
-        'Bearer abc123',
-        'C:\\secret\\file.pptx',
-        '\\\\server\\share\\file.pptx',
-        { message: '/app/private/path', reason_code: 'safe_blocker_reason', blocker_id: 'block-safe-1' }
-      ],
-      top_warnings: [
-        'file://private/file.pptx',
-        'x-internal-token: secret',
-        'internal_secret_token value',
-        'traceback line 1',
-        'https://private.example/path',
-        '{"raw":"json"}',
-        { message: '/data/fetchdoc/jobs/private', reason_code: 'safe_warning_reason', warning_id: 'warn-safe-1', target_ref: '/data/fetchdoc/jobs/private' },
-        { label: 'Safe warning title', code: 'safe_code', warning_id: 'warn-safe-2', source_artifact: 'C:/secret/file.pptx' },
-        { reason_code: 'missing_segment_mapping', warning_id: 'warn-safe-3', target_ref: 'slide_7' }
-      ]
-    }
-  });
-  assert.equal(projected.blockers.previewCount, 1);
-  assert.equal(projected.blockers.items[0].title, 'Safe blocker reason');
-  assert.equal(projected.warnings.previewCount, 3);
-  assert.equal(projected.warnings.items[0].title, 'Safe warning reason');
-  assert.equal(projected.warnings.items[0].contextValue, undefined);
-  assert.equal(projected.warnings.items[1].title, 'Safe warning title');
-  assert.equal(projected.warnings.items[1].contextValue, undefined);
-  assert.equal(projected.warnings.items[2].contextValue, 'slide_7');
-  assertNoObjectLeak(projected);
-});
-
-test('review issue projection scans a bounded source window to collect five safe previews', () => {
-  const projected = projectUc6ReviewIssuePresentation({
-    warning_count: 12,
-    public_review_surface: {
-      top_warnings: [
-        '/data/fetchdoc/jobs/private',
-        'Bearer abc123',
-        ...Array.from({ length: 7 }, (_, index) => ({ reason_code: `safe_reason_${index + 1}`, warning_id: `warn-${index + 1}`, target_ref: `slide_${index + 1}` }))
-      ]
-    }
-  });
-  assert.equal(projected.warnings.previewCount, 5);
-  assert.equal(projected.warnings.omittedCount, 7);
-  assert.deepEqual(projected.warnings.items.map((item) => item.contextValue), ['slide_1', 'slide_2', 'slide_3', 'slide_4', 'slide_5']);
-  assertNoObjectLeak(projected);
-});
-
-test('final-delivery projection accepts ready and all-not-ready contracts', () => {
-  const ready = projectUc6FinalDeliveryCapabilities(validFinalDeliveryPayload(), { expectedJobId: JOB_ID, apiBaseUrl: API_BASE });
-  assert.equal(ready.readyCount, 2);
-  assert.equal(ready.totalCount, 2);
-  assert.equal(ready.artifacts[0].alias, 'final_render_output_pdf');
-  assert.equal(ready.artifacts[0].label, 'PDF');
-  assert.equal(ready.artifacts[0].actions.view.available, true);
-  assert.equal(ready.artifacts[0].actions.view.href.startsWith(API_BASE), true);
-  assert.equal(ready.artifacts[0].actions.download.href.startsWith(API_BASE), true);
-  assert.equal(ready.artifacts[1].label, 'PowerPoint');
-  assert.equal(ready.artifacts[1].actions.download.available, true);
-  assert.equal(ready.artifacts[1].actions.download.href.startsWith(API_BASE), true);
-  assert.equal(ready.artifacts[1].actions.view.available, false);
-  assert.equal(ready.artifacts[1].actions.view.href, null);
-
-  const waiting = projectUc6FinalDeliveryCapabilities(allNotReadyFinalDeliveryPayload(), { expectedJobId: JOB_ID, apiBaseUrl: API_BASE });
-  assert.equal(waiting.readyCount, 0);
-  assert.equal(waiting.artifacts.every((artifact) => artifact.ready === false), true);
-  assert.equal(waiting.artifacts.every((artifact) => artifact.actions.download.href === null && artifact.actions.view.href === null), true);
-});
-
-test('final-delivery projection rejects malformed or unsafe contracts', () => {
-  const reject = (mutate) => {
-    const payload = validFinalDeliveryPayload();
-    mutate(payload);
-    assert.throws(() => projectUc6FinalDeliveryCapabilities(payload, { expectedJobId: JOB_ID, apiBaseUrl: API_BASE }), TypeError);
-  };
-
-  assert.throws(() => projectUc6FinalDeliveryCapabilities(null, { expectedJobId: JOB_ID, apiBaseUrl: API_BASE }), TypeError);
-  reject((payload) => { payload.job_id = 'fd_uc6_admin_other_12345'; });
-  reject((payload) => { payload.artifacts.reverse(); });
-  reject((payload) => { payload.artifacts.pop(); });
-  reject((payload) => { payload.artifacts[0].alias = 'unknown_alias'; });
-  reject((payload) => { payload.artifacts[0].media_type = 'application/octet-stream'; });
-  reject((payload) => { payload.artifacts[0].ready = 'true'; });
-  reject((payload) => { payload.artifacts[0].capabilities.download.available = 'true'; });
-  reject((payload) => { payload.artifacts[0].capabilities.download = { available: false, href: '/still-present' }; });
-  reject((payload) => { payload.artifacts[0].capabilities.download = { available: true, href: null }; });
-  reject((payload) => { payload.artifacts[0].capabilities.download.href = '//evil.example/path'; });
-  reject((payload) => { payload.artifacts[0].capabilities.download.href = 'https://evil.example/path'; });
-  reject((payload) => { payload.artifacts[0].ready = false; });
-  reject((payload) => { payload.artifacts[1].capabilities.view = { available: true, href: '/pptx/view' }; });
-  for (const filename of ['../final.pdf', 'nested/final.pdf', 'nested\\final.pdf', 'bad\u0000name.pdf', '']) {
-    reject((payload) => { payload.artifacts[0].suggested_filename = filename; });
-  }
-});
-
-test('mock browser control-plane flow stays bounded through revision request and semantic replay', async () => {
-  const calls = [];
-  const statuses = ['analysis_queued', 'analysis_running', 'review_ready_with_warnings', 'revision_requested'];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      const obsoletePath = ['/webhook', 'fetchdoc', 'uc6'].join('/');
-      assert.equal(url.includes(obsoletePath), false);
-      const internalHeader = ['X', 'Internal', 'Token'].join('-');
-      assert.equal(init.headers[internalHeader], undefined);
-      if (url.endsWith('/session')) return response(200, { status: 'authorized', principal: { authenticated: true, authorized: true, email_verified: true, admin_claim: 'fetchdoc_admin' } });
-      if (url.endsWith('/uc6/jobs')) return response(201, { job_id: JOB_ID, state: 'source_ready', source: { size_bytes: 4, slide_count: 2, filename: 'source.pptx', sha256: 'hidden' } });
-      if (url.endsWith('/analysis')) return response(202, { job_id: JOB_ID, state: 'analysis_queued', created: true });
-      if (url.endsWith('/review')) return response(200, { job_id: JOB_ID, state: 'review_ready_with_warnings', warning_count: 1, public_review_surface: { top_warnings: ['w'] } });
-      if (url.endsWith('/review-decision')) return response(200, { job_id: JOB_ID, state: 'revision_requested', decision: 'request_revision' });
-      return response(200, { job_id: JOB_ID, state: statuses.shift() });
-    }
-  });
-
-  await api.getSession();
-  await api.createJob(makeBlobFile());
-  await api.submitAnalysis(JOB_ID, { retryFailed: false });
-  const seen = [await api.getJob(JOB_ID), await api.getJob(JOB_ID), await api.getJob(JOB_ID)];
-  await api.getReview(JOB_ID);
-  const decision = await api.submitDecision(JOB_ID, { state: 'review_ready_with_warnings', decision: 'request_revision', review_notes: ['revise'], requested_revisions: [] });
-  const finalStatus = await api.getJob(JOB_ID);
-
-  assert.deepEqual(seen.map((item) => item.state), ['analysis_queued', 'analysis_running', 'review_ready_with_warnings']);
-  assert.equal(decision.state, 'revision_requested');
-  assert.equal(finalStatus.state, 'revision_requested');
-  assert.equal(calls.filter((call) => call.url.endsWith('/uc6/jobs')).length, 1);
-  assert.equal(calls.filter((call) => call.url.endsWith('/analysis')).length, 1);
-  assert.equal(calls.filter((call) => call.url.endsWith('/review')).length, 1);
-  assert.equal(calls.filter((call) => call.url.endsWith('/review-decision')).length, 1);
-});
-
-test('mock 403, failed retry, and review-blocked approve guard are bounded', async () => {
-  const api403 = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async () => response(403, { detail: { code: 'browser_admin_email_not_allowed' } })
-  });
-  await assert.rejects(() => api403.getSession(), { code: 'browser_admin_email_not_allowed' });
-
-  const retryBodies = [];
-  const apiRetry = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async (url, init) => {
-      if (url.endsWith('/analysis')) retryBodies.push(JSON.parse(init.body));
-      return response(200, { state: 'analysis_queued' });
-    }
-  });
-  assert.equal(mapUc6StateToView('failed').canRetry, true);
-  await apiRetry.submitAnalysis(JOB_ID, { retryFailed: true });
-  assert.deepEqual(retryBodies, [{ retry_failed: true }]);
-
-  assert.equal(validateUc6DecisionCommand({ state: 'review_blocked', decision: 'approve', review_notes: [], requested_revisions: [] }).ok, false);
-});
-
-test('app controller source guards lock repaired upload, retry, review, and auth-boundary paths', () => {
-  const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  const uploadBody = extractFunctionBody(source, 'uploadUC6PptxJob');
-  const initBody = extractFunctionBody(source, 'initUC6');
-  const decisionBody = extractFunctionBody(source, 'submitUC6Decision');
-  const refreshBody = extractFunctionBody(source, 'refreshUC6JobStatus');
-  const finalDeliveryBody = extractFunctionBody(source, 'fetchUC6FinalDeliveryCapabilities');
-  const resetBody = extractFunctionBody(source, 'resetUC6JobState');
-  const persistBody = extractFunctionBody(source, 'saveUC6LocalState');
-  const pollBody = extractFunctionBody(source, 'pollUC6JobStatus');
-  const analysisBody = extractFunctionBody(source, 'submitUC6Analysis');
-  const reviewBody = extractFunctionBody(source, 'fetchUC6Review');
-  const renderReviewBody = extractFunctionBody(source, 'renderUC6ReviewStage');
-  const issueOverviewBody = extractFunctionBody(source, 'renderUC6IssueOverview');
-  const issueGroupBody = extractFunctionBody(source, 'renderUC6IssueGroup');
-  const issueRowBody = extractFunctionBody(source, 'renderUC6IssueRow');
-  const authHandlerBody = extractFunctionBody(source, 'handleUC6AuthorizationFailure');
-
-  assert.equal(uploadBody.includes('submitUC6Analysis(false)'), false);
-  assert.equal(uploadBody.includes('loadUC6PackageOptions'), false);
-  assert.equal(uploadBody.includes('reconcileUC6FreshSyntheticScenarios'), true);
-  assert.equal((uploadBody.match(/operationInFlight = true/g) || []).length, 1);
-  assert.equal(initBody.includes('submitUC6Analysis(true)'), true);
-  assert.equal((decisionBody.match(/refreshUC6JobStatus/g) || []).length, 1);
-  assert.equal(refreshBody.includes("uc6State.jobState === 'approved'"), true);
-  assert.equal(refreshBody.includes('fetchUC6FinalDeliveryCapabilities(options.signal)'), true);
-  assert.equal(refreshBody.includes('else clearUC6FinalDeliveryState()'), true);
-  assert.equal(finalDeliveryBody.includes("uc6State.jobState !== 'approved'"), true);
-  assert.equal(finalDeliveryBody.includes('uc6State.finalDeliveryRequestActive'), true);
-  assert.equal(finalDeliveryBody.includes('getFinalDeliveryCapabilities'), true);
-  assert.equal(finalDeliveryBody.includes('projectUc6FinalDeliveryCapabilities'), true);
-  assert.equal(finalDeliveryBody.includes('handleUC6AuthorizationFailure(error)'), true);
-  assert.equal(source.includes('projectUc6ReviewIssuePresentation,'), true);
-  assert.equal(renderReviewBody.includes('projectUc6ReviewIssuePresentation(review)'), true);
-  assert.equal(renderReviewBody.includes('toUc6DisplayLines(surface.top_warnings'), false);
-  assert.equal(renderReviewBody.includes('toUc6DisplayLines(surface.top_blockers'), false);
-  assert.equal(renderReviewBody.includes("appendUC6DetailSection(details, '차단·경고'"), false);
-  assert.equal(issueOverviewBody.includes('warnings.totalCount > 0'), true);
-  assert.equal(issueOverviewBody.includes('warnings.totalCount <= 3'), true);
-  assert.equal(issueOverviewBody.includes('아래에는 대표'), true);
-  assert.equal(issueOverviewBody.includes('renderUC6IssueGroup'), true);
-  assert.equal(issueGroupBody.indexOf("createUc6Node('p', 'uc6-issue-summary', copy)") < issueGroupBody.indexOf("createUc6Node('details'"), true);
-  assert.equal(issueGroupBody.includes("createUc6Node('section', `uc6-issue-group"), true);
-  assert.equal(issueGroupBody.includes("createUc6Node('details'"), true);
-  assert.equal(issueGroupBody.includes("createUc6Node('summary'"), true);
-  assert.equal(issueGroupBody.includes('group.items.slice(0, 5)'), true);
-  assert.equal(issueGroupBody.includes('대표 항목 세부 정보를 안전하게 표시할 수 없습니다.'), true);
-  assert.equal(issueRowBody.includes('createUc6Node'), true);
-  assert.equal(resetBody.includes('clearUC6FinalDeliveryState()'), true);
-  assert.equal(persistBody.includes('finalDelivery'), false);
-  assert.equal(persistBody.includes('capabilit'), false);
-  assert.equal(initBody.includes('uc6-refreshFinalDeliveryBtn'), true);
-  assert.equal(decisionBody.includes('await fetchUC6Review(controller.signal)'), false);
-  assert.equal(pollBody.includes('handleUC6AuthorizationFailure(error)'), true);
-  assert.equal(analysisBody.includes('handleUC6AuthorizationFailure(error)'), true);
-  assert.equal(reviewBody.includes('handleUC6AuthorizationFailure(error)'), true);
-  assert.equal(decisionBody.includes('handleUC6AuthorizationFailure(error)'), true);
-  assert.equal(uploadBody.includes('handleUC6AuthorizationFailure(error)'), true);
-  assert.equal(authHandlerBody.includes('classifyUc6AuthorizationFailure(error)'), true);
-});
-
-test('UC6 redesigned HTML keeps compact auth controls and one dynamic stage shell', () => {
-  const html = readSource('../public/index.html');
-  const uc6Start = html.indexOf('id="view-uc6"');
-  const uc6 = html.slice(uc6Start, html.indexOf('    </main>', uc6Start));
-  assert.notEqual(uc6.length, 0);
-  assert.equal((html.match(/id="uc6-signInBtn"/g) || []).length, 1);
-  assert.equal((html.match(/id="uc6-signOutBtn"/g) || []).length, 1);
-  assert.equal((html.match(/id="uc6-refreshSessionBtn"/g) || []).length, 1);
-  assert.equal(uc6.includes('Administrator session'), false);
-  assert.equal(uc6.includes('PPTX job intake'), false);
-  assert.equal(uc6.includes('Analysis status'), false);
-  assert.equal(uc6.includes('Admin review'), false);
-  assert.equal(uc6.includes('Public-safe diagnostics'), false);
-  assert.equal((uc6.match(/data-uc6-step=/g) || []).length, 5);
-  for (const label of ['PPTX 등록', '분석', '결과 검토', '결정', '완료']) {
-    assert.equal(uc6.includes(label), true);
-  }
-  assert.equal((html.match(/id="uc6-activeStageRoot"/g) || []).length, 1);
-  assert.equal((html.match(/id="uc6-contextSummary"/g) || []).length, 1);
-  assert.equal((html.match(/aria-live=/g) || []).length, 1);
-  for (const obsoleteId of ['uc6-reviewSummaryGrid', 'uc6-diagnosticsList', 'uc6-sourceSize', 'uc6-sourceSlides', 'uc6-jobState']) {
-    assert.equal(uc6.includes(obsoleteId), false);
-  }
-  for (const heading of ['Global readiness', 'Blockers', 'Warnings', 'Admin actions', 'Review decision']) {
-    assert.equal(uc6.includes(heading), false);
-  }
-});
-
-test('UC6 presentation stage mapper is deterministic and presentation-only', () => {
-  const source = readSource('../public/app.js');
-  const mapper = new Function(`return (${extractFunctionSource(source, 'mapUC6PublicStateToStage')});`)();
-  assert.equal(mapper({ authorizationState: 'signed_out', publicState: null }), 'auth');
-  assert.equal(mapper({ authorizationState: 'access_denied', publicState: 'review_ready' }), 'auth');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: null }), 'intake');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'idle' }), 'intake');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'source_ready' }), 'intake');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'analysis_queued' }), 'analysis');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'analysis_running' }), 'analysis');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'failed' }), 'analysis_error');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_ready' }), 'review');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_ready_with_warnings' }), 'review');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_blocked' }), 'review');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'review_ready', decisionMode: true }), 'decision');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'approved' }), 'complete');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'revision_requested' }), 'complete');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'rejected' }), 'complete');
-  assert.equal(mapper({ authorizationState: 'authorized', publicState: 'mystery' }), 'unavailable');
-});
-
-test('UC6 dynamic renderer avoids hidden focusable stage panels and empty placeholders', () => {
-  const source = readSource('../public/app.js');
-  const html = readSource('../public/index.html');
-  const intakeBody = extractFunctionBody(source, 'renderUC6IntakeStage');
-  const analysisBody = extractFunctionBody(source, 'renderUC6AnalysisStage');
-  const reviewBody = extractFunctionBody(source, 'renderUC6ReviewStage');
-  const decisionBody = extractFunctionBody(source, 'renderUC6DecisionStage');
-  const completeBody = extractFunctionBody(source, 'renderUC6CompleteStage');
-  const finalDeliverySection = extractFunctionBody(source, 'renderUC6FinalDeliverySection');
-  const artifactCard = extractFunctionBody(source, 'renderUC6ArtifactCard');
-  const activeBody = extractFunctionBody(source, 'renderUC6ActiveStage');
-  assert.equal(activeBody.includes('root.replaceChildren'), false);
-  assert.equal(source.includes('replaceChildren(card)'), true);
-  assert.equal(html.includes('id="uc6-pptxFileInput"'), false);
-  assert.equal(html.includes('id="uc6-retryAnalysisBtn"'), false);
-  assert.equal(intakeBody.includes('Job ID'), false);
-  assert.equal(intakeBody.includes('파일 크기'), true);
-  assert.equal(intakeBody.includes('슬라이드'), true);
-  assert.equal(analysisBody.includes('uc6-retryAnalysisBtn'), true);
-  assert.equal(analysisBody.includes('if (failed)'), true);
-  assert.equal(reviewBody.includes('filter((item) => hasUC6Value(item[1]))'), true);
-  assert.equal(decisionBody.includes("decision === 'request_revision'"), true);
-  assert.equal(decisionBody.includes("decision === 'reject'"), true);
-  assert.equal(completeBody.includes("uc6State.jobState === 'approved'"), true);
-  assert.equal(completeBody.includes('renderUC6FinalDeliverySection()'), true);
-  assert.equal(finalDeliverySection.includes('최종 산출물'), true);
-  assert.equal(finalDeliverySection.includes('PDF'), true);
-  assert.equal(finalDeliverySection.includes('PowerPoint'), true);
-  assert.equal(finalDeliverySection.includes('uc6-refreshFinalDeliveryBtn'), true);
-  assert.equal(artifactCard.includes('PDF 보기'), true);
-  assert.equal(artifactCard.includes('PDF 다운로드'), true);
-  assert.equal(artifactCard.includes('PPTX 다운로드'), true);
-  assert.equal(artifactCard.includes('PPTX 보기'), false);
-  assert.equal(artifactCard.includes('생성 대기 중'), true);
-  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('생성 버튼'), false);
-  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('generate'), false);
-  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('capabilities'), false);
-  assert.equal(`${completeBody}\n${finalDeliverySection}\n${artifactCard}`.includes('/data/'), false);
-});
-
-test('authentication, token processing, endpoints, route constants, and webhooks stay bounded', () => {
-  const app = readSource('../public/app.js');
-  const html = readSource('../public/index.html');
-  const admin = readSource('../public/uc6-browser-admin.mjs');
-  assert.equal(app.includes("const UC6_FIREBASE_SDK_VERSION = '10.14.1'"), true);
-  assert.equal(app.includes('app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'), true);
-  assert.equal(app.includes('projectUc6DummyDatabagPackageOptions'), true);
-  assert.equal(app.includes('projectUc6DummyDatabagRenderSubmission'), true);
-  assert.equal(app.includes('projectUc6DummyDatabagRenderJobStatus'), true);
-  assert.equal(app.includes('signInWithPopup'), true);
-  assert.equal(app.includes('signInWithRedirect'), true);
-  assert.equal(app.includes('browserSessionPersistence'), true);
-  assert.equal(app.includes('getIdToken(true)'), true);
-  assert.equal(app.includes('validateUc6SessionContract(session)'), true);
-  for (const endpoint of [
-    '/fetchdoc/browser-admin/session',
-    '/fetchdoc/browser-admin/uc6/jobs',
-    '/analysis',
-    '/review',
-    '/review-decision',
-    '/final-delivery-capabilities',
-    '/review-artifact-capabilities',
-    '/reusable-asset-publication'
-  ]) {
-    assert.equal(admin.includes(endpoint), true);
-  }
-  assert.equal(admin.includes("X-Internal-Token"), false);
-  assert.equal(admin.includes("cache: 'no-store'"), true);
-  assert.equal(admin.includes("credentials: 'omit'"), true);
-  assert.equal(admin.includes('getIdToken(forceRefresh === true)'), true);
-  assert.equal(admin.includes('if (response?.status === 401)'), true);
-  for (const id of ['view-uc1', 'view-uc2', 'view-uc3', 'view-uc4', 'view-uc5']) {
-    assert.equal(html.includes(`id="${id}"`), true);
-    assert.equal(html.includes(`data-target="${id}"`), true);
-  }
-  for (const constant of ['UC1_WEBHOOK', 'UC2_WEBHOOK', 'UC3_START_CALL', 'UC4_WEBHOOK', 'UC5_W00_WEBHOOK', 'UC5_W03_WEBHOOK']) {
-    assert.equal(app.includes(constant), true);
-  }
-});
-
-test('new UC6 CSS selectors stay scoped under view-uc6', () => {
-  const css = readSource('../public/style.css');
-  const marker = css.indexOf('UC6 - FetchDoc Dynamic Stage UI');
-  assert.notEqual(marker, -1);
-  const uc6Css = css.slice(marker);
-  const selectorBlocks = [...uc6Css.matchAll(/(^|})\\s*([^@{}][^{}]*)\\{/g)].map((match) => match[2].trim());
-  for (const selector of selectorBlocks) {
-    for (const part of selector.split(',')) {
-      const trimmed = part.trim();
-      if (!trimmed || trimmed === 'from' || trimmed === 'to') continue;
-      assert.equal(trimmed.startsWith('#view-uc6'), true, `unscoped selector: ${trimmed}`);
-    }
-  }
-  assert.equal(uc6Css.includes('@media (max-width: 1024px)'), true);
-  assert.equal(uc6Css.includes('@media (max-width: 800px)'), true);
-  assert.equal(uc6Css.includes(':focus-visible'), true);
-  for (const selector of [
-    '#view-uc6 .uc6-issue-overview',
-    '#view-uc6 .uc6-issue-group',
-    '#view-uc6 .uc6-issue-disclosure',
-    '#view-uc6 .uc6-issue-list',
-    '#view-uc6 .uc6-issue-row',
-    '#view-uc6 .uc6-issue-title',
-    '#view-uc6 .uc6-issue-context',
-    '#view-uc6 .uc6-issue-meta',
-    '#view-uc6 .uc6-package-grid',
-    '#view-uc6 .uc6-package-card',
-    '#view-uc6 .uc6-render-evidence',
-    '#view-uc6 .uc6-hash-display'
-  ]) {
-    assert.equal(uc6Css.includes(selector), true);
-  }
-});
-
-test('A8-E Section 11: Direct Contract Smoke Test', () => {
-  const submissionPayload = {
-    schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_submission_v1',
-    job_id: JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_render_dummy_databag_package',
-    task_id: 2471,
-    queue_status: 'pending',
-    created: true,
-    state: 'render_queued',
-    bound_package: {
-      package_id: 'ax_customer_retention',
-      package_version: 'v1',
-      title: 'Customer Retention',
-      description: 'Customer retention scenario'
-    },
-    control_plane_contract_version: 'uc6_e2e4c2c_v1',
-    public_safety: 'PASS'
-  };
-
-  const queuedEnvelope = {
-    job_id: JOB_ID,
-    state: 'render_queued',
-    source: {
-      sha256: 'a'.repeat(64),
-      size_bytes: 10240,
-      slide_count: 10,
-      filename: 'source.pptx'
-    },
-    control_plane_contract_version: 'uc6_e2e4c2c_v1'
-  };
-
-  const completedEnvelope = {
-    job_id: JOB_ID,
-    state: 'render_completed',
-    source: {
-      sha256: 'a'.repeat(64),
-      size_bytes: 10240,
-      slide_count: 10,
-      filename: 'source.pptx'
-    },
-    render: {
-      schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_result_v1',
-      job_id: JOB_ID,
-      state: 'render_completed',
-      render_state: 'render_completed',
-      review_state: 'review_pending',
-      publication_state: 'unpublished',
-      promotion_eligible: true,
-      bound_package: {
-        package_id: 'ax_customer_retention',
-        package_version: 'v1',
-        title: 'Customer Retention',
-        description: 'Customer retention scenario'
-      },
-      final_artifacts: {
-        pptx: {
-          alias: 'final_render_output_pptx',
-          sha256: 'b'.repeat(64),
-          size_bytes: 20480
-        },
-        pdf: {
-          alias: 'final_render_output_pdf',
-          sha256: 'c'.repeat(64),
-          size_bytes: 15360
-        }
-      },
-      control_plane_contract_version: 'uc6_e2e4c2c_v1',
-      public_safety: 'PASS'
-    },
-    control_plane_contract_version: 'uc6_e2e4c2c_v1'
-  };
-
-  const projSub = projectUc6DummyDatabagRenderSubmission(submissionPayload, { expectedJobId: JOB_ID });
-  const projQueued = projectUc6DummyDatabagRenderJobStatus(queuedEnvelope, { expectedJobId: JOB_ID });
-  const projCompleted = projectUc6DummyDatabagRenderJobStatus(completedEnvelope, { expectedJobId: JOB_ID });
-
-  assert.equal(projSub.task_id, 2471);
-  assert.equal(projQueued.state, 'render_queued');
-  assert.equal(projCompleted.state, 'render_completed');
-  assert.equal(projCompleted.schema_version, completedEnvelope.render.schema_version);
-  assert.equal(projCompleted.source.filename, 'source.pptx');
-  assert.equal(projCompleted.promotion_eligible, true);
-  assert.equal(projCompleted.public_safety, 'PASS');
-  assert.equal(projCompleted.final_artifacts.pptx.alias, 'final_render_output_pptx');
-  assert.equal(projCompleted.final_artifacts.pdf.alias, 'final_render_output_pdf');
-
-  console.log('Contract Smoke Test: PASS');
-});
-
-test('A8-E Section 9: Detailed contract projection and validation tests', async () => {
-  const validSub = {
-    schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_submission_v1',
-    job_id: JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_render_dummy_databag_package',
-    task_id: 2471,
-    queue_status: 'pending',
-    created: true,
-    state: 'render_queued',
-    bound_package: { package_id: 'pkg1', package_version: 'v1', title: 'Title', description: 'Desc' },
-    control_plane_contract_version: 'uc6_e2e4c2c_v1',
-    public_safety: 'PASS'
-  };
-  assert.equal(projectUc6DummyDatabagRenderSubmission(validSub, { expectedJobId: JOB_ID }).task_id, 2471);
-  assert.throws(() => projectUc6DummyDatabagRenderSubmission({ ...validSub, task_id: '2471' }, { expectedJobId: JOB_ID }), /invalid_render_submission_task_id/);
-  assert.throws(() => projectUc6DummyDatabagRenderSubmission({ ...validSub, task_id: -5 }, { expectedJobId: JOB_ID }), /invalid_render_submission_task_id/);
-
-  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, queue_status: 'pending', state: 'render_queued' }, { expectedJobId: JOB_ID }).state, 'render_queued');
-  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, queue_status: 'processing', state: 'render_running' }, { expectedJobId: JOB_ID }).state, 'render_running');
-  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, created: false, queue_status: 'done', state: 'render_completed' }, { expectedJobId: JOB_ID }).state, 'render_completed');
-  assert.equal(projectUc6DummyDatabagRenderSubmission({ ...validSub, created: false, queue_status: 'failed', state: 'failed' }, { expectedJobId: JOB_ID }).state, 'failed');
-
-  assert.throws(() => projectUc6DummyDatabagRenderSubmission({ ...validSub, queue_status: 'pending', state: 'render_running' }, { expectedJobId: JOB_ID }), /invalid_render_submission_queue_state_mismatch/);
-
-  const replaySub = { ...validSub, created: false, queue_status: 'done', state: 'render_completed' };
-  assert.equal(projectUc6DummyDatabagRenderSubmission(replaySub, { expectedJobId: JOB_ID }).created, false);
-
-  const baseSource = { sha256: 'a'.repeat(64), size_bytes: 100, slide_count: 5, filename: 'doc.pptx' };
-  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'source_ready', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'source_ready');
-  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'render_queued', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'render_queued');
-  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'render_running', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'render_running');
-  assert.equal(projectUc6DummyDatabagRenderJobStatus({ job_id: JOB_ID, state: 'failed', source: baseSource, control_plane_contract_version: 'uc6_e2e4c2c_v1' }, { expectedJobId: JOB_ID }).state, 'failed');
-
-  const completedEnv = {
-    job_id: JOB_ID,
-    state: 'render_completed',
-    source: baseSource,
-    render: {
-      schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_render_result_v1',
-      job_id: JOB_ID,
-      state: 'render_completed',
-      render_state: 'render_completed',
-      review_state: 'review_pending',
-      publication_state: 'unpublished',
-      promotion_eligible: true,
-      bound_package: { package_id: 'pkg1', package_version: 'v1', title: 'T', description: 'D' },
-      final_artifacts: {
-        pptx: { alias: 'final_render_output_pptx', sha256: 'b'.repeat(64), size_bytes: 200 },
-        pdf: { alias: 'final_render_output_pdf', sha256: 'c'.repeat(64), size_bytes: 150 }
-      },
-      control_plane_contract_version: 'uc6_e2e4c2c_v1',
-      public_safety: 'PASS'
-    },
-    control_plane_contract_version: 'uc6_e2e4c2c_v1'
-  };
-  assert.equal(projectUc6DummyDatabagRenderJobStatus(completedEnv, { expectedJobId: JOB_ID }).state, 'render_completed');
-  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
-    job_id: JOB_ID,
-    state: 'render_completed',
-    public_safety: 'PASS',
-    control_plane_contract_version: 'uc6_e2e4c2c_v1'
-  }, { expectedJobId: JOB_ID }), /invalid_render_job_status_source/);
-
-  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
-    ...completedEnv,
-    render: { ...completedEnv.render, job_id: 'fd_uc6_admin_other_12345' }
-  }, { expectedJobId: JOB_ID }), /nested_render_job_id_mismatch/);
-
-  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
-    ...completedEnv,
-    render: { ...completedEnv.render, public_safety: undefined }
-  }, { expectedJobId: JOB_ID }), /invalid_nested_render_public_safety/);
-
-  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
-    ...completedEnv,
-    render: { ...completedEnv.render, schema_version: 'wrong' }
-  }, { expectedJobId: JOB_ID }), /invalid_nested_render_schema/);
-
-  assert.throws(() => projectUc6DummyDatabagRenderJobStatus({
-    ...completedEnv,
-    render: {
-      ...completedEnv.render,
-      final_artifacts: {
-        pptx: { alias: 'wrong_alias', sha256: 'b'.repeat(64), size_bytes: 200 },
-        pdf: { alias: 'final_render_output_pdf', sha256: 'c'.repeat(64), size_bytes: 150 }
-      }
-    }
-  }, { expectedJobId: JOB_ID }), /invalid_nested_render_pptx_alias/);
-
-  const validPkgOpt = {
-    schema_version: 'uc6_e2e4c2c_a8d_browser_admin_dummy_databag_package_options_v1',
-    job_id: JOB_ID,
-    source_pptx_sha256: 'a'.repeat(64),
-    compatibility_state: 'compatible',
-    template_profile: { profile_id: 'p1', profile_version: 'v1', generation_unit_count: 1, fillable_slot_count: 2 },
-    package_count: 1,
-    packages: [{
-      schema_version: 'uc6_a8c_dummy_databag_package_public_projection_v1',
-      package_id: 'pkg1',
-      package_version: 'v1',
-      title: 'Title',
-      description: 'Desc',
-      template_family_id: 'tf1',
-      source_pptx_sha256: 'a'.repeat(64),
-      supported_canonical_source_group_count: 1,
-      status: 'active',
-      canonical_sha256: 'b'.repeat(64)
-    }],
-    selection_state: 'unbound',
-    bound_package: null,
-    public_safety: 'PASS'
-  };
-  assert.equal(projectUc6DummyDatabagPackageOptions(validPkgOpt, { expectedJobId: JOB_ID }).package_count, 1);
-  assert.throws(() => projectUc6DummyDatabagPackageOptions({
-    ...validPkgOpt,
-    packages: [{ ...validPkgOpt.packages[0], status: 'deprecated' }]
-  }, { expectedJobId: JOB_ID }), /invalid_package_status/);
-
-  assert.throws(() => projectUc6DummyDatabagPackageOptions({
-    ...validPkgOpt,
-    packages: [{ ...validPkgOpt.packages[0], source_pptx_sha256: 'f'.repeat(64) }]
-  }, { expectedJobId: JOB_ID }), /package_source_sha_mismatch/);
-
-  assert.throws(() => projectUc6DummyDatabagPackageOptions({
-    ...validPkgOpt,
-    selection_state: 'unbound',
-    bound_package: { package_id: 'pkg1', package_version: 'v1', title: 'Title', description: 'Desc' }
-  }, { expectedJobId: JOB_ID }), /unbound_selection_state_must_have_null_bound_package/);
-
-  assert.throws(() => projectUc6DummyDatabagPackageOptions({
-    ...validPkgOpt,
-    selection_state: 'bound',
-    bound_package: null
-  }, { expectedJobId: JOB_ID }), /invalid_bound_package_selection_state/);
-
-  assert.throws(() => projectUc6DummyDatabagPackageOptions({
-    ...validPkgOpt,
-    package_count: 2,
-    packages: [validPkgOpt.packages[0], validPkgOpt.packages[0]]
-  }, { expectedJobId: JOB_ID }), /duplicate_package_identity/);
-  assert.throws(() => projectUc6DummyDatabagPackageOptions({
-    ...validPkgOpt,
-    source_pptx_sha256: ''
-  }, { expectedJobId: JOB_ID }), /invalid_package_options_source_sha/);
-
-  const projectedCompleted = projectUc6DummyDatabagRenderJobStatus(completedEnv, { expectedJobId: JOB_ID });
-  assert.equal(projectedCompleted.schema_version, completedEnv.render.schema_version);
-  assert.deepEqual(projectedCompleted.source, baseSource);
-  assert.equal(projectedCompleted.promotion_eligible, true);
-  assert.equal(projectedCompleted.public_safety, 'PASS');
-
-  const commandOptions = projectUc6DummyDatabagPackageOptions(validPkgOpt, { expectedJobId: JOB_ID });
-  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: false }, commandOptions).ok, true);
-  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: 'false' }, commandOptions).ok, false);
-  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: false, extra: true }, commandOptions).ok, false);
-  assert.equal(validateUc6DummyDatabagRenderCommand({ package_id: 'pkg1', package_version: 'v1', retry_failed: true }, commandOptions).code, 'retry_requires_bound_package');
-});
-
-
-test('A8-F publication projection and command validation are strict and public-safe', () => {
-  const unpublished = projectUc6ReusableAssetPublication(unpublishedPublicationPayload(), { expectedJobId: JOB_ID });
-  assert.equal(unpublished.publication_state, 'unpublished');
-  assert.equal(unpublished.reviewed_final_pptx_sha256, 'a'.repeat(64));
-
-  const published = projectUc6ReusableAssetPublication(publishedPublicationPayload(), { expectedJobId: JOB_ID });
-  assert.equal(published.publication_state, 'published');
-  assert.equal(published.published_asset.slot_count, 177);
-  assert.equal(published.idempotent_replay, false);
-
-  const command = validateUc6ReusableAssetPublicationCommand({
-    decision: 'approve_for_reuse_and_publish',
-    decision_identity: 'a8f-test-001',
-    reviewed_final_pptx_sha256: 'a'.repeat(64),
-    reviewed_final_pdf_sha256: 'b'.repeat(64),
-    administrator_note: 'Reviewed in the Browser Admin PDF viewer.'
-  });
-  assert.equal(command.ok, true);
-  assert.equal(command.body.administrator_note, 'Reviewed in the Browser Admin PDF viewer.');
-  assert.equal(validateUc6ReusableAssetPublicationCommand({ ...command.body, decision_identity: '../bad' }).ok, false);
-  assert.equal(validateUc6ReusableAssetPublicationCommand({ ...command.body, reviewed_final_pdf_sha256: 'bad' }).ok, false);
-  assert.equal(validateUc6ReusableAssetPublicationCommand({ ...command.body, administrator_note: '/data/fetchdoc/jobs/private' }).ok, false);
-
-  assert.throws(() => projectUc6ReusableAssetPublication(unpublishedPublicationPayload({ public_safety: 'FAIL' }), { expectedJobId: JOB_ID }));
-  assert.throws(() => projectUc6ReusableAssetPublication(publishedPublicationPayload({ idempotent_replay: 'false' }), { expectedJobId: JOB_ID }));
-});
-
-test('A8-F review capability GET and approval POST use exact routes and never replay ambiguous POST', async () => {
-  const calls = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      if (init.method === 'GET' && url.endsWith('/review-artifact-capabilities')) return response(200, validFinalDeliveryPayload());
-      if (init.method === 'GET' && url.endsWith('/reusable-asset-publication')) return response(200, unpublishedPublicationPayload());
-      throw new Error('ambiguous network failure');
-    }
-  });
-
-  await api.getReviewArtifactCapabilities(JOB_ID);
-  await api.getReusableAssetPublication(JOB_ID);
-  const command = {
-    decision: 'approve_for_reuse_and_publish',
-    decision_identity: 'a8f-test-001',
-    reviewed_final_pptx_sha256: 'a'.repeat(64),
-    reviewed_final_pdf_sha256: 'b'.repeat(64)
-  };
-  await assert.rejects(() => api.submitReusableAssetPublication(JOB_ID, command), { code: 'ambiguous_submission' });
-  assert.equal(calls.length, 3);
-  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/review-artifact-capabilities`);
-  assert.equal(calls[1].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/reusable-asset-publication`);
-  assert.equal(calls[2].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/reusable-asset-publication`);
-  assert.equal(calls[2].init.method, 'POST');
-  assert.equal(calls[2].init.headers.Authorization, 'Bearer firebase-token');
-  assert.equal(calls[2].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
-  assert.deepEqual(JSON.parse(calls[2].init.body), command);
-});
-
-test('A8-F app source provides PDF review, stable decision identity, and server reconciliation', () => {
-  const appSource = readSource('../public/app.js');
-  const cssSource = readSource('../public/style.css');
-  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
-  const panelBody = extractFunctionBody(appSource, 'createUC6A8FReviewPanel');
-  const submitBody = extractFunctionBody(appSource, 'submitUC6ReusableAssetPublication');
-  assert.equal(resultBody.includes('/pdf-embed.html?file='), true);
-  assert.equal(panelBody.includes('uc6-publicationReviewConfirmed'), true);
-  assert.equal(panelBody.includes('uc6-submitPublicationBtn'), true);
-  assert.equal(submitBody.includes('ensureUC6PublicationDecisionIdentity()'), true);
-  assert.equal(submitBody.includes('reconcileUC6PublicationState'), true);
-  assert.equal(submitBody.includes('submitReusableAssetPublication'), true);
-  assert.equal(cssSource.includes('#view-uc6 .uc6-a8f-review-layout'), true);
-  assert.equal(cssSource.includes('#view-uc6 .uc6-a8f-pdf-frame'), true);
-});
-
-test('A8-F review loading isolates publication failure from PDF capability state', () => {
-  const appSource = readSource('../public/app.js');
-  const loadBody = extractFunctionBody(appSource, 'loadUC6A8FReviewState');
-  assert.equal(loadBody.includes('Promise.allSettled(['), true);
-  assert.equal(loadBody.includes('capabilityResult.status'), true);
-  assert.equal(loadBody.includes('publicationResult.status'), true);
-  assert.equal(loadBody.includes("uc6State.reviewArtifactsStatus = 'ready'"), true);
-  assert.equal(loadBody.includes("uc6State.publicationStatus = 'error'"), true);
-  assert.equal(loadBody.includes('publicationError || capabilityError'), true);
-  assert.equal(loadBody.includes(`uc6State.reviewArtifacts = null;
-      uc6State.reviewArtifactsStatus = 'error';
-      uc6State.reviewArtifactsMessage = message;`), false);
-});
-
-test('A8-F publication interactions preserve the mounted PDF viewer', () => {
-  const appSource = readSource('../public/app.js');
-  const surfaceBody = extractFunctionBody(appSource, 'renderUC6A8FReviewSurfaceOnly');
-  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
-  const submitBody = extractFunctionBody(appSource, 'submitUC6ReusableAssetPublication');
-  const reconcileBody = extractFunctionBody(appSource, 'reconcileUC6PublicationState');
-  const publicationSurfaceBody = extractFunctionBody(appSource, 'renderUC6PublicationSurfaceOnly');
-  const changeHandler = appSource.slice(
-    appSource.indexOf("target.id === 'uc6-publicationReviewConfirmed'"),
-    appSource.indexOf("target.id === 'uc6-decisionChoice'")
-  );
-
-  assert.equal(resultBody.includes('createUC6A8FReviewPanel(renderStatus, publication, isPublished)'), true);
-  assert.equal(surfaceBody.includes('currentPanel.replaceWith(createUC6A8FReviewPanel'), true);
-  assert.equal(surfaceBody.includes('root.replaceChildren'), false);
-  assert.equal(surfaceBody.includes('uc6-a8f-viewer-column'), false);
-  assert.equal(changeHandler.includes('renderUC6PublicationSurfaceOnly()'), true);
-  assert.equal(changeHandler.includes('renderUC6All()'), false);
-  assert.equal(submitBody.includes('renderUC6PublicationSurfaceOnly()'), true);
-  assert.equal(submitBody.includes('renderUC6All()'), false);
-  assert.equal(reconcileBody.includes('renderUC6PublicationSurfaceOnly()'), true);
-  assert.equal(reconcileBody.includes('renderUC6All()'), false);
-  assert.equal(publicationSurfaceBody.includes('renderUC6A8FReviewSurfaceOnly()'), true, 'legacy A8 retains its mounted-viewer update path');
-});
-
-test('A8-F artifact downloads refresh signed capabilities and never navigate to expired JSON', () => {
-  const appSource = readSource('../public/app.js');
-  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
-  const downloadBody = extractFunctionBody(appSource, 'downloadUC6ReviewArtifact');
-  const consumeBody = extractFunctionBody(appSource, 'consumeUC6ReviewArtifactDownload');
-  const triggerBody = extractFunctionBody(appSource, 'triggerUC6ReviewArtifactDownload');
-  const clickHandler = appSource.slice(
-    appSource.indexOf("const reviewArtifactAlias = target.dataset.uc6ArtifactDownload"),
-    appSource.indexOf("uc6Els.section.addEventListener('change'")
-  );
-
-  assert.equal(resultBody.includes('button.dataset.uc6ArtifactDownload = capability.alias'), true);
-  assert.equal(resultBody.includes('link.href = capability.actions.download.href'), false);
-  assert.equal(downloadBody.includes('getReviewArtifactCapabilities'), true);
-  assert.equal(downloadBody.includes('projectUc6FinalDeliveryCapabilities'), true);
-  assert.equal(downloadBody.includes('for (let attempt = 0; attempt < 2; attempt += 1)'), true);
-  assert.equal(downloadBody.includes("error?.code === 'review_artifact_capability_expired'"), true);
-  assert.equal(consumeBody.includes('response.status === 410'), true);
-  assert.equal(consumeBody.includes("credentials: 'omit'"), true);
-  assert.equal(consumeBody.includes("redirect: 'error'"), true);
-  assert.equal(consumeBody.includes('response.blob()'), true);
-  assert.equal(triggerBody.includes('URL.createObjectURL(blob)'), true);
-  assert.equal(triggerBody.includes('anchor.click()'), true);
-  assert.equal(clickHandler.includes('downloadUC6ReviewArtifact(reviewArtifactAlias)'), true);
-});
-
-test('A8-F administrator session actions remain on one compact row', () => {
-  const cssSource = readSource('../public/style.css');
-  assert.equal(cssSource.includes('#view-uc6 .uc6-auth-actions {'), true);
-  assert.equal(cssSource.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'), true);
-  assert.equal(cssSource.includes('#view-uc6 .uc6-auth-actions .btn {'), true);
-  assert.equal(cssSource.includes('white-space: nowrap;'), true);
-});
-
-test('A8-E Section 9: Source code assertions for single function declarations and active-stage rendering', () => {
-  const appSource = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-
-  for (const fnName of ['renderUC6UnavailableStage', 'renderUC6ActiveStage', 'renderUC6ContextSummary', 'renderUC6All']) {
-    const matches = appSource.match(new RegExp(`function ${fnName}\\b`, 'g')) || [];
-    assert.equal(matches.length, 1, `Function ${fnName} should be declared exactly once, found ${matches.length}`);
-  }
-
-  const activeStageFn = appSource.slice(appSource.indexOf('function renderUC6ActiveStage'));
-  const activeStageBody = activeStageFn.slice(0, activeStageFn.indexOf('function renderUC6ContextSummary'));
-
-  for (const stage of ['auth', 'intake', 'package', 'render', 'render_unknown', 'render_error', 'result', 'publication', 'analysis', 'analysis_error', 'review', 'decision', 'complete']) {
-    assert.equal(activeStageBody.includes(`stage === '${stage}'`), true, `Active stage renderer must support stage: ${stage}`);
-  }
-
-  const intakeBody = extractFunctionBody(appSource, 'renderUC6IntakeStage');
-  const packageBody = extractFunctionBody(appSource, 'renderUC6PackageStage');
-  const resultBody = extractFunctionBody(appSource, 'renderUC6ResultStage');
-  const publicationPanelBody = extractFunctionBody(appSource, 'createUC6A8FReviewPanel');
-  assert.equal(intakeBody.includes('분석 시작'), false);
-  assert.equal(intakeBody.includes('PPTX 등록'), true);
-  assert.equal(packageBody.includes('saveUC6LocalState()'), true);
-  assert.equal(packageBody.includes("uc6State.jobState === 'source_ready'"), true);
-  assert.equal(packageBody.includes('패키지 다시 불러오기'), true);
-  assert.equal(resultBody.includes('createUC6A8FReviewPanel'), true);
-  assert.equal(publicationPanelBody.includes("uc6-submitPublicationBtn"), true);
-  assert.equal(resultBody.includes('uc6-a8f-pdf-frame'), true);
-  assert.equal(publicationPanelBody.includes('publication_state'), true);
-  assert.equal(appSource.includes("flowLane: 'dummy_render'"), true);
-  assert.equal(appSource.includes("renderSubmissionActive"), false);
-  assert.equal(appSource.includes("renderMessage"), false);
-  assert.equal(appSource.includes("renderTaskId"), false);
-
-  const resumeBody = extractFunctionBody(appSource, 'resumeUC6PersistedJob');
-  assert.equal(resumeBody.includes('await refreshUC6JobStatus({'), true);
-  assert.equal(resumeBody.includes("fetchReview: uc6State.flowLane === 'legacy_analysis'"), true);
-  assert.equal(resumeBody.includes("uc6State.flowLane === 'asset_render'"), true);
-
-  const refreshBody = extractFunctionBody(appSource, 'refreshUC6JobStatus');
-  assert.equal(refreshBody.includes('const authoritativeDummyRenderLane = rawJob'), true);
-  assert.equal(refreshBody.includes("rawJob.state === 'render_queued'"), true);
-  assert.equal(refreshBody.includes("rawJob.state === 'render_running'"), true);
-  assert.equal(refreshBody.includes("rawJob.state === 'render_completed'"), true);
-  assert.equal(refreshBody.includes("uc6State.flowLane = 'dummy_render'"), true);
-  assert.equal(
-    refreshBody.indexOf('const authoritativeDummyRenderLane = rawJob')
-      < refreshBody.indexOf("if (uc6State.flowLane === 'dummy_render')"),
-    true
-  );
-});
-
-
-const A8H_ASSET_ID = 'reusable_template_asset__' + '1'.repeat(40);
-const A8H_SOURCE_SHA = 'a'.repeat(64);
-
-function a8hAssetRow(overrides = {}) {
-  return Object.assign({
-    asset_id: A8H_ASSET_ID,
-    status: 'published',
-    review_state: 'approved_for_reuse',
-    publication_state: 'published',
-    source_pptx_sha256: A8H_SOURCE_SHA,
-    generation_unit_count: 54,
-    slot_count: 177,
-    slide_count: 7,
-    approved_at: '2026-08-06T01:02:03Z',
-    template_family_ids: ['ax_agentic_selling_v3'],
-    compatible_dummy_databag_package_count: 1
-  }, overrides);
-}
-
-function a8hPackageRow(overrides = {}) {
-  return Object.assign({
-    schema_version: 'uc6_a8c_dummy_databag_package_public_projection_v1',
-    package_id: 'ax_growth_acceleration',
-    package_version: 'v1',
-    title: 'AX Growth Acceleration',
-    description: 'Growth scenario',
-    template_family_id: 'ax_agentic_selling_v3',
-    source_pptx_sha256: A8H_SOURCE_SHA,
-    supported_canonical_source_group_count: 5,
-    status: 'active',
-    canonical_sha256: 'b'.repeat(64)
-  }, overrides);
-}
-
-function a8hPackageOptions(overrides = {}) {
-  return Object.assign({
-    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_package_options_v1',
-    asset: a8hAssetRow(),
-    package_count: 1,
-    packages: [a8hPackageRow()],
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-    public_safety: 'PASS'
-  }, overrides);
-}
-
-function a8hBoundPackage(overrides = {}) {
-  return Object.assign({
-    package_id: 'ax_growth_acceleration',
-    package_version: 'v1',
-    title: 'AX Growth Acceleration',
-    description: 'Growth scenario',
-    source_context_bundle_sha256: 'c'.repeat(64)
-  }, overrides);
-}
-
-test('A8-H Asset identifiers, catalog, package options, and persistence are strict', () => {
-  assert.equal(normalizeUc6ReusableAssetId(A8H_ASSET_ID), A8H_ASSET_ID);
-  assert.throws(() => normalizeUc6ReusableAssetId('../bad'));
-
-  const catalog = projectUc6ReusableAssetCatalog({
-    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_catalog_v1',
-    asset_count: 1,
-    assets: [a8hAssetRow()],
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-    public_safety: 'PASS'
-  });
-  assert.equal(catalog.asset_count, 1);
-  assert.equal(catalog.assets[0].review_state, 'approved_for_reuse');
-
-  const currentCatalogRow = {
-    asset_id: A8H_ASSET_ID,
-    status: 'published',
-    review_state: 'approved_for_reuse',
-    publication_state: 'published',
-    source_pptx_sha256: A8H_SOURCE_SHA,
-    generation_unit_count: 41,
-    slot_count: 155,
-    slide_count: 7,
-    approved_at: '2026-08-06T01:02:03Z'
-  };
-  const currentCatalog = projectUc6ReusableAssetCatalog({
-    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_catalog_v1',
-    asset_count: 1,
-    assets: [currentCatalogRow],
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-    public_safety: 'PASS'
-  });
-  assert.deepEqual(currentCatalog.assets[0], currentCatalogRow, 'current backend catalog row has no legacy package/family fields');
-  assert.throws(() => projectUc6ReusableAssetCatalog({
-    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_catalog_v1',
-    asset_count: 1,
-    assets: [{ ...currentCatalogRow, unexpected_public_field: true }],
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-    public_safety: 'PASS'
-  }), /invalid_reusable_asset_item_fields/);
-
-  const options = projectUc6ReusableAssetPackageOptions(a8hPackageOptions(), { expectedAssetId: A8H_ASSET_ID });
-  assert.equal(options.package_count, 1);
-  assert.equal(options.packages[0].source_pptx_sha256, A8H_SOURCE_SHA);
-  assert.throws(() => projectUc6ReusableAssetPackageOptions(a8hPackageOptions({ asset: a8hAssetRow({ source_pptx_sha256: 'd'.repeat(64) }) }), { expectedAssetId: A8H_ASSET_ID }));
-
-  const persisted = projectUc6PersistedState({
-    flow_lane: 'asset_render',
-    selected_asset_id: A8H_ASSET_ID,
-    selected_package_id: 'ax_growth_acceleration',
-    selected_package_version: 'v1',
-    token: 'secret'
-  });
-  assert.deepEqual(persisted, {
-    flow_lane: 'asset_render',
-    selected_asset_id: A8H_ASSET_ID,
-    selected_package_id: 'ax_growth_acceleration',
-    selected_package_version: 'v1'
-  });
-
-  const app = readSource('../public/app.js');
-  const assetCard = extractFunctionBody(app, 'renderUC6AssetSelectionStage');
-  assert.equal(assetCard.includes('호환 패키지'), false);
-});
-
-test('A8-H render command and submission preserve Asset identity without retry fields', () => {
-  const options = projectUc6ReusableAssetPackageOptions(a8hPackageOptions(), { expectedAssetId: A8H_ASSET_ID });
-  const valid = validateUc6ReusableAssetRenderCommand({ package_id: 'ax_growth_acceleration', package_version: 'v1' }, options);
-  assert.equal(valid.ok, true);
-  assert.deepEqual(valid.body, { package_id: 'ax_growth_acceleration', package_version: 'v1' });
-  assert.equal(validateUc6ReusableAssetRenderCommand({ package_id: 'ax_growth_acceleration', package_version: 'v1', retry_failed: false }, options).ok, false);
-
-  const projected = projectUc6ReusableAssetRenderSubmission({
-    schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_submission_v1',
-    job_id: JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_render_reusable_asset',
-    task_id: 2473,
-    queue_status: 'pending',
-    created: true,
-    state: 'render_queued',
-    asset: a8hAssetRow(),
-    bound_package: a8hBoundPackage(),
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-    public_safety: 'PASS'
-  }, { expectedAssetId: A8H_ASSET_ID });
-  assert.equal(projected.job_id, JOB_ID);
-  assert.equal(projected.state, 'render_queued');
-  assert.throws(() => projectUc6ReusableAssetRenderSubmission({ ...projected, state: 'render_running' }, { expectedAssetId: A8H_ASSET_ID }));
-});
-
-test('A8-H completed job status is delivery-only and rejects publication semantics', () => {
-  const payload = {
-    job_id: JOB_ID,
-    state: 'render_completed',
-    source: { sha256: A8H_SOURCE_SHA, size_bytes: 24377844, slide_count: 7, filename: 'source.pptx' },
-    render: {
-      schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_result_v1',
-      job_id: JOB_ID,
-      state: 'render_completed',
-      render_state: 'render_completed',
-      review_state: 'not_required',
-      publication_state: 'not_applicable',
-      promotion_eligible: false,
-      asset: {
-        asset_id: A8H_ASSET_ID,
-        source_pptx_sha256: A8H_SOURCE_SHA,
-        asset_manifest_sha256: 'd'.repeat(64),
-        catalog_entry_sha256: 'e'.repeat(64),
-        approval_receipt_sha256: 'f'.repeat(64)
-      },
-      bound_package: a8hBoundPackage(),
-      final_artifacts: {
-        pptx: { alias: 'final_render_output_pptx', sha256: '1'.repeat(64), size_bytes: 120 },
-        pdf: { alias: 'final_render_output_pdf', sha256: '2'.repeat(64), size_bytes: 121 }
-      },
-      control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1',
-      public_safety: 'PASS'
-    },
-    control_plane_contract_version: 'uc6_11c8r2_browser_admin_uc6_control_plane_v1'
-  };
-  const projected = projectUc6ReusableAssetRenderJobStatus(payload, { expectedJobId: JOB_ID, expectedAssetId: A8H_ASSET_ID });
-  assert.equal(projected.review_state, 'not_required');
-  assert.equal(projected.publication_state, 'not_applicable');
-  assert.equal(projected.promotion_eligible, false);
-  assert.throws(() => projectUc6ReusableAssetRenderJobStatus({ ...payload, render: { ...payload.render, publication_state: 'published' } }, { expectedJobId: JOB_ID, expectedAssetId: A8H_ASSET_ID }));
-});
-
-test('A8-H API uses exact routes, Firebase Bearer, and one-shot render POST', async () => {
-  const calls = [];
-  const packageOptions = projectUc6ReusableAssetPackageOptions(a8hPackageOptions(), { expectedAssetId: A8H_ASSET_ID });
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: 'http://127.0.0.1',
+function createApi(fetchImpl, tokenCalls = []) {
+  return createUc6BrowserAdminApi({
+    apiBaseUrl: API,
     allowLoopbackHttp: true,
-    getIdToken: async () => 'firebase-token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(200, {});
-    }
+    fetchImpl,
+    getIdToken: async (refresh) => { tokenCalls.push(refresh); return refresh ? 'token-refreshed' : 'token-current'; }
   });
-  await api.getReusableAssets();
-  await api.getReusableAssetPackages(A8H_ASSET_ID);
-  await api.submitReusableAssetRender(A8H_ASSET_ID, { package_id: 'ax_growth_acceleration', package_version: 'v1' }, { packageOptions });
-  await api.getRenderArtifactCapabilities(JOB_ID);
-  assert.deepEqual(calls.map((call) => new URL(call.url).pathname), [
-    '/fetchdoc/browser-admin/uc6/reusable-assets',
-    `/fetchdoc/browser-admin/uc6/reusable-assets/${A8H_ASSET_ID}/dummy-databag-packages`,
-    `/fetchdoc/browser-admin/uc6/reusable-assets/${A8H_ASSET_ID}/renders`,
-    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/render-artifact-capabilities`
-  ]);
-  assert.equal(calls[2].init.method, 'POST');
-  assert.deepEqual(JSON.parse(calls[2].init.body), { package_id: 'ax_growth_acceleration', package_version: 'v1' });
-  assert.equal(calls.every((call) => call.init.headers.Authorization === 'Bearer firebase-token'), true);
-  assert.equal(calls.every((call) => !Object.prototype.hasOwnProperty.call(call.init.headers, 'X-Internal-Token')), true);
+}
 
-  let attempts = 0;
-  const ambiguousApi = createUc6BrowserAdminApi({
-    apiBaseUrl: 'http://127.0.0.1',
-    allowLoopbackHttp: true,
-    getIdToken: async () => 'firebase-token',
-    fetchImpl: async () => { attempts += 1; throw new Error('network'); }
-  });
-  await assert.rejects(() => ambiguousApi.submitReusableAssetRender(A8H_ASSET_ID, { package_id: 'ax_growth_acceleration', package_version: 'v1' }, { packageOptions }), { name: 'Uc6AmbiguousSubmissionError' });
-  assert.equal(attempts, 1);
+test('API base accepts production HTTPS and explicit loopback HTTP only', () => {
+  assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org'), 'https://api.peter-n8n.duckdns.org/');
+  assert.equal(normalizeUc6ApiBaseUrl(API, { allowLoopbackHttp: true }), API);
+  assert.throws(() => normalizeUc6ApiBaseUrl('http://example.com/'));
 });
 
-test('A8-H app source keeps Asset render-only lane separate from upload review publication', () => {
-  const app = readSource('../public/app.js');
-  const admin = readSource('../public/uc6-browser-admin.mjs');
-  const style = readSource('../public/style.css');
-  assert.equal(app.includes("flowLane === 'asset_render'"), true);
-  assert.equal(app.includes('renderUC6AssetSelectionStage'), true);
-  assert.equal(app.includes('renderUC6AssetPackageStage'), true);
-  assert.equal(app.includes('submitUC6ReusableAssetRender'), true);
-  assert.equal(app.includes('loadUC6A8HDeliveryState'), true);
-  assert.equal(app.includes('review_state !== \'not_required\''), true);
-  assert.equal(app.includes('publication_state !== \'not_applicable\''), true);
-  assert.equal(app.includes('같은 Asset으로 새 문서 생성'), true);
-  assert.equal(admin.includes('/render-artifact-capabilities'), true);
-  assert.equal(admin.includes('X-Internal-Token'), false);
-  assert.equal(style.includes('#view-uc6 .uc6-a8h-asset-grid'), true);
-  assert.equal(style.includes('#view-uc6 .uc6-flow-lane-switch'), true);
+test('public error parsing exposes only allowlisted copy, never raw backend content', () => {
+  const raw = '<html>C:\\internal\\jobs secret-token authorization: bearer private</html>';
+  const projected = parseUc6PublicErrorPayload({ detail: { code: 'unknown_backend_code', message: raw }, raw }, 500);
+  assert.equal(projected.code, 'unknown_public_error');
+  assert.equal(projected.status, 500);
+  assert.equal(projected.message.includes('internal'), false);
+  assert.equal(projected.message.includes('token'), false);
+  assert.equal(projected.message.includes('<html>'), false);
 });
 
-
-test('A8-H delivery capability readiness does not require hashes absent from the frozen capability contract', () => {
-  const app = readSource('../public/app.js');
-  const start = app.indexOf('async function loadUC6A8HDeliveryState(');
-  const end = app.indexOf('function restartUC6AssetRenderSelection(', start + 1);
-  assert.notEqual(start, -1, 'loadUC6A8HDeliveryState missing');
-  assert.notEqual(end, -1, 'loadUC6A8HDeliveryState end marker missing');
-  const delivery = app.slice(start, end);
-  assert.equal(delivery.includes('if (!pdf?.ready || !pptx?.ready)'), true);
-  assert.equal(delivery.includes('pdf.sha256'), false);
-  assert.equal(delivery.includes('pptx.sha256'), false);
-  assert.equal(delivery.includes('render_only_artifact_capability_mismatch'), true);
+test('canonical route map is exact and dead route builders are absent', () => {
+  assert.deepEqual(Object.keys(UC6_BROWSER_ADMIN_ENDPOINTS).sort(), [
+    'job', 'jobEvents', 'jobs', 'onboarding', 'renderArtifactCapabilities', 'reusableAssetJobs',
+    'reusableAssetPublication', 'reusableAssets', 'session', 'syntheticScenarioBinding',
+    'syntheticScenarioRender', 'syntheticScenarios'
+  ].sort());
+  assert.equal(UC6_BROWSER_ADMIN_ENDPOINTS.onboarding(JOB), `/fetchdoc/browser-admin/uc6/jobs/${JOB}/onboarding`);
+  assert.equal(UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarioBinding(JOB), `/fetchdoc/browser-admin/uc6/jobs/${JOB}/synthetic-scenarios/binding`);
+  assert.equal(UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarioRender(JOB), `/fetchdoc/browser-admin/uc6/jobs/${JOB}/synthetic-scenarios/render`);
+  assert.equal(UC6_BROWSER_ADMIN_ENDPOINTS.renderArtifactCapabilities(JOB), `/fetchdoc/browser-admin/uc6/jobs/${JOB}/render-artifact-capabilities`);
+  assert.equal(UC6_BROWSER_ADMIN_ENDPOINTS.reusableAssetJobs(ASSET), `/fetchdoc/browser-admin/uc6/reusable-assets/${ASSET}/jobs`);
 });
 
-test('A8-H runtime branches keep status polling, context summary, and retry semantics isolated', () => {
-  const app = readSource('../public/app.js');
-  const sliceFunction = (name, nextName) => {
-    const start = app.indexOf(`function ${name}(`);
-    const end = app.indexOf(`function ${nextName}(`, start + 1);
-    assert.notEqual(start, -1, `${name} missing`);
-    assert.notEqual(end, -1, `${nextName} missing`);
-    return app.slice(start, end);
-  };
-
-  assert.equal(app.includes("persisted.flow_lane || (persisted.job_id ? 'legacy_analysis' : 'dummy_render')"), true);
-
-  const refreshStart = app.indexOf('async function refreshUC6JobStatus(');
-  const refreshEnd = app.indexOf('const UC6_REVIEW_ARTIFACT_DOWNLOAD_SPECS', refreshStart);
-  assert.notEqual(refreshStart, -1, 'refreshUC6JobStatus missing');
-  assert.notEqual(refreshEnd, -1, 'refreshUC6JobStatus end marker missing');
-  const refresh = app.slice(refreshStart, refreshEnd);
-  assert.equal(refresh.includes("flowLane === 'asset_render'"), true);
-  assert.equal(refresh.includes('projectUc6ReusableAssetRenderJobStatus'), true);
-  assert.equal(refresh.includes("flowLane === 'dummy_render'"), true);
-  assert.equal(refresh.includes('projectUc6DummyDatabagRenderJobStatus'), true);
-  assert.equal(refresh.includes('rows.push'), false);
-
-  const context = sliceFunction('renderUC6ContextSummary', 'renderUC6All');
-  assert.equal(context.includes("flowLane === 'asset_render'"), true);
-  assert.equal(context.includes("rows.push(['Reusable Asset'"), true);
-  assert.equal(context.includes("flowLane === 'dummy_render'"), true);
-
-  const renderError = sliceFunction('renderUC6RenderErrorStage', 'createUC6A8FReviewPanel');
-  assert.equal(renderError.includes('같은 Asset으로 다시 생성'), true);
-  assert.equal(renderError.includes('uc6-restartAssetRenderBtn'), true);
-
-  const init = app.slice(app.indexOf('function initUC6()'));
-  assert.equal(init.includes("if (uc6State.flowLane === 'asset_render')"), true);
-  assert.equal(/restartUC6AssetRenderSelection\(\);\r?\n\s*submitUC6ReusableAssetRender\(\);/.test(init), true);
-});
-
-test('R6C package-family endpoint uses normalized job route and Firebase GET boundary', async () => {
-  const calls = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-r6c-token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(200, r6cAxFixture());
-    }
-  });
-
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.dummyDatabagPackageFamilies(`  ${JOB_ID}  `),
-    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/dummy-databag-package-families`
-  );
-  assert.equal(typeof api.getDummyDatabagPackageFamilies, 'function');
-  assert.equal(typeof api.getDummyDatabagPackages, 'function');
-  await api.getDummyDatabagPackageFamilies(`  ${JOB_ID}  `);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/dummy-databag-package-families`);
-  assert.equal(calls[0].init.method, 'GET');
-  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-r6c-token');
-  assert.equal(calls[0].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
+test('GET uses Bearer auth, credentials omit, and one forced refresh after 401', async () => {
+  const calls = []; const tokens = [];
+  const api = createApi(async (url, init) => {
+    calls.push({ url, init });
+    return calls.length === 1 ? response({ detail: { code: 'browser_admin_token_expired' } }, 401) : response({ status: 'authorized' });
+  }, tokens);
+  await api.getSession();
+  assert.deepEqual(tokens, [false, true]);
   assert.equal(calls[0].init.credentials, 'omit');
-  assert.equal(calls[0].init.cache, 'no-store');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer token-current');
+  assert.equal(calls[1].init.headers.Authorization, 'Bearer token-refreshed');
 });
 
-test('R6C family projector accepts AX and NovaGrid while preserving detached catalog order', () => {
-  const ax = r6cAxFixture();
-  const axBefore = JSON.stringify(ax);
-  const axProjected = projectUc6DummyDatabagPackageFamilyOptions(ax, { expectedJobId: JOB_ID });
-  assert.equal(JSON.stringify(ax), axBefore);
-  assert.deepEqual(axProjected.template_profile, ax.template_profile);
-  assert.equal(axProjected.package_family_count, 1);
-  assert.equal(axProjected.package_count, 3);
-  assert.deepEqual(
-    axProjected.packages.map((pkg) => pkg.package_id),
-    ['ax_customer_retention', 'ax_growth_acceleration', 'ax_operational_recovery']
-  );
-  assert.notStrictEqual(axProjected.package_families, ax.package_families);
-  assert.notStrictEqual(axProjected.package_families[0].variants, ax.package_families[0].variants);
-  axProjected.package_families[0].variants[0].title = 'Detached title';
-  assert.equal(ax.package_families[0].variants[0].title, 'Scenario 1');
-
-  const nova = r6cNovaGridFixture();
-  const novaProjected = projectUc6DummyDatabagPackageFamilyOptions(nova, { expectedJobId: JOB_ID });
-  assert.equal(novaProjected.template_profile.profile_id, 'novagrid_energy_proposal_v2');
-  assert.deepEqual(
-    novaProjected.package_families[0].variants.map((pkg) => pkg.package_id),
-    ['novagrid_helios_foods', 'novagrid_orion_metals', 'novagrid_asteron_mobility']
-  );
-
-  const ordered = r6cAxFixture();
-  ordered.package_families.push(r6cFamily('ax_secondary_scenarios', 'AX secondary scenarios', [
-    r6cVariant(ordered.template_profile.profile_id, 'ax_secondary_variant', 7)
-  ]));
-  ordered.package_family_count = 2;
-  const orderedProjected = projectUc6DummyDatabagPackageFamilyOptions(ordered, { expectedJobId: JOB_ID });
-  assert.deepEqual(orderedProjected.package_families.map((family) => family.package_family_id), ['ax_demo_scenarios', 'ax_secondary_scenarios']);
-  assert.deepEqual(orderedProjected.packages.map((pkg) => pkg.package_id), [
-    'ax_customer_retention',
-    'ax_growth_acceleration',
-    'ax_operational_recovery',
-    'ax_secondary_variant'
-  ]);
-});
-
-test('R6C family projector accepts only coherent bound family and compact package identity', () => {
-  const bound = r6cAxFixture();
-  const variant = bound.package_families[0].variants[1];
-  bound.selection_state = 'bound';
-  bound.bound_package_family_id = 'ax_demo_scenarios';
-  bound.bound_package = {
-    package_id: variant.package_id,
-    package_version: variant.package_version,
-    title: variant.title,
-    description: variant.description
-  };
-  const projected = projectUc6DummyDatabagPackageFamilyOptions(bound, { expectedJobId: JOB_ID });
-  assert.equal(projected.selection_state, 'bound');
-  assert.equal(projected.bound_package_family_id, 'ax_demo_scenarios');
-  assert.deepEqual(projected.bound_package, bound.bound_package);
-  assert.notStrictEqual(projected.bound_package, bound.bound_package);
-});
-
-test('R6C family projector fails closed for malformed, unsafe, incompatible, and contradictory responses', () => {
-  const incompatible = () => ({
-    ...r6cAxFixture(),
-    compatibility_state: 'incompatible_source_pptx',
-    template_profile: null,
-    package_family_count: 0,
-    package_families: [],
-    selection_state: 'unbound',
-    bound_package_family_id: null,
-    bound_package: null
-  });
-  const withSecondFamily = () => {
-    const value = r6cAxFixture();
-    value.package_families.push(r6cFamily('ax_secondary_scenarios', 'AX secondary scenarios', [
-      r6cVariant(value.template_profile.profile_id, 'ax_secondary_variant', 7)
-    ]));
-    value.package_family_count = 2;
-    return value;
-  };
-  const compact = (variant) => ({
-    package_id: variant.package_id,
-    package_version: variant.package_version,
-    title: variant.title,
-    description: variant.description
-  });
-  const cases = [
-    ['wrong top schema', (v) => { v.schema_version = 'wrong'; }],
-    ['wrong job id', (v) => { v.job_id = 'fd_uc6_admin_other_12345'; }],
-    ['public safety fail', (v) => { v.public_safety = 'FAIL'; }],
-    ['invalid source sha', (v) => { v.source_pptx_sha256 = 'ABC'; }],
-    ['invalid compatibility state', (v) => { v.compatibility_state = 'unknown'; }],
-    ['invalid selection state', (v) => { v.selection_state = 'unknown'; }],
-    ['family count mismatch', (v) => { v.package_family_count = 2; }],
-    ['non-array family list', (v) => { v.package_families = {}; }],
-    ['duplicate family id', (v) => { v.package_families.push(cloneFixture(v.package_families[0])); v.package_family_count = 2; }],
-    ['wrong family schema', (v) => { v.package_families[0].schema_version = 'wrong'; }],
-    ['empty family variants', (v) => { v.package_families[0].variants = []; v.package_families[0].variant_count = 0; }],
-    ['variant count mismatch', (v) => { v.package_families[0].variant_count = 99; }],
-    ['duplicate package identity across families', (v) => {
-      v.package_families.push(r6cFamily('ax_secondary_scenarios', 'AX secondary scenarios', [cloneFixture(v.package_families[0].variants[0])]));
-      v.package_family_count = 2;
-    }],
-    ['wrong package schema', (v) => { v.package_families[0].variants[0].schema_version = 'wrong'; }],
-    ['invalid package id', (v) => { v.package_families[0].variants[0].package_id = 'bad id'; }],
-    ['invalid package version', (v) => { v.package_families[0].variants[0].package_version = '*bad'; }],
-    ['bad package title', (v) => { v.package_families[0].variants[0].title = ' '; }],
-    ['unsafe package description', (v) => { v.package_families[0].variants[0].description = 'https://internal.example/private'; }],
-    ['unsafe family title', (v) => { v.package_families[0].title = 'file:///private/catalog'; }],
-    ['variant source mismatch', (v) => { v.package_families[0].variants[0].source_pptx_sha256 = 'b'.repeat(64); }],
-    ['variant template profile mismatch', (v) => { v.package_families[0].variants[0].template_family_id = 'other_profile'; }],
-    ['invalid canonical sha', (v) => { v.package_families[0].variants[0].canonical_sha256 = 'bad'; }],
-    ['inactive variant status', (v) => { v.package_families[0].variants[0].status = 'deprecated'; }],
-    ['invalid control plane text', (v) => { v.control_plane_contract_version = 'bad value'; }],
-    ['unbound with family id', (v) => { v.bound_package_family_id = 'ax_demo_scenarios'; }],
-    ['unbound with package', (v) => { v.bound_package = compact(v.package_families[0].variants[0]); }],
-    ['bound without family id', (v) => { v.selection_state = 'bound'; v.bound_package = compact(v.package_families[0].variants[0]); }],
-    ['bound without package', (v) => { v.selection_state = 'bound'; v.bound_package_family_id = 'ax_demo_scenarios'; }],
-    ['bound family missing', (v) => {
-      v.selection_state = 'bound';
-      v.bound_package_family_id = 'missing_family';
-      v.bound_package = compact(v.package_families[0].variants[0]);
-    }],
-    ['bound package missing from family', (v) => {
-      v.selection_state = 'bound';
-      v.bound_package_family_id = 'ax_demo_scenarios';
-      v.bound_package = { package_id: 'missing_variant', package_version: 'v1', title: 'Missing', description: '' };
-    }]
-  ];
-  for (const [label, mutate] of cases) {
-    const value = r6cAxFixture();
-    mutate(value);
-    assert.throws(
-      () => projectUc6DummyDatabagPackageFamilyOptions(value, { expectedJobId: JOB_ID }),
-      TypeError,
-      label
-    );
-  }
-
-  const incompatibleWithFamilies = incompatible();
-  incompatibleWithFamilies.package_families = cloneFixture(r6cAxFixture().package_families);
-  incompatibleWithFamilies.package_family_count = 1;
-  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(incompatibleWithFamilies, { expectedJobId: JOB_ID }), TypeError);
-
-  const incompatibleWithProfile = incompatible();
-  incompatibleWithProfile.template_profile = cloneFixture(r6cAxFixture().template_profile);
-  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(incompatibleWithProfile, { expectedJobId: JOB_ID }), TypeError);
-
-  const incompatibleBound = incompatible();
-  incompatibleBound.selection_state = 'bound';
-  incompatibleBound.bound_package_family_id = 'ax_demo_scenarios';
-  incompatibleBound.bound_package = { package_id: 'pkg', package_version: 'v1', title: 'Package', description: '' };
-  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(incompatibleBound, { expectedJobId: JOB_ID }), TypeError);
-
-  const wrongFamilyBinding = withSecondFamily();
-  wrongFamilyBinding.selection_state = 'bound';
-  wrongFamilyBinding.bound_package_family_id = 'ax_demo_scenarios';
-  wrongFamilyBinding.bound_package = compact(wrongFamilyBinding.package_families[1].variants[0]);
-  assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(wrongFamilyBinding, { expectedJobId: JOB_ID }), TypeError);
-});
-
-test('R6C render command and persistence boundaries keep family metadata out of runtime identity', () => {
-  const options = projectUc6DummyDatabagPackageFamilyOptions(r6cAxFixture(), { expectedJobId: JOB_ID });
-  const validation = validateUc6DummyDatabagRenderCommand({
-    package_id: 'ax_customer_retention',
-    package_version: '2026.08.11',
-    retry_failed: false
-  }, options);
-  assert.equal(validation.ok, true);
-  assert.deepEqual(validation.body, {
-    package_id: 'ax_customer_retention',
-    package_version: '2026.08.11',
-    retry_failed: false
-  });
-  assert.equal(Object.prototype.hasOwnProperty.call(validation.body, 'package_family_id'), false);
-
-  const persisted = projectUc6PersistedState({
-    job_id: JOB_ID,
-    selected_package_family_id: 'ax_demo_scenarios',
-    selected_package_id: 'ax_customer_retention',
-    selected_package_version: '2026.08.11',
-    id_token: 'secret',
-    token: 'secret',
-    internal_path: '/data/fetchdoc/private',
-    template_profile: { profile_id: 'secret' },
-    package_families: r6cAxFixture().package_families,
-    backend_payload: r6cAxFixture()
-  });
-  assert.deepEqual(persisted, {
-    job_id: JOB_ID,
-    selected_package_family_id: 'ax_demo_scenarios',
-    selected_package_id: 'ax_customer_retention',
-    selected_package_version: '2026.08.11'
-  });
-  assert.equal(projectUc6PersistedState({ selected_package_family_id: 'bad family' }).selected_package_family_id, undefined);
-  assert.deepEqual(projectUc6PersistedState({
-    selected_package_family_id: 'ax_demo_scenarios',
-    selected_package_id: 'ax_customer_retention'
-  }), { selected_package_family_id: 'ax_demo_scenarios' });
-});
-
-test('R6C app source uses hierarchical dummy-render selection and preserves flat Asset flow', () => {
-  const app = readSource('../public/app.js');
-  const apiSource = readSource('../public/uc6-browser-admin.mjs');
-  const css = readSource('../public/style.css');
-  const load = extractFunctionBody(app, 'loadUC6PackageOptions');
-  const save = extractFunctionBody(app, 'saveUC6LocalState');
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const reset = extractFunctionBody(app, 'resetUC6JobState');
-  const render = extractFunctionBody(app, 'renderUC6PackageStage');
-  const reconcile = extractFunctionBody(app, 'reconcileUC6BoundPackageFamily');
-  const submit = extractFunctionBody(app, 'submitUC6DummyRender');
-  const assetLoad = extractFunctionBody(app, 'loadUC6ReusableAssetPackages');
-  const assetRender = extractFunctionBody(app, 'renderUC6AssetPackageStage');
-
-  assert.equal(app.includes('projectUc6DummyDatabagPackageFamilyOptions,'), true);
-  assert.equal(app.includes('app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'), true);
-  assert.equal(load.includes('getDummyDatabagPackageFamilies'), true);
-  assert.equal(load.includes('projectUc6DummyDatabagPackageFamilyOptions'), true);
-  assert.equal(load.includes('getDummyDatabagPackages('), false);
-  assert.equal(app.includes("selectedPackageFamilyId: ''"), true);
-  assert.equal(save.includes('selected_package_family_id: uc6State.selectedPackageFamilyId'), true);
-  assert.equal(resume.includes('persisted.selected_package_family_id'), true);
-  assert.equal(reset.includes("uc6State.selectedPackageFamilyId = ''"), true);
-
-  assert.equal(render.includes('Template Profile'), true);
-  assert.equal(render.includes('package_families.forEach'), true);
-  assert.equal(render.includes('selectedFamily.variants.forEach'), true);
-  assert.equal(render.includes('packageStillBelongsToFamily'), true);
-  assert.equal(render.includes("uc6State.selectedPackageId = ''"), true);
-  assert.equal(render.includes("uc6State.selectedPackageVersion = ''"), true);
-  assert.equal(render.includes("const isBound = options.selection_state === 'bound';"), true);
-  assert.equal(render.includes('options.bound_package_family_id'), true);
-  assert.equal(render.includes('innerHTML'), false);
-  assert.equal(reconcile.includes("options.selection_state = 'unbound'"), false);
-  assert.equal(reconcile.includes("options.selection_state = 'bound'"), true);
-  assert.equal(reconcile.includes('options.bound_package_family_id = null'), true);
-  assert.equal(reconcile.includes('options.bound_package = boundPackage'), true);
-
-  const commandStart = submit.indexOf('const command = {');
-  const commandEnd = submit.indexOf('};', commandStart);
-  const command = submit.slice(commandStart, commandEnd + 2);
-  assert.notEqual(commandStart, -1);
-  assert.equal(command.includes('package_id:'), true);
-  assert.equal(command.includes('package_version:'), true);
-  assert.equal(command.includes('retry_failed:'), true);
-  assert.equal(command.includes('package_family_id'), false);
-  assert.equal(command.includes('template_profile_id'), false);
-
-  assert.equal(assetLoad.includes('getReusableAssetPackages'), true);
-  assert.equal(assetLoad.includes('projectUc6ReusableAssetPackageOptions'), true);
-  assert.equal(assetLoad.includes('getDummyDatabagPackageFamilies'), false);
-  assert.equal(assetRender.includes('package_families'), false);
-  assert.equal(app.includes('X-Internal-Token'), false);
-  assert.equal(apiSource.includes('X-Internal-Token'), false);
-
-  const newSelectorLines = css.split(/\r?\n/).filter((line) => (
-    /\.uc6-(?:selection-layer|template-profile|package-family|variant-layer|bound-selection)/.test(line)
-  ));
-  assert.ok(newSelectorLines.length > 0);
-  assert.equal(newSelectorLines.every((line) => line.trimStart().startsWith('#view-uc6')), true);
-});
-
-test('R6D3 onboarding endpoint is normalized and POST is a Firebase-only one-shot without a command body', async () => {
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.onboarding(`  ${JOB_ID}  `),
-    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/onboarding`
-  );
+test('bodyless mutations remain bodyless and are never replayed on network ambiguity', async () => {
   const calls = [];
-  const tokenRefreshes = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async (forceRefresh) => { tokenRefreshes.push(forceRefresh); return 'firebase-onboarding-token'; },
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(200, r6d3OnboardingSubmission());
-    }
-  });
-  await api.submitFreshTemplateOnboarding(`  ${JOB_ID}  `);
+  const api = createApi(async (url, init) => { calls.push({ url, init }); throw new TypeError('network'); });
+  await assert.rejects(api.submitFreshTemplateOnboarding(JOB), { name: 'Uc6AmbiguousSubmissionError' });
   assert.equal(calls.length, 1);
-  assert.deepEqual(tokenRefreshes, [true]);
-  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/onboarding`);
   assert.equal(calls[0].init.method, 'POST');
-  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-onboarding-token');
-  assert.equal(calls[0].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
-  assert.equal(calls[0].init.headers['Content-Type'], undefined);
+  assert.equal(calls[0].init.body, undefined);
   assert.equal(calls[0].init.credentials, 'omit');
-  assert.equal(calls[0].init.cache, 'no-store');
-  assert.equal(calls[0].init.body, undefined);
-
-  for (const status of [401, 403]) {
-    let attempts = 0;
-    const rejectedApi = createUc6BrowserAdminApi({
-      apiBaseUrl: API_BASE,
-      getIdToken: async () => 'firebase-onboarding-token',
-      fetchImpl: async () => { attempts += 1; return response(status, { detail: { code: 'unknown' } }); }
-    });
-    await assert.rejects(() => rejectedApi.submitFreshTemplateOnboarding(JOB_ID));
-    assert.equal(attempts, 1, `HTTP ${status} must not replay onboarding`);
-  }
-
-  let networkAttempts = 0;
-  const ambiguousApi = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-onboarding-token',
-    fetchImpl: async () => { networkAttempts += 1; throw new Error('network unavailable'); }
-  });
-  await assert.rejects(() => ambiguousApi.submitFreshTemplateOnboarding(JOB_ID), {
-    name: 'Uc6AmbiguousSubmissionError',
-    code: 'ambiguous_submission'
-  });
-  assert.equal(networkAttempts, 1);
 });
 
-test('R6D3 onboarding submission projector accepts all public states and fails closed', () => {
-  for (const state of ['onboarding_queued', 'onboarding_running', 'onboarding_ready', 'onboarding_blocked']) {
-    const payload = r6d3OnboardingSubmission(state);
-    const projected = projectUc6FreshTemplateOnboardingSubmission(payload, { expectedJobId: JOB_ID });
-    assert.equal(projected.state, state);
-    assert.notStrictEqual(projected, payload);
-  }
-  const cases = [
-    (v) => { v.schema_version = 'wrong'; },
-    (v) => { v.job_id = 'fd_uc6_admin_other_12345'; },
-    (v) => { v.task_type = 'wrong'; },
-    (v) => { v.task_id = 0; },
-    (v) => { v.queue_status = 'unknown'; },
-    (v) => { v.created = 'true'; },
-    (v) => { v.state = 'source_ready'; },
-    (v) => { v.control_plane_contract_version = 'bad value'; },
-    (v) => { v.public_safety = 'FAIL'; }
-  ];
-  for (const mutate of cases) {
-    const payload = r6d3OnboardingSubmission();
-    mutate(payload);
-    assert.throws(() => projectUc6FreshTemplateOnboardingSubmission(payload, { expectedJobId: JOB_ID }), TypeError);
-  }
-});
+test('source_ready is canonical and ambiguous onboarding reconciles without a duplicate POST', async () => {
+  const canonical = {
+    job_id: JOB,
+    state: 'source_ready',
+    source: { sha256: SHA, size_bytes: 8192, slide_count: 7, filename: 'source.pptx' },
+    control_plane_contract_version: CONTRACT
+  };
+  assert.equal(projectUc6CanonicalJob(canonical, { expectedJobId: JOB }).state, 'source_ready');
 
-test('R6D3 GET onboarding projector accepts detached public envelopes and rejects malformed source state', () => {
-  for (const state of ['onboarding_queued', 'onboarding_running', 'onboarding_ready', 'onboarding_blocked']) {
-    const payload = r6d3OnboardingJob(state);
-    const projected = projectUc6FreshTemplateOnboardingJobStatus(payload, { expectedJobId: JOB_ID });
-    assert.equal(projected.state, state);
-    assert.deepEqual(projected.source, payload.source);
-    assert.notStrictEqual(projected.source, payload.source);
-    assert.equal(projected.onboarding, undefined);
-  }
-  const cases = [
-    (v) => { v.job_id = 'bad'; },
-    (v) => { v.state = 'render_running'; },
-    (v) => { v.source.sha256 = 'A'.repeat(64); },
-    (v) => { v.source.size_bytes = 0; },
-    (v) => { v.source.slide_count = -1; },
-    (v) => { v.source.filename = '/data/private/source.pptx'; },
-    (v) => { v.control_plane_contract_version = 'bad value'; }
-  ];
-  for (const mutate of cases) {
-    const payload = r6d3OnboardingJob();
-    mutate(payload);
-    assert.throws(() => projectUc6FreshTemplateOnboardingJobStatus(payload, { expectedJobId: JOB_ID }), TypeError);
-  }
-});
-
-test('R6D3 state mapping separates onboarding polling from analysis and render polling', () => {
-  assert.equal(mapUc6StateToView('onboarding_queued').onboardingPollable, true);
-  assert.equal(mapUc6StateToView('onboarding_running').onboardingPollable, true);
-  assert.equal(mapUc6StateToView('onboarding_ready').onboardingPollable, false);
-  assert.equal(mapUc6StateToView('onboarding_blocked').onboardingPollable, false);
-  assert.equal(mapUc6StateToView('onboarding_queued').renderPollable, undefined);
-  assert.equal(mapUc6StateToView('render_queued').renderPollable, true);
-  assert.equal(mapUc6StateToView('analysis_queued').pollable, true);
-});
-
-test('R6D3 fresh family projector supports waiting, blocked, compatible, and no-package contracts without static profile identity', () => {
-  const compatible = r6d3FreshFamilyFixture();
-  const before = JSON.stringify(compatible);
-  const projected = projectUc6DummyDatabagPackageFamilyOptions(compatible, { expectedJobId: JOB_ID });
-  assert.equal(JSON.stringify(compatible), before);
-  assert.equal(projected.template_profile.profile_origin, 'fresh_same_job');
-  assert.equal(projected.template_profile.generation_unit_count, 18);
-  assert.equal(projected.template_profile.fillable_slot_count, 47);
-  assert.deepEqual(projected.template_profile.required_authoritative_source_groups, ['customer_context', 'growth_targets']);
-  assert.deepEqual(projected.template_profile.supporting_source_groups, ['market_signals']);
-  assert.equal(projected.template_profile.profile_id, undefined);
-  assert.equal(projected.template_profile.profile_version, undefined);
-  assert.equal(projected.template_profile.template_family_id, undefined);
-  assert.equal(projected.compatibility_metadata.template_family_id, 'fresh_package_compatibility_v1');
-  assert.equal(projected.package_count, 2);
-  assert.notStrictEqual(projected.package_families, compatible.package_families);
-
-  for (const [state, compatibilityState] of [
-    ['onboarding_queued', 'fresh_onboarding_not_ready'],
-    ['onboarding_running', 'fresh_onboarding_not_ready'],
-    ['onboarding_blocked', 'fresh_onboarding_blocked']
-  ]) {
-    const payload = r6d3FreshFamilyFixture();
-    payload.onboarding_state = state;
-    payload.compatibility_state = compatibilityState;
-    payload.template_profile = null;
-    payload.compatibility_metadata = null;
-    payload.package_family_count = 0;
-    payload.package_families = [];
-    const waiting = projectUc6DummyDatabagPackageFamilyOptions(payload, { expectedJobId: JOB_ID });
-    assert.equal(waiting.compatibility_state, compatibilityState);
-    assert.deepEqual(waiting.package_families, []);
-  }
-
-  const none = r6d3FreshFamilyFixture();
-  none.compatibility_state = 'no_compatible_packages';
-  none.compatibility_metadata.source_matched_package_count = 0;
-  none.package_family_count = 0;
-  none.package_families = [];
-  const noPackages = projectUc6DummyDatabagPackageFamilyOptions(none, { expectedJobId: JOB_ID });
-  assert.equal(noPackages.compatibility_state, 'no_compatible_packages');
-  assert.equal(noPackages.template_profile.profile_origin, 'fresh_same_job');
-  assert.deepEqual(noPackages.package_families, []);
-});
-
-test('R6D3 no-compatible metadata permits absent identity only when the source-matched count is zero', () => {
-  const identified = r6d3FreshFamilyFixture();
-  identified.compatibility_state = 'no_compatible_packages';
-  identified.package_family_count = 0;
-  identified.package_families = [];
-  const identifiedProjected = projectUc6DummyDatabagPackageFamilyOptions(identified, { expectedJobId: JOB_ID });
-  assert.equal(identifiedProjected.compatibility_metadata.template_family_id, 'fresh_package_compatibility_v1');
-  assert.equal(identifiedProjected.compatibility_metadata.source_matched_package_count, 2);
-
-  const unidentified = cloneFixture(identified);
-  unidentified.compatibility_metadata.template_family_id = null;
-  unidentified.compatibility_metadata.source_matched_package_count = 0;
-  const unidentifiedProjected = projectUc6DummyDatabagPackageFamilyOptions(unidentified, { expectedJobId: JOB_ID });
-  assert.deepEqual(unidentifiedProjected.compatibility_metadata, {
-    template_family_id: null,
-    source_matched_package_count: 0
-  });
-  assert.equal(unidentifiedProjected.template_profile.profile_id, undefined);
-  assert.equal(unidentifiedProjected.template_profile.template_family_id, undefined);
-
-  const compatibleWithoutIdentity = r6d3FreshFamilyFixture();
-  compatibleWithoutIdentity.compatibility_metadata.template_family_id = null;
-  compatibleWithoutIdentity.compatibility_metadata.source_matched_package_count = 0;
-  assert.throws(
-    () => projectUc6DummyDatabagPackageFamilyOptions(compatibleWithoutIdentity, { expectedJobId: JOB_ID }),
-    /invalid_fresh_compatibility_template_family_id/
-  );
-
-  const positiveCountWithoutIdentity = cloneFixture(unidentified);
-  positiveCountWithoutIdentity.compatibility_metadata.source_matched_package_count = 1;
-  assert.throws(
-    () => projectUc6DummyDatabagPackageFamilyOptions(positiveCountWithoutIdentity, { expectedJobId: JOB_ID }),
-    /invalid_fresh_null_compatibility_identity_package_count/
-  );
-});
-
-test('R6D3 fresh family identity and public-safety validation fail closed while legacy render remains valid', () => {
-  const cases = [
-    (v) => { v.package_families[0].variants[0].template_family_id = 'static_profile_id'; },
-    (v) => { v.package_families[0].variants[0].source_pptx_sha256 = 'e'.repeat(64); },
-    (v) => { v.package_families[0].variants[0].canonical_sha256 = 'BAD'; },
-    (v) => { v.package_families[0].variants[0].description = 'https://internal.invalid/private'; },
-    (v) => { v.package_families.push(cloneFixture(v.package_families[0])); v.package_family_count = 2; },
-    (v) => { v.package_families[0].variants.push(cloneFixture(v.package_families[0].variants[0])); v.package_families[0].variant_count = 3; },
-    (v) => { v.template_profile.profile_id = v.compatibility_metadata.template_family_id; },
-    (v) => { v.selection_state = 'unbound'; },
-    (v) => { v.bound_package = { package_id: 'pkg' }; }
-  ];
-  for (const mutate of cases) {
-    const payload = r6d3FreshFamilyFixture();
-    mutate(payload);
-    assert.throws(() => projectUc6DummyDatabagPackageFamilyOptions(payload, { expectedJobId: JOB_ID }), TypeError);
-  }
-
-  const freshOptions = projectUc6DummyDatabagPackageFamilyOptions(r6d3FreshFamilyFixture(), { expectedJobId: JOB_ID });
-  assert.equal(validateUc6DummyDatabagRenderCommand({
-    package_id: 'fresh_growth_case', package_version: '2026.08.11', retry_failed: false
-  }, freshOptions).code, 'fresh_render_deferred');
-  const legacyOptions = projectUc6DummyDatabagPackageFamilyOptions(r6cAxFixture(), { expectedJobId: JOB_ID });
-  assert.equal(validateUc6DummyDatabagRenderCommand({
-    package_id: 'ax_customer_retention', package_version: '2026.08.11', retry_failed: false
-  }, legacyOptions).ok, true);
-});
-
-test('R6D3 onboarding protection remains intact while fresh continuation uses the R6E control plane', () => {
-  assert.deepEqual(projectUc6PersistedState({
-    job_id: JOB_ID,
-    fresh_onboarding_expected: true,
-    task_id: 731,
-    onboarding_result: r6d3OnboardingSubmission(),
-    provider_response: { secret: true },
-    authorization: 'Bearer secret',
-    firebase_user: { uid: 'secret' }
-  }), { job_id: JOB_ID, fresh_onboarding_expected: true });
-  assert.deepEqual(projectUc6PersistedState({ job_id: JOB_ID }), { job_id: JOB_ID });
-  assert.equal(projectUc6PersistedState({ fresh_onboarding_expected: 'true' }).fresh_onboarding_expected, undefined);
-
-  const app = readSource('../public/app.js');
-  const upload = extractFunctionBody(app, 'uploadUC6PptxJob');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
-  const submit = extractFunctionBody(app, 'submitUC6DummyRender');
-  const render = extractFunctionBody(app, 'renderUC6PackageStage');
-  const context = extractFunctionBody(app, 'renderUC6ContextSummary');
-  const save = extractFunctionBody(app, 'saveUC6LocalState');
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const reset = extractFunctionBody(app, 'resetUC6JobState');
-  assert.equal(upload.includes('api.createJob'), true);
-  assert.equal(upload.includes('submitFreshTemplateOnboarding'), true);
-  assert.equal(upload.includes('submitAnalysis'), false);
-  assert.equal(upload.includes('submitDummyDatabagRender'), false);
-  assert.ok(upload.indexOf("projected.state === 'onboarding_ready'") < upload.indexOf('reconcileUC6FreshSyntheticScenarios'));
-  assert.equal(upload.includes('loadUC6PackageOptions'), false);
-  assert.equal((upload.match(/submitFreshTemplateOnboarding/g) || []).length, 1);
-  assert.equal(upload.includes('startUC6JobObservation'), true);
-  assert.ok(refresh.indexOf('projectUc6FreshTemplateOnboardingJobStatus') < refresh.indexOf('projectUc6DummyDatabagRenderJobStatus'));
-  assert.equal(refresh.includes("projected.state === 'source_ready' && uc6State.freshOnboardingExpected"), true);
-  assert.equal(refresh.includes("projected.state === 'onboarding_ready'"), true);
-  assert.equal(refresh.includes('reconcileUC6FreshSyntheticScenarios'), true);
-  assert.equal(pollingDecision.includes('mapped.onboardingPollable'), true);
-  assert.equal(save.includes('fresh_onboarding_expected: uc6State.freshOnboardingExpected'), true);
-  assert.equal(resume.includes('persisted.fresh_onboarding_expected === true'), true);
-  assert.equal(reset.includes('uc6State.freshOnboardingExpected = false'), true);
-  assert.ok(submit.indexOf('UC6_R6D2B_PACKAGE_FAMILY_OPTIONS_SCHEMA') < submit.indexOf('submitDummyDatabagRender'));
-  assert.equal(render.includes('if (!isFresh) actions.append'), true);
-  assert.equal(render.includes('renderUC6FreshSyntheticScenarioStage'), true);
-  assert.equal(render.includes("profile.profile_origin === 'fresh_same_job'"), true);
-  assert.equal(context.includes("profile?.profile_origin === 'fresh_same_job'"), true);
-  assert.equal(context.includes('undefined:undefined'), false);
-});
-
-test('R6D3 fresh source-ready reconciliation remains contextually GET-pollable across polling and resume', () => {
-  const app = readSource('../public/app.js');
-  const eligibility = extractFunctionBody(app, 'isUC6FreshSourceReconciliationPending');
-  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-
-  assert.equal(eligibility.includes("uc6State.flowLane === 'dummy_render'"), true);
-  assert.equal(eligibility.includes('uc6State.freshOnboardingExpected === true'), true);
-  assert.equal(eligibility.includes("uc6State.jobState === 'source_ready'"), true);
-  assert.equal(mapUc6StateToView('source_ready').pollable, false, 'legacy source_ready stays globally non-pollable');
-  assert.equal(mapUc6StateToView('source_ready').renderPollable, undefined);
-  assert.equal(mapUc6StateToView('source_ready').onboardingPollable, undefined);
-
-  assert.equal(resume.includes('persisted.fresh_onboarding_expected === true'), true);
-  assert.equal(pollingDecision.includes('isUC6FreshSourceReconciliationPending()'), true);
-  assert.equal(resume.includes('if (isUC6JobPollingPending()) startUC6JobObservation()'), true);
-  assert.equal(poll.includes('if (isUC6JobPollingPending()) scheduleUC6Poll()'), true);
-
-  assert.equal(eligibility.includes('submitFreshTemplateOnboarding'), false);
-  assert.equal(resume.includes('submitFreshTemplateOnboarding'), false);
-  assert.equal(poll.includes('submitFreshTemplateOnboarding'), false);
-  assert.equal(refresh.includes('submitFreshTemplateOnboarding'), false);
-
-  const sourceReconciliation = refresh.indexOf("projected.state === 'source_ready' && uc6State.freshOnboardingExpected");
-  const legacyPackageLoad = refresh.indexOf("else if (projected.state === 'failed' || projected.state === 'source_ready')");
-  assert.notEqual(sourceReconciliation, -1);
-  assert.ok(sourceReconciliation < legacyPackageLoad, 'fresh source_ready is handled before legacy package loading');
-
-  const readyBranch = refresh.indexOf("projected.state === 'onboarding_ready'");
-  const blockedBranch = refresh.indexOf("projected.state === 'onboarding_blocked'");
-  const queuedRunningBranch = refresh.indexOf('} else {', blockedBranch);
-  assert.ok(readyBranch < blockedBranch);
-  assert.equal(refresh.slice(readyBranch, blockedBranch).includes('loadUC6PackageOptions'), false);
-  assert.equal(refresh.slice(readyBranch, blockedBranch).includes('reconcileUC6FreshSyntheticScenarios'), true);
-  assert.equal(refresh.slice(blockedBranch, queuedRunningBranch).includes('stopUC6Polling({ abortRequest: false })'), true);
-  assert.equal(refresh.slice(blockedBranch, queuedRunningBranch).includes('loadUC6PackageOptions'), false);
-});
-
-test('R6E-C2 synthetic endpoints use Firebase-only GET and one-shot POST boundaries', async () => {
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarios(`  ${JOB_ID}  `),
-    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/synthetic-scenarios`
-  );
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarioBinding(`  ${JOB_ID}  `),
-    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/synthetic-scenarios/binding`
-  );
   const calls = [];
-  const refreshes = [];
-  const responses = [
-    r6eSyntheticSubmission(),
-    r6eSyntheticGet(),
-    r6eSyntheticBinding('scenario_001')
-  ];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async (forceRefresh) => { refreshes.push(forceRefresh); return 'firebase-r6e-token'; },
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(200, responses.shift());
-    }
+  const api = createApi(async (url, init) => {
+    calls.push({ url, init });
+    if (init.method === 'POST') throw new TypeError('connection_lost_after_send');
+    return response(canonical);
   });
-  await api.submitFreshSyntheticScenarios(JOB_ID);
-  await api.getFreshSyntheticScenarios(JOB_ID);
-  await api.bindFreshSyntheticScenario(JOB_ID, 'scenario_001');
-  assert.deepEqual(refreshes, [true, false, true]);
-  assert.deepEqual(calls.map((call) => call.init.method), ['POST', 'GET', 'POST']);
-  assert.equal(calls[0].init.body, undefined);
-  assert.equal(calls[0].init.headers['Content-Type'], undefined);
+  await assert.rejects(api.submitFreshTemplateOnboarding(JOB), { name: 'Uc6AmbiguousSubmissionError' });
+  const reconciled = projectUc6CanonicalJob(await api.getJob(JOB), { expectedJobId: JOB });
+  assert.equal(reconciled.state, 'source_ready');
+  assert.equal(calls.filter(({ init }) => init.method === 'POST').length, 1);
+});
+
+test('Persona binding body and selected-Persona generation routes remain exact', async () => {
+  const calls = [];
+  const api = createApi(async (url, init) => { calls.push({ url, init }); return response({}); });
+  await api.bindFreshSyntheticScenario(JOB, 'persona_dynamic_7');
+  await api.submitFreshSyntheticScenarios(JOB);
+  await api.submitFreshSyntheticScenarioRender(JOB);
+  assert.deepEqual(JSON.parse(calls[0].init.body), { scenario_key: 'persona_dynamic_7' });
   assert.equal(calls[1].init.body, undefined);
-  assert.equal(calls[2].init.body, JSON.stringify({ scenario_key: 'scenario_001' }));
-  assert.equal(calls[2].init.headers['Content-Type'], 'application/json');
-  for (const call of calls) {
-    assert.equal(call.init.headers.Authorization, 'Bearer firebase-r6e-token');
-    assert.equal(call.init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
-    assert.equal(call.init.credentials, 'omit');
-    assert.equal(call.init.cache, 'no-store');
-  }
-
-  let invalidCalls = 0;
-  const invalidApi = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async () => { invalidCalls += 1; return response(200, {}); }
-  });
-  assert.throws(() => invalidApi.bindFreshSyntheticScenario(JOB_ID, '../not-a-persona'), { code: 'synthetic_scenario_key_invalid' });
-  assert.equal(invalidCalls, 0);
-  assert.equal(validateUc6SyntheticScenarioBindingCommand(' scenario_002 ').ok, true);
-
-  for (const method of ['submitFreshSyntheticScenarios', 'bindFreshSyntheticScenario']) {
-    let attempts = 0;
-    const ambiguousApi = createUc6BrowserAdminApi({
-      apiBaseUrl: API_BASE,
-      getIdToken: async () => 'token',
-      fetchImpl: async () => { attempts += 1; throw new Error('network unavailable'); }
-    });
-    const invoke = method === 'bindFreshSyntheticScenario'
-      ? () => ambiguousApi[method](JOB_ID, 'scenario_000')
-      : () => ambiguousApi[method](JOB_ID);
-    await assert.rejects(invoke, { name: 'Uc6AmbiguousSubmissionError', code: 'ambiguous_submission' });
-    assert.equal(attempts, 1);
-  }
-
-  let unauthorizedAttempts = 0;
-  const unauthorizedApi = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'token',
-    fetchImpl: async () => { unauthorizedAttempts += 1; return response(401, { detail: { code: 'browser_admin_token_expired' } }); }
-  });
-  await assert.rejects(() => unauthorizedApi.submitFreshSyntheticScenarios(JOB_ID), { status: 401 });
-  assert.equal(unauthorizedAttempts, 1);
+  assert.equal(calls[2].init.body, undefined);
+  assert.match(calls[1].url, /synthetic-scenarios$/);
+  assert.match(calls[2].url, /synthetic-scenarios\/render$/);
 });
 
-test('ACTIVE Fresh HTTP 202 generation response remains queued processing, not an immediate error', async () => {
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-token',
-    fetchImpl: async () => response(202, r6eSyntheticSubmission('synthetic_scenarios_queued'))
-  });
-  const raw = await api.submitFreshSyntheticScenarios(JOB_ID);
-  const projected = projectUc6FreshSyntheticGenerationSubmission(raw, { expectedJobId: JOB_ID });
-  assert.equal(projected.state, 'synthetic_scenarios_queued');
-  assert.equal(projected.queue_status, 'pending');
-  assert.notEqual(projected.state, 'render_unknown');
+test('Published Template bootstrap body remains exact', async () => {
+  const calls = [];
+  const api = createApi(async (url, init) => { calls.push({ url, init }); return response({}); });
+  await api.bootstrapReusableAssetRuntimeJob(ASSET, { bootstrap_identity: 'uc6_bootstrap_1234567890' });
+  assert.deepEqual(JSON.parse(calls[0].init.body), { bootstrap_identity: 'uc6_bootstrap_1234567890' });
 });
 
-test('ACTIVE Fresh generation submission keeps queue states strict without family or triplet counts', () => {
-  for (const state of ['synthetic_scenarios_queued', 'synthetic_scenarios_running', 'synthetic_scenarios_failed']) {
-    const payload = r6eSyntheticSubmission(state);
-    const projected = projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID });
-    assert.equal(projected.state, state);
-    assert.equal(Number.isSafeInteger(projected.task_id), true);
-    assert.notStrictEqual(projected, payload);
-  }
-
-  const mutations = [
-    (v) => { v.schema_version = ''; },
-    (v) => { v.job_id = 'fd_uc6_admin_other_12345'; },
-    (v) => { v.task_type = 'wrong'; },
-    (v) => { v.task_id = 0; },
-    (v) => { v.queue_status = 'processing'; },
-    (v) => { v.created = 'true'; },
-    (v) => { v.public_safety = 'FAIL'; },
-    (v) => { v.operation_fingerprint = 'private'; }
-  ];
-  for (const mutate of mutations) {
-    const payload = r6eSyntheticSubmission();
-    mutate(payload);
-    assert.throws(() => projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID }), TypeError);
-  }
-
-  const queuedWithOperationalFields = r6eSyntheticSubmission();
-  Object.assign(queuedWithOperationalFields, {
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    bound_scenario: r6eSyntheticScenario(0),
-    network_call_count: 1,
-    replayed: false,
-    provider_attempt_count: 1
+test('publication command includes exact hash binding and nullable administrator note', () => {
+  const valid = validateUc6ReusableAssetPublicationCommand({
+    decision: 'approve_for_reuse_and_publish', decision_identity: 'uc6_publish_1234567890',
+    reviewed_final_pptx_sha256: SHA, reviewed_final_pdf_sha256: 'c'.repeat(64), administrator_note: null
   });
-  const projectedQueued = projectUc6FreshSyntheticGenerationSubmission(queuedWithOperationalFields, { expectedJobId: JOB_ID });
-  assert.equal(projectedQueued.bound_scenario.scenario_key, 'scenario_000');
-  assert.equal(projectedQueued.network_call_count, 1);
-  for (const internalField of ['synthetic_scenario_family_id', 'scenario_count', 'package_count', 'selection_id']) {
-    const payload = r6eSyntheticSubmission();
-    payload[internalField] = internalField.endsWith('count') ? 3 : 'private';
-    assert.throws(() => projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID }), TypeError);
-  }
+  assert.equal(valid.ok, true);
+  assert.deepEqual(valid.body, {
+    decision: 'approve_for_reuse_and_publish', decision_identity: 'uc6_publish_1234567890',
+    reviewed_final_pptx_sha256: SHA, reviewed_final_pdf_sha256: 'c'.repeat(64), administrator_note: null
+  });
 });
 
-test('ACTIVE Fresh accepts ready replay without manufacturing a task or exposing package lineage', () => {
+test('authenticated SSE uses fetch, Bearer auth, credentials omit, and one 401 refresh', async () => {
+  const calls = []; const tokens = [];
+  const api = createApi(async (url, init) => {
+    calls.push({ url, init });
+    return calls.length === 1 ? response({}, 401) : response({}, 200, 'text/event-stream; charset=utf-8');
+  }, tokens);
+  await api.openJobEvents(JOB);
+  assert.deepEqual(tokens, [false, true]);
+  assert.equal(calls[1].init.headers.Accept, 'text/event-stream');
+  assert.equal(calls[1].init.credentials, 'omit');
+});
+
+test('strict SSE parser accepts a public wake-up frame and rejects malformed progress', () => {
+  const frame = `data: ${JSON.stringify({ schema_version: 'fetchdoc_job_event_v1', event_kind: 'state_change', job_id: JOB, sequence: 4, stage: 'generate', status: 'running', completed_units: 1, total_units: 3 })}\n\n`;
+  assert.equal(parseUc6JobEventFrame(frame).sequence, 4);
+  assert.throws(() => parseUc6JobEventFrame(frame.replace('"completed_units":1', '"completed_units":9')));
+});
+
+test('Persona Catalog is fully dynamic and binding validates current membership', () => {
+  const payload = {
+    schema_version: PERSONA_CATALOG_SCHEMA, job_id: JOB, source_pptx_sha256: SHA,
+    onboarding_state: 'onboarding_ready', generation_state: 'not_started', selection_state: 'unbound', bound_scenario: null,
+    scenario_options: [
+      PERSONA,
+      { scenario_key: 'operator', label: 'Operator', scenario_summary: 'Operational detail focus', differentiation_basis: { emphasis: 'delivery' } }
+    ], control_plane_contract_version: CONTRACT, public_safety: 'PASS'
+  };
+  const projected = projectUc6FreshSyntheticScenarios(payload, { expectedJobId: JOB, expectedSourceSha: SHA });
+  assert.equal(projected.scenario_options.length, 2);
+  assert.equal(validateUc6SyntheticScenarioBindingCommand('operator', projected.scenario_options).ok, true);
+  assert.equal(validateUc6SyntheticScenarioBindingCommand('unknown', projected.scenario_options).ok, false);
+  const sourceReady = { ...payload, onboarding_state: 'source_ready', scenario_options: [] };
+  assert.equal(projectUc6FreshSyntheticScenarios(sourceReady, { expectedJobId: JOB, expectedSourceSha: SHA }).onboarding_state, 'source_ready');
+  assert.throws(() => projectUc6FreshSyntheticScenarios({ ...payload, onboarding_state: 'persona_selection_ready' }, { expectedJobId: JOB, expectedSourceSha: SHA }), /invalid_persona_catalog/);
+  assert.throws(() => projectUc6FreshSyntheticScenarios({ ...payload, schema_version: 'fabricated_dynamic_schema_v1' }, { expectedJobId: JOB }), /invalid_persona_catalog/);
+  assert.throws(() => projectUc6FreshSyntheticScenarios({ ...payload, unexpected: true }, { expectedJobId: JOB }), /invalid_persona_catalog_fields/);
+});
+
+test('Persona binding projection matches the exact live backend schema and field envelope', () => {
+  const binding = {
+    schema_version: PERSONA_BINDING_SCHEMA,
+    job_id: JOB,
+    source_pptx_sha256: SHA,
+    selection_state: 'bound',
+    bound_scenario: PERSONA,
+    disposition: 'created',
+    public_safety: 'PASS'
+  };
+  const options = { expectedJobId: JOB, expectedSourceSha: SHA, expectedScenarioKey: PERSONA.scenario_key };
+  assert.deepEqual(projectUc6FreshSyntheticScenarioBinding(binding, options), binding);
+  for (const disposition of ['created', 'replayed', 'resolved']) assert.equal(projectUc6FreshSyntheticScenarioBinding({ ...binding, disposition }, options).disposition, disposition);
+  for (const invalid of [
+    { ...binding, schema_version: 'wrong' },
+    { ...binding, job_id: 'fd_uc6_admin_other_job_001' },
+    { ...binding, source_pptx_sha256: 'd'.repeat(64) },
+    { ...binding, selection_state: 'unbound' },
+    { ...binding, bound_scenario: { ...PERSONA, scenario_key: 'operator' } },
+    { ...binding, disposition: 'unknown' },
+    { ...binding, public_safety: 'FAIL' },
+    { ...binding, control_plane_contract_version: CONTRACT }
+  ]) assert.throws(() => projectUc6FreshSyntheticScenarioBinding(invalid, options));
+});
+
+test('selected-Persona source-generation submission enforces exact live structure and replay coherence', () => {
+  const queued = {
+    schema_version: SOURCE_GENERATION_SCHEMA,
+    job_id: JOB,
+    task_type: SOURCE_GENERATION_TASK,
+    task_id: 41,
+    queue_status: 'pending',
+    created: true,
+    state: 'synthetic_scenarios_queued',
+    source_pptx_sha256: SHA,
+    bound_scenario: PERSONA,
+    control_plane_contract_version: CONTRACT,
+    public_safety: 'PASS'
+  };
+  const options = { expectedJobId: JOB, expectedSourceSha: SHA, expectedScenarioKey: PERSONA.scenario_key };
+  assert.equal(projectUc6FreshSyntheticGenerationSubmission(queued, options).task_id, 41);
+  const doneWithoutRuntime = { ...queued, queue_status: 'done', created: false, state: 'synthetic_scenarios_failed' };
+  assert.equal(projectUc6FreshSyntheticGenerationSubmission(doneWithoutRuntime, options).queue_status, 'done');
+  const failedQueue = { ...queued, queue_status: 'failed', created: false, state: 'synthetic_scenarios_failed' };
+  assert.equal(projectUc6FreshSyntheticGenerationSubmission(failedQueue, options).queue_status, 'failed');
   const readyReplay = {
-    schema_version: 'backend_owned_r6e_c1_submission_v1',
-    job_id: JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_fresh_synthetic_scenario_generation',
+    ...queued,
     task_id: null,
     queue_status: 'ready',
     created: false,
     state: 'synthetic_scenarios_ready',
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS',
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    bound_scenario: r6eSyntheticScenario(1),
     network_call_count: 0,
-    replayed: true,
-    provider_attempt_count: 1
+    provider_attempt_count: 1,
+    replayed: true
   };
-  const before = JSON.stringify(readyReplay);
-  const projected = projectUc6FreshSyntheticGenerationSubmission(readyReplay, { expectedJobId: JOB_ID });
-  assert.equal(JSON.stringify(readyReplay), before);
-  assert.notStrictEqual(projected, readyReplay);
-  assert.equal(projected.state, 'synthetic_scenarios_ready');
-  assert.equal(projected.queue_status, 'ready');
-  assert.equal(projected.task_id, null);
-  assert.equal(projected.created, false);
-  assert.equal(projected.source_pptx_sha256, R6C_SOURCE_SHA);
-  assert.equal(projected.bound_scenario.scenario_key, 'scenario_001');
-  assert.equal('synthetic_scenario_family_id' in projected, false);
-  assert.equal('scenario_count' in projected, false);
-  assert.equal('package_count' in projected, false);
-  assert.equal(projected.network_call_count, 0);
-  assert.equal(projected.replayed, true);
-  assert.equal(projected.provider_attempt_count, 1);
+  assert.equal(projectUc6FreshSyntheticGenerationSubmission(readyReplay, options).replayed, true);
+  const incompleteReady = clone(readyReplay); delete incompleteReady.replayed;
+  assert.throws(() => projectUc6FreshSyntheticGenerationSubmission(incompleteReady, options), /invalid_source_generation_ready_replay/);
+  assert.throws(() => projectUc6FreshSyntheticGenerationSubmission({ ...readyReplay, network_call_count: 1 }, options), /invalid_source_generation_ready_replay/);
 
-  const readyWithoutTaskType = cloneFixture(readyReplay);
-  delete readyWithoutTaskType.task_type;
-  assert.equal(projectUc6FreshSyntheticGenerationSubmission(readyWithoutTaskType, { expectedJobId: JOB_ID }).task_type, undefined);
+  for (const invalid of [
+    { ...queued, schema_version: 'wrong' },
+    { ...queued, task_type: 'wrong' },
+    { ...queued, queue_status: 'processing' },
+    { ...queued, task_id: null },
+    { ...queued, source_pptx_sha256: 'd'.repeat(64) },
+    { ...queued, bound_scenario: { ...PERSONA, scenario_key: 'operator' } },
+    { ...queued, public_safety: 'FAIL' },
+    { ...queued, private_receipt: 'internal' }
+  ]) assert.throws(() => projectUc6FreshSyntheticGenerationSubmission(invalid, options));
 });
 
-test('ACTIVE Fresh rejects malformed ready replay operational fields', () => {
-  const invalidReadyMutations = [
-    (v) => { v.queue_status = 'done'; },
-    (v) => { v.task_id = 812; },
-    (v) => { v.created = true; },
-    (v) => { v.source_pptx_sha256 = 'bad'; },
-    (v) => { v.bound_scenario.scenario_key = '../invalid'; },
-    (v) => { v.network_call_count = -1; },
-    (v) => { v.replayed = 'true'; },
-    (v) => { v.provider_attempt_count = -1; }
-  ];
-  for (const mutate of invalidReadyMutations) {
-    const payload = r6eSyntheticSubmission('synthetic_scenarios_ready');
-    mutate(payload);
-    assert.throws(() => projectUc6FreshSyntheticGenerationSubmission(payload, { expectedJobId: JOB_ID }), TypeError);
-  }
-});
-
-test('ACTIVE Fresh GET projects dynamic Persona Catalog membership before generation', () => {
-  const payload = r6eSyntheticGet();
-  const before = JSON.stringify(payload);
-  const projected = projectUc6FreshSyntheticScenarios(payload, { expectedJobId: JOB_ID, expectedSourceSha: R6C_SOURCE_SHA });
-  assert.equal(JSON.stringify(payload), before);
-  assert.deepEqual(projected.scenario_options.map((row) => row.scenario_key), ['scenario_000', 'scenario_001']);
-  assert.equal(projected.generation_state, 'not_started');
-  assert.notStrictEqual(projected.scenario_options, payload.scenario_options);
-  assert.notStrictEqual(projected.scenario_options[0], payload.scenario_options[0]);
-  assert.equal(projected.scenario_options[1].differentiation_basis, null);
-
-  for (const state of ['not_started', 'generation_queued', 'generation_running', 'generation_failed']) {
-    assert.equal(projectUc6FreshSyntheticScenarios(r6eSyntheticGet(state), { expectedJobId: JOB_ID }).generation_state, state);
-  }
-  const bound = projectUc6FreshSyntheticScenarios(r6eSyntheticGet('generation_ready', 'bound'), { expectedJobId: JOB_ID });
-  assert.equal(bound.bound_scenario.scenario_key, 'scenario_001');
-
-  const mutations = [
-    (v) => { v.scenario_options[1].scenario_key = 'scenario_000'; },
-    (v) => { v.scenario_options[0].synthetic_scenario_family_id = 'other_family'; },
-    (v) => { v.scenario_options[0].package_id = 'internal_package'; },
-    (v) => { delete v.scenario_options[0].differentiation_basis; },
-    (v) => { v.scenario_options[0].source_context = { secret: true }; },
-    (v) => { v.scenario_options[0].scenario_summary = 'C:\\private\\source.json'; },
-    (v) => { v.public_safety = 'FAIL'; },
-    (v) => { v.provider_receipt_id = 'private'; },
-    (v) => { v.synthetic_scenario_family_id = 'private_family'; },
-    (v) => { v.scenario_count = 2; },
-    (v) => { v.package_count = 1; }
-  ];
-  for (const mutate of mutations) {
-    const candidate = r6eSyntheticGet();
-    mutate(candidate);
-    assert.throws(() => projectUc6FreshSyntheticScenarios(candidate, { expectedJobId: JOB_ID }), TypeError);
-  }
-  for (const count of [2, 3, 4]) {
-    const candidate = r6eSyntheticGet();
-    while (candidate.scenario_options.length < count) candidate.scenario_options.push(r6eSyntheticScenario(candidate.scenario_options.length));
-    assert.equal(projectUc6FreshSyntheticScenarios(candidate, { expectedJobId: JOB_ID }).scenario_options.length, count);
-  }
-  assert.equal(projectUc6FreshSyntheticScenarios(r6eSyntheticGet('not_started'), { expectedJobId: JOB_ID }).scenario_options.length, 2);
-  const unboundWithBoundScenario = r6eSyntheticGet();
-  unboundWithBoundScenario.bound_scenario = r6eSyntheticScenario(0);
-  assert.throws(() => projectUc6FreshSyntheticScenarios(unboundWithBoundScenario, { expectedJobId: JOB_ID }), TypeError);
-  assert.throws(() => projectUc6FreshSyntheticScenarios(r6eSyntheticGet('generation_running', 'unbound'), { expectedJobId: JOB_ID }), /unbound_generation_state/);
-});
-
-test('ACTIVE Fresh binding returns only immutable Persona public data', () => {
-  for (const disposition of ['created', 'replayed', 'resolved']) {
-    const payload = r6eSyntheticBinding('scenario_001', disposition);
-    const projected = projectUc6FreshSyntheticScenarioBinding(payload, {
-      expectedJobId: JOB_ID,
-      expectedScenarioKey: 'scenario_001',
-      expectedSourceSha: R6C_SOURCE_SHA
-    });
-    assert.equal(projected.disposition, disposition);
-    assert.equal(projected.bound_scenario.scenario_key, 'scenario_001');
-    assert.deepEqual(Object.keys(projected.bound_scenario), ['scenario_key', 'label', 'scenario_summary', 'differentiation_basis']);
-    assert.notStrictEqual(projected.bound_scenario, payload.bound_scenario);
-  }
-  const mutations = [
-    (v) => { v.selection_state = 'unbound'; },
-    (v) => { v.disposition = 'changed'; },
-    (v) => { v.public_safety = 'FAIL'; },
-    (v) => { v.bound_scenario.package_id = ''; },
-    (v) => { v.absolute_path = 'C:\\private'; }
-  ];
-  for (const mutate of mutations) {
-    const payload = r6eSyntheticBinding();
-    mutate(payload);
-    assert.throws(() => projectUc6FreshSyntheticScenarioBinding(payload, {
-      expectedJobId: JOB_ID,
-      expectedScenarioKey: 'scenario_001'
-    }), TypeError);
-  }
-  assert.throws(() => projectUc6FreshSyntheticScenarioBinding(r6eSyntheticBinding('scenario_000'), {
-    expectedJobId: JOB_ID,
-    expectedScenarioKey: 'scenario_001'
-  }), TypeError);
-});
-
-test('R6E-C2 state mapping is synthetic-only for queued/running and terminal within the C2 stage', () => {
-  for (const state of ['synthetic_scenarios_queued', 'synthetic_scenarios_running']) {
-    const mapped = mapUc6StateToView(state);
-    assert.equal(mapped.known, true);
-    assert.equal(mapped.syntheticScenariosPollable, true);
-    assert.equal(mapped.pollable, false);
-    assert.equal(mapped.renderPollable, undefined);
-    assert.equal(mapped.onboardingPollable, undefined);
-  }
-  for (const state of ['synthetic_scenarios_ready', 'synthetic_scenario_bound', 'synthetic_scenarios_failed']) {
-    const mapped = mapUc6StateToView(state);
-    assert.equal(mapped.known, true);
-    assert.equal(mapped.syntheticScenariosPollable, false);
-    assert.equal(mapped.pollable, false);
-    assert.equal(mapped.renderPollable, undefined);
-    assert.equal(mapped.onboardingPollable, undefined);
-  }
-});
-
-test('ACTIVE Fresh app source enforces Persona selection before one-shot source generation and render', () => {
-  assert.deepEqual(projectUc6PersistedState({
-    job_id: JOB_ID,
-    fresh_onboarding_expected: true,
-    fresh_synthetic_expected: true,
-    synthetic_generation_submitted: true,
-    synthetic_generation_submission_ambiguous: true,
-    synthetic_binding_submission_ambiguous: true,
-    selected_synthetic_scenario_key: 'scenario_002',
-    source_context: { private: true }
-  }), {
-    job_id: JOB_ID,
-    fresh_onboarding_expected: true,
-    fresh_synthetic_expected: true,
-    synthetic_generation_submitted: true,
-    synthetic_generation_submission_ambiguous: true,
-    synthetic_binding_submission_ambiguous: true
-  });
-
-  const app = readSource('../public/app.js');
-  const upload = extractFunctionBody(app, 'uploadUC6PptxJob');
-  const reconcile = extractFunctionBody(app, 'reconcileUC6FreshSyntheticScenarios');
-  const loadSynthetic = extractFunctionBody(app, 'loadUC6FreshSyntheticScenarios');
-  const submitGeneration = extractFunctionBody(app, 'submitUC6FreshSyntheticGeneration');
-  const bind = extractFunctionBody(app, 'bindUC6FreshSyntheticScenario');
-  const renderSynthetic = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
-  const renderPackage = extractFunctionBody(app, 'renderUC6PackageStage');
-  const loadLegacy = extractFunctionBody(app, 'loadUC6PackageOptions');
-  const loadAsset = extractFunctionBody(app, 'loadUC6ReusableAssetPackages');
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const polling = extractFunctionBody(app, 'pollUC6JobStatus');
-  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
-  const mapGenerationState = createExtractedFunction(app, 'mapUC6SyntheticGenerationStateToJobState');
-
-  assert.equal(upload.includes('loadUC6PackageOptions'), false);
-  assert.equal(upload.includes('reconcileUC6FreshSyntheticScenarios'), true);
-  assert.equal(reconcile.includes('loadUC6FreshSyntheticScenarios'), true);
-  assert.equal(reconcile.includes('submitUC6FreshSyntheticGeneration'), false);
-  assert.equal(loadSynthetic.includes('getFreshSyntheticScenarios'), true);
-  assert.equal(submitGeneration.includes('uc6State.syntheticGenerationSubmitted'), true);
-  assert.equal(submitGeneration.includes('uc6State.syntheticGenerationSubmissionAmbiguous'), true);
-  assert.ok(submitGeneration.indexOf('uc6State.syntheticGenerationSubmitted = true') < submitGeneration.indexOf('api.submitFreshSyntheticScenarios'));
-  assert.equal((submitGeneration.match(/api\.submitFreshSyntheticScenarios/g) || []).length, 1);
-  assert.equal(submitGeneration.includes('submitDummyDatabagRender'), false);
-  assert.equal(resume.includes('refreshUC6JobStatus'), true);
-  assert.equal(resume.includes('submitFreshSyntheticScenarios'), false);
-  assert.equal(polling.includes('isUC6JobPollingPending()'), true);
-  assert.equal(pollingDecision.includes('syntheticScenariosPollable'), true);
-  assert.equal(mapGenerationState('generation_ready', 'bound'), 'synthetic_scenarios_ready');
-  assert.equal(mapGenerationState('not_started', 'bound'), 'synthetic_scenario_bound');
-
-  assert.equal(renderSynthetic.includes('uc6State.syntheticScenarioOptions.length === 2'), false);
-  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_000'"), false);
-  assert.equal(renderSynthetic.includes("scenario_key === 'scenario_001'"), false);
-  assert.equal(renderSynthetic.includes("data.uc6SyntheticScenario"), false);
-  assert.equal(renderSynthetic.includes('action.dataset.uc6SyntheticScenario = scenario.scenario_key'), true);
-  assert.equal(renderSynthetic.includes('실제 고객 정보가 아닙니다'), true);
-  assert.equal(renderSynthetic.includes("isBound || uc6State.operationInFlight || uc6State.syntheticBindingSubmissionAmbiguous"), true);
-  assert.equal(renderSynthetic.includes('uc6-submitFreshSyntheticGenerationBtn'), true);
-  assert.equal(renderSynthetic.includes('uc6-submitFreshRenderBtn'), true);
-  assert.equal(renderPackage.includes('renderUC6FreshSyntheticScenarioStage'), true);
-
-  assert.equal(bind.includes('bindFreshSyntheticScenario'), true);
-  assert.equal(bind.includes('expectedScenarioKey: option.scenario_key'), true);
-  assert.equal(bind.includes("uc6State.syntheticGenerationState !== 'not_started'"), true);
-  assert.equal(bind.includes("uc6State.jobState = 'synthetic_scenario_bound'"), true);
-  assert.equal(bind.includes('submitDummyDatabagRender'), false);
-  assert.equal(bind.includes('submitReusableAssetRender'), false);
-  assert.equal(bind.includes('startUC6Polling'), false);
-  assert.equal(submitGeneration.includes("uc6State.syntheticSelectionState !== 'bound'"), true);
-  assert.equal(submitGeneration.includes("uc6State.syntheticGenerationState !== 'not_started'"), true);
-  assert.equal(loadLegacy.includes('getDummyDatabagPackageFamilies'), true, 'static/curated package family flow remains');
-  assert.equal(loadAsset.includes('getReusableAssetPackages'), true, 'reusable Asset flow remains');
-});
-
-function r6eD2RenderSubmission(state = 'render_queued') {
-  return {
-    schema_version: 'backend_owned_r6e_d2_render_submission_v1',
-    job_id: JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario',
-    task_id: state === 'render_completed' ? null : 913,
-    queue_status: {
-      render_queued: 'pending',
-      render_running: 'processing',
-      render_completed: 'ready',
-      failed: 'failed'
-    }[state],
-    created: state === 'render_queued',
-    state,
-    selection_state: 'bound',
-    bound_scenario: r6eSyntheticScenario(1),
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS'
-  };
-}
-
-function r6eD2RenderJob(state = 'render_completed', disposition = {}) {
-  const payload = {
-    job_id: JOB_ID,
-    state,
-    source: {
-      sha256: R6C_SOURCE_SHA,
-      size_bytes: 4096,
-      slide_count: 12,
-      filename: 'fresh-source.pptx'
-    },
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION
-  };
-  if (state === 'render_completed') {
-    payload.render = {
-      schema_version: 'backend_owned_r6e_d2_render_result_v1',
-      job_id: JOB_ID,
-      state: 'render_completed',
-      render_state: 'render_completed',
-      source_pptx_sha256: R6C_SOURCE_SHA,
-      final_artifacts: {
-        pptx: { alias: 'final_render_output_pptx', sha256: 'b'.repeat(64), size_bytes: 8192 },
-        pdf: { alias: 'final_render_output_pdf', sha256: 'c'.repeat(64), size_bytes: 6144 }
-      },
-      disposition_summary: {
-        validation_status: 'ready_with_review',
-        final_validation_status: 'ready',
-        generated_count: 44,
-        private_fallback_count: 15,
-        expected_slot_count: 59,
-        blocking_issue_count: 0,
-        red_marker_count: 0,
-        ...disposition
-      },
-      control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-      public_safety: 'PASS'
-    };
-  }
-  return payload;
-}
-
-test('R6E-D2 render endpoint is normalized and submits one Firebase-only bodyless POST', async () => {
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.syntheticScenarioRender(`  ${JOB_ID}  `),
-    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/synthetic-scenarios/render`
-  );
-  const calls = [];
-  const refreshes = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async (forceRefresh) => { refreshes.push(forceRefresh); return 'firebase-r6e-d2-token'; },
-    fetchImpl: async (url, init) => { calls.push({ url, init }); return response(200, r6eD2RenderSubmission()); }
-  });
-  await api.submitFreshSyntheticScenarioRender(JOB_ID);
-  assert.deepEqual(refreshes, [true]);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/synthetic-scenarios/render`);
-  assert.equal(calls[0].init.method, 'POST');
-  assert.equal(calls[0].init.body, undefined);
-  assert.equal(calls[0].init.headers['Content-Type'], undefined);
-  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-r6e-d2-token');
-  assert.equal(calls[0].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
-  assert.equal(calls[0].init.cache, 'no-store');
-  assert.equal(calls[0].init.credentials, 'omit');
-
-  let attempts = 0;
-  const ambiguousApi = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-token',
-    fetchImpl: async () => { attempts += 1; throw new Error('network unavailable'); }
-  });
-  await assert.rejects(() => ambiguousApi.submitFreshSyntheticScenarioRender(JOB_ID), {
-    name: 'Uc6AmbiguousSubmissionError',
-    code: 'ambiguous_submission'
-  });
-  assert.equal(attempts, 1, 'ambiguous POST is never replayed');
-});
-
-test('ACTIVE Fresh render submission accepts Persona-only binding and retains queue semantics', () => {
-  for (const state of ['render_queued', 'render_running', 'failed']) {
-    const projected = projectUc6FreshSyntheticRenderSubmission(r6eD2RenderSubmission(state), {
-      expectedJobId: JOB_ID,
-      expectedScenarioKey: 'scenario_001'
-    });
-    assert.equal(projected.state, state);
-    assert.equal(projected.selection_state, 'bound');
-    assert.deepEqual(Object.keys(projected.bound_scenario), ['scenario_key', 'label', 'scenario_summary', 'differentiation_basis']);
-  }
-  const retained = projectUc6FreshSyntheticRenderSubmission(r6eD2RenderSubmission('render_completed'), {
-    expectedJobId: JOB_ID,
-    expectedScenarioKey: 'scenario_001'
-  });
-  assert.equal(retained.state, 'render_completed');
-  assert.equal(retained.task_id, null);
-  assert.equal(retained.created, false);
-
-  for (const mutate of [
-    (v) => { v.job_id = 'fd_uc6_admin_other_12345'; },
-    (v) => { v.task_type = 'fetchdoc_browser_admin_uc6_render_dummy_databag'; },
-    (v) => { v.selection_state = 'unbound'; },
-    (v) => { v.public_safety = 'FAIL'; },
-    (v) => { v.provider_request_id = 'private'; },
-    (v) => { v.bound_scenario.package_id = 'private_package'; }
-  ]) {
-    const payload = r6eD2RenderSubmission();
-    mutate(payload);
-    assert.throws(() => projectUc6FreshSyntheticRenderSubmission(payload, {
-      expectedJobId: JOB_ID,
-      expectedScenarioKey: 'scenario_001'
-    }), TypeError);
-  }
-});
-
-test('R6E-D2 job projection resumes queued/running/failed without a submission and exposes completed artifacts', () => {
-  for (const state of ['render_queued', 'render_running', 'failed']) {
-    const projected = projectUc6FreshSyntheticRenderJobStatus(r6eD2RenderJob(state), { expectedJobId: JOB_ID });
-    assert.equal(projected.state, state);
-    assert.equal(projected.render, null);
-  }
-  const completed = projectUc6FreshSyntheticRenderJobStatus(r6eD2RenderJob(), { expectedJobId: JOB_ID });
-  assert.equal(completed.state, 'render_completed');
-  assert.equal(completed.final_artifacts.pptx.alias, 'final_render_output_pptx');
-  assert.equal(completed.final_artifacts.pdf.alias, 'final_render_output_pdf');
-  assert.equal(completed.disposition.generated_count, 44);
-  assert.equal(completed.disposition.private_fallback_count, 15);
-  assert.equal(completed.review_required, true);
-
-  const noFallback = r6eD2RenderJob('render_completed', {
-    validation_status: 'ready',
-    generated_count: 59,
-    private_fallback_count: 0
-  });
-  assert.equal(projectUc6FreshSyntheticRenderJobStatus(noFallback, { expectedJobId: JOB_ID }).review_required, false);
-
-  const mismatched = r6eD2RenderJob();
-  mismatched.render.disposition_summary.generated_count = 43;
-  assert.throws(() => projectUc6FreshSyntheticRenderJobStatus(mismatched, { expectedJobId: JOB_ID }), /count_mismatch/);
-  const unsafe = r6eD2RenderJob();
-  unsafe.render.provider_request_id = 'private';
-  assert.throws(() => projectUc6FreshSyntheticRenderJobStatus(unsafe, { expectedJobId: JOB_ID }), TypeError);
-});
-
-test('R6E-D2 render control enables only authoritative bound selection and locks exactly once', () => {
-  const base = {
-    selectionState: 'bound',
-    boundScenario: r6eSyntheticScenario(1),
-    publicState: 'synthetic_scenarios_ready',
-    submitted: false,
-    ambiguous: false,
-    inFlight: false
-  };
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, selectionState: 'unbound' }).canSubmit, false);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, boundScenario: null }).canSubmit, false);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'synthetic_scenario_bound' }).canSubmit, false);
-  assert.equal(projectUc6FreshSyntheticRenderControl(base).canSubmit, true);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, inFlight: true }).canSubmit, false);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, submitted: true }).canSubmit, false);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, submitted: true }).renderPollable, true);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'render_queued' }).renderPollable, true);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'render_running' }).renderPollable, true);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, publicState: 'render_completed' }).completed, true);
-  assert.equal(projectUc6FreshSyntheticRenderControl({ ...base, ambiguous: true }).reconciliationRequired, true);
-});
-
-test('R6E-D2 persisted submission flags survive refresh without storing scenario or authority payloads', () => {
-  assert.deepEqual(projectUc6PersistedState({
-    job_id: JOB_ID,
-    fresh_onboarding_expected: true,
-    fresh_synthetic_expected: true,
-    fresh_render_submitted: true,
-    fresh_render_submission_ambiguous: true,
-    scenario_key: 'scenario_001',
-    package_id: 'synthetic_package_001',
-    provider_profile: 'private',
-    internal_path: 'C:\\private'
-  }), {
-    job_id: JOB_ID,
-    fresh_onboarding_expected: true,
-    fresh_synthetic_expected: true,
-    fresh_render_submitted: true,
-    fresh_render_submission_ambiguous: true
-  });
-});
-
-test('R6E-D2 app continuation reuses polling and capabilities, reconciles ambiguity, and stops before review/publication', () => {
-  const app = readSource('../public/app.js');
-  const admin = readSource('../public/uc6-browser-admin.mjs');
-  const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
-  const renderSelection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
-  const renderProgress = extractFunctionBody(app, 'renderUC6RenderStage');
-  const renderResult = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
-  const loadFreshDelivery = extractFunctionBody(app, 'loadUC6FreshRenderDeliveryState');
-  const download = extractFunctionBody(app, 'downloadUC6ReviewArtifact');
-  const staticRender = extractFunctionBody(app, 'submitUC6DummyRender');
-  const assetRender = extractFunctionBody(app, 'submitUC6ReusableAssetRender');
-  const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
-
-  assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
-  assert.ok(submit.indexOf('uc6State.freshRenderSubmitted = true') < submit.indexOf('api.submitFreshSyntheticScenarioRender'));
-  assert.equal(submit.includes('projectUc6FreshSyntheticRenderControl'), true);
-  assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false, 'mutation signal cannot be reused for ambiguous reconciliation GET');
-  assert.equal(submit.includes('startUC6JobObservation()'), true, 'ambiguous submission keeps observing the known job through the unified stream');
-  assert.equal(submit.includes('submitDummyDatabagRender'), false);
-  assert.equal(submit.includes('submitReusableAssetRender'), false);
-  assert.equal(refresh.includes('projectUc6FreshSyntheticRenderJobStatus'), true);
-  assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false, 'GET reconciliation cannot replay POST');
-  assert.equal(poll.includes('isUC6JobPollingPending()'), true);
-  assert.equal(pollingDecision.includes('isUC6FreshRenderSubmissionReconciliationPending()'), true);
-  assert.equal(renderSelection.includes('uc6-submitFreshRenderBtn'), true);
-  assert.equal(renderSelection.includes("selectionState: uc6State.syntheticSelectionState"), true);
-  assert.equal(renderProgress.includes('uc6State.freshSyntheticExpected'), true);
-  assert.equal(renderResult.includes('final_render_output_pdf'), true);
-  assert.equal(renderResult.includes('최종 PDF'), true);
-  assert.equal(renderResult.includes('생성된 PPTX'), true);
-  assert.equal(renderResult.includes('private_fallback_count'), true);
-  assert.equal(renderResult.includes('근거 데이터가 부족'), true);
-  assert.equal(renderResult.includes('submitUC6ReusableAssetPublication'), false);
-  assert.equal(renderResult.includes('loadUC6A8FReviewState'), false);
-  assert.equal(renderResult.includes('uc6-submitPublicationBtn'), false);
-  assert.equal(loadFreshDelivery.includes('getRenderArtifactCapabilities'), true);
-  assert.equal(loadFreshDelivery.includes('getReviewArtifactCapabilities'), false);
-  assert.equal(download.includes("uc6State.flowLane === 'asset_render' || uc6State.freshSyntheticExpected"), true);
-  assert.equal(admin.includes('X-Internal-Token'), false);
-  assert.equal(admin.includes('/data/'), false);
-  assert.equal(staticRender.includes('submitDummyDatabagRender'), true, 'static/curated render remains on its endpoint');
-  assert.equal(staticRender.includes('submitFreshSyntheticScenarioRender'), false);
-  assert.equal(assetRender.includes('submitReusableAssetRender'), true, 'reusable Asset render remains on its endpoint');
-  assert.equal(assetRender.includes('submitFreshSyntheticScenarioRender'), false);
-});
-
-test('R6E-D2 bounded delivery control separates execution polling from terminal capability resolution', () => {
-  for (const publicState of ['render_queued', 'render_running']) {
-    const control = projectUc6FreshRenderDeliveryControl({ publicState, deliveryStatus: 'idle' });
-    assert.equal(control.executionPollable, true);
-    assert.equal(control.executionTerminal, false);
-    assert.equal(control.shouldResolveCapabilities, false);
-  }
-
-  const firstCompletion = projectUc6FreshRenderDeliveryControl({
-    publicState: 'render_completed',
-    deliveryStatus: 'idle'
-  });
-  assert.equal(firstCompletion.executionPollable, false);
-  assert.equal(firstCompletion.executionTerminal, true);
-  assert.equal(firstCompletion.shouldResolveCapabilities, true);
-
-  for (const deliveryStatus of ['loading', 'ready', 'error']) {
-    const repeatedTick = projectUc6FreshRenderDeliveryControl({ publicState: 'render_completed', deliveryStatus });
-    assert.equal(repeatedTick.executionPollable, false);
-    assert.equal(repeatedTick.executionTerminal, true);
-    assert.equal(repeatedTick.shouldResolveCapabilities, false);
-  }
-
-  const bounded409 = projectUc6FreshRenderDeliveryControl({ publicState: 'render_completed', deliveryStatus: 'error' });
-  assert.equal(bounded409.deliveryReconciliationRequired, true);
-  assert.equal(projectUc6FreshRenderDeliveryControl({
-    publicState: 'render_completed',
-    deliveryStatus: 'error',
-    explicitRetry: true
-  }).shouldResolveCapabilities, true);
-  assert.equal(projectUc6FreshRenderDeliveryControl({
-    publicState: 'render_completed',
-    deliveryStatus: 'loading',
-    explicitRetry: true
-  }).shouldResolveCapabilities, false, 'double-click cannot duplicate a capability GET');
-});
-
-test('R6E-D2 shared Fresh terminal override dominates stale upstream state without breaking active lanes', () => {
-  const app = readSource('../public/app.js');
-  const terminalFor = (state) => executeExtractedFunction(app, 'isUC6FreshExecutionTerminal', {
-    uc6State: state,
-    projectUc6FreshRenderDeliveryControl
-  });
-  const syntheticPendingFor = (state) => executeExtractedFunction(app, 'isUC6FreshSyntheticPollingPending', {
-    uc6State: state
-  });
-  const sourcePendingFor = (state) => executeExtractedFunction(app, 'isUC6FreshSourceReconciliationPending', {
-    uc6State: state
-  });
-  const pollingFor = (state, pending = {}) => executeExtractedFunction(app, 'isUC6JobPollingPending', {
-    uc6State: state,
-    isUC6FreshExecutionTerminal: () => terminalFor(state),
-    mapUc6StateToView,
-    isUC6FreshSourceReconciliationPending: pending.source || (() => false),
-    isUC6FreshSyntheticPollingPending: pending.synthetic || (() => false),
-    isUC6FreshRenderSubmissionReconciliationPending: pending.render || (() => false)
-  });
-
-  const completedBase = {
-    flowLane: 'dummy_render',
-    freshOnboardingExpected: true,
-    freshSyntheticExpected: true,
-    jobState: 'render_completed',
-    reviewArtifactsStatus: 'idle',
-    syntheticGenerationSubmitted: true,
-    syntheticGenerationSubmissionAmbiguous: false
-  };
-  for (const syntheticGenerationState of ['not_started', 'generation_queued', 'generation_running']) {
-    const state = { ...completedBase, syntheticGenerationState };
-    assert.equal(syntheticPendingFor(state), true, `${syntheticGenerationState} is the reproduced stale upstream signal`);
-    assert.equal(terminalFor(state), true);
-    assert.equal(pollingFor(state, { synthetic: () => true }), false, `${syntheticGenerationState} cannot keep completion pollable`);
-  }
-
-  let staleSourceChecks = 0;
-  assert.equal(pollingFor(completedBase, {
-    source: () => { staleSourceChecks += 1; return true; },
-    synthetic: () => true,
-    render: () => true
-  }), false, 'terminal authority overrides every stale source/synthetic/render signal');
-  assert.equal(staleSourceChecks, 0, 'terminal override runs before stale upstream predicates');
-
-  for (const deliveryStatus of ['ready', 'error']) {
-    assert.equal(pollingFor({ ...completedBase, reviewArtifactsStatus: deliveryStatus }, {
-      source: () => true,
-      synthetic: () => true,
-      render: () => true
-    }), false, `capability ${deliveryStatus} cannot reactivate completed execution polling`);
-  }
-  assert.equal(pollingFor({ ...completedBase, jobState: 'failed' }, {
-    source: () => true,
-    synthetic: () => true,
-    render: () => true
-  }), false, 'failed Fresh render is terminal');
-
-  for (const jobState of ['render_queued', 'render_running']) {
-    assert.equal(pollingFor({ ...completedBase, jobState }), true, `${jobState} remains mapped as pollable`);
-  }
-  const syntheticActive = {
-    ...completedBase,
-    jobState: 'synthetic_scenarios_queued',
-    syntheticGenerationState: 'generation_queued'
-  };
-  assert.equal(pollingFor(syntheticActive, { synthetic: () => syntheticPendingFor(syntheticActive) }), true);
-  const submittedUnobserved = {
-    ...completedBase,
-    jobState: 'onboarding_ready',
-    syntheticGenerationState: 'not_started'
-  };
-  assert.equal(pollingFor(submittedUnobserved, { synthetic: () => syntheticPendingFor(submittedUnobserved) }), true);
-  const sourceReady = { ...completedBase, jobState: 'source_ready', syntheticGenerationSubmitted: false };
-  assert.equal(pollingFor(sourceReady, { source: () => sourcePendingFor(sourceReady) }), true);
-
-  assert.equal(pollingFor({ ...completedBase, freshSyntheticExpected: false, jobState: 'render_queued' }), true, 'Static curated render polling is unchanged');
-  assert.equal(pollingFor({ ...completedBase, flowLane: 'asset_render', jobState: 'render_running' }), true, 'Reusable Asset polling is unchanged');
-
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  assert.equal((resume.match(/isUC6JobPollingPending/g) || []).length, 1);
-  assert.equal((poll.match(/isUC6JobPollingPending/g) || []).length, 1);
-  assert.equal(resume.includes('isUC6FreshSyntheticPollingPending'), false, 'resume cannot bypass the shared terminal override');
-  assert.equal(poll.includes('isUC6FreshSyntheticPollingPending'), false, 'timer ticks cannot bypass the shared terminal override');
-});
-
-test('R6E-D2 persisted stale not_started resume completes delivery once and leaves no polling timer', () => {
-  const persisted = projectUc6PersistedState({
-    job_id: JOB_ID,
-    fresh_onboarding_expected: true,
-    fresh_synthetic_expected: true,
-    synthetic_generation_submitted: true,
-    fresh_render_submitted: true
-  });
-  assert.deepEqual(persisted, {
-    job_id: JOB_ID,
-    fresh_onboarding_expected: true,
-    fresh_synthetic_expected: true,
-    synthetic_generation_submitted: true,
-    fresh_render_submitted: true
-  });
-
-  const app = readSource('../public/app.js');
-  const state = {
-    flowLane: 'dummy_render',
-    freshOnboardingExpected: persisted.fresh_onboarding_expected,
-    freshSyntheticExpected: persisted.fresh_synthetic_expected,
-    syntheticGenerationSubmitted: persisted.synthetic_generation_submitted,
-    syntheticGenerationSubmissionAmbiguous: false,
-    syntheticGenerationState: 'not_started',
-    freshRenderSubmitted: persisted.fresh_render_submitted,
-    jobState: 'render_completed',
-    reviewArtifactsStatus: 'idle'
-  };
-  const terminal = () => executeExtractedFunction(app, 'isUC6FreshExecutionTerminal', {
-    uc6State: state,
-    projectUc6FreshRenderDeliveryControl
-  });
-  const staleSyntheticPending = () => executeExtractedFunction(app, 'isUC6FreshSyntheticPollingPending', {
-    uc6State: state
-  });
-  const shouldPoll = () => executeExtractedFunction(app, 'isUC6JobPollingPending', {
-    uc6State: state,
-    isUC6FreshExecutionTerminal: terminal,
-    mapUc6StateToView,
-    isUC6FreshSourceReconciliationPending: () => true,
-    isUC6FreshSyntheticPollingPending: staleSyntheticPending,
-    isUC6FreshRenderSubmissionReconciliationPending: () => true
-  });
-
-  let jobGetCount = 0;
-  let capabilityGetCount = 0;
-  let resultReconstructionCount = 0;
-  let syntheticScenarioRenderPostCount = 0;
-  let scheduledTick = null;
-  const acceptAuthoritativeCompletion = () => {
-    jobGetCount += 1;
-    state.jobState = 'render_completed';
-    resultReconstructionCount += 1;
-    const delivery = projectUc6FreshRenderDeliveryControl({
-      publicState: state.jobState,
-      deliveryStatus: state.reviewArtifactsStatus
-    });
-    if (delivery.shouldResolveCapabilities) {
-      capabilityGetCount += 1;
-      state.reviewArtifactsStatus = 'ready';
-    }
-    if (shouldPoll()) scheduledTick = acceptAuthoritativeCompletion;
-  };
-
-  assert.equal(staleSyntheticPending(), true, 'resume begins with the exact stale not_started + submitted state');
-  acceptAuthoritativeCompletion();
-  assert.equal(terminal(), true);
-  assert.equal(shouldPoll(), false);
-  assert.equal(scheduledTick, null, 'no polling timer remains scheduled');
-  if (scheduledTick) scheduledTick();
-  assert.equal(jobGetCount, 1, 'a later timer simulation cannot GET the job again');
-  assert.equal(capabilityGetCount, 1, 'artifact capabilities resolve exactly once from idle');
-  assert.equal(resultReconstructionCount, 1, 'the completed PDF/result surface is not rebuilt by a poll tick');
-  assert.equal(syntheticScenarioRenderPostCount, 0, 'resume never replays the render POST');
-  assert.equal(projectUc6FreshRenderDeliveryControl({
-    publicState: state.jobState,
-    deliveryStatus: state.reviewArtifactsStatus
-  }).shouldResolveCapabilities, false, 'successful capability resolution is bounded');
-
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  assert.equal(resume.includes('submitFreshSyntheticScenarioRender'), false);
-  assert.equal(poll.includes('submitFreshSyntheticScenarioRender'), false);
-  assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false);
-});
-
-test('R6E-D2 completed capability failure is a bounded delivery error with explicit read-only retry', () => {
-  const app = readSource('../public/app.js');
-  const loadFreshDelivery = extractFunctionBody(app, 'loadUC6FreshRenderDeliveryState');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const result = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const init = extractFunctionBody(app, 'initUC6');
-  const freshBranchStart = refresh.indexOf('if (authoritativeFreshRenderLane)');
-  const freshBranchEnd = refresh.indexOf('if (authoritativeFreshOnboardingLane)', freshBranchStart);
-  const freshBranch = refresh.slice(freshBranchStart, freshBranchEnd);
-
-  assert.equal(loadFreshDelivery.includes('projectUc6FreshRenderDeliveryControl'), true);
-  assert.equal(loadFreshDelivery.includes('deliveryControl.shouldResolveCapabilities'), true);
-  assert.equal((loadFreshDelivery.match(/getRenderArtifactCapabilities/g) || []).length, 1);
-  assert.equal(loadFreshDelivery.includes("uc6State.reviewArtifactsStatus = 'error'"), true);
-  assert.equal(loadFreshDelivery.includes('문서 생성은 완료되었지만 결과 파일 접근 정보를 확인하지 못했습니다'), true);
-  assert.equal(loadFreshDelivery.includes('submitFreshSyntheticScenarioRender'), false);
-  assert.equal(loadFreshDelivery.includes('startUC6Polling'), false);
-
-  assert.equal(refresh.includes('if (deliveryControl.executionTerminal) stopUC6Polling({ abortRequest: false })'), true);
-  assert.equal(refresh.includes('if (!deliveryControl.executionTerminal) clearUC6A8FReviewState'), true);
-  assert.equal(refresh.includes('if (deliveryControl.shouldResolveCapabilities)'), true);
-  assert.equal(freshBranch.includes("reviewArtifactsStatus !== 'ready'"), true, 'runtime Asset completion resolves delivery capabilities');
-  assert.equal(refresh.includes('submitFreshSyntheticScenarioRender'), false);
-  assert.equal(poll.includes('submitFreshSyntheticScenarioRender'), false);
-
-  assert.equal(result.includes('uc6-retryFreshDeliveryBtn'), true);
-  assert.equal(result.includes('결과 파일 접근 정보 다시 확인'), true);
-  assert.equal(result.includes('uc6-retryRenderBtn'), false);
-  assert.equal(init.includes("target.id === 'uc6-retryFreshDeliveryBtn'"), true);
-  assert.equal(init.includes('loadUC6FreshRenderDeliveryState(controller.signal, { explicitRetry: true })'), true);
-  assert.equal(init.includes('submitFreshSyntheticScenarioRender'), false);
-
-  assert.equal(resume.includes('await refreshUC6JobStatus'), true);
-  assert.equal(resume.includes('submitFreshSyntheticScenarioRender'), false);
-  assert.equal(resume.includes('submitFreshSyntheticScenarios'), false);
-  assert.equal(resume.includes('bindFreshSyntheticScenario'), false);
-});
-
-test('R6E-D2 capability 409, 5xx, and network failures stay single-attempt and read-only', async () => {
-  for (const failure of [
-    { label: '409', invoke: async () => response(409, { detail: { code: 'browser_admin_uc6_render_not_ready' } }), expectedStatus: 409 },
-    { label: '5xx', invoke: async () => response(503, { detail: { code: 'browser_admin_uc6_service_unavailable' } }), expectedStatus: 503 },
-    { label: 'network', invoke: async () => { throw new Error('network unavailable'); }, expectedStatus: undefined }
-  ]) {
-    const calls = [];
-    const api = createUc6BrowserAdminApi({
-      apiBaseUrl: API_BASE,
-      getIdToken: async () => 'firebase-delivery-token',
-      fetchImpl: async (url, init) => {
-        calls.push({ url, init });
-        return failure.invoke();
-      }
-    });
-    let rejection;
-    try {
-      await api.getRenderArtifactCapabilities(JOB_ID);
-      assert.fail(`${failure.label} capability GET must reject`);
-    } catch (error) {
-      rejection = error;
-    }
-    if (failure.expectedStatus !== undefined) assert.equal(rejection.status, failure.expectedStatus, failure.label);
-    assert.equal(calls.length, 1, `${failure.label} capability GET must not auto-retry`);
-    assert.equal(calls[0].init.method, 'GET');
-    assert.equal(calls[0].url.endsWith(`/jobs/${JOB_ID}/render-artifact-capabilities`), true);
-    assert.equal(calls.some((call) => call.url.endsWith(`/jobs/${JOB_ID}/synthetic-scenarios/render`)), false);
-  }
-});
-
-test.skip('retired R6F-B linked Scenario Family publication contract', () => {
-  const unpublished = projectUc6FreshReusableAssetPublication(freshUnpublishedPublicationPayload(), { expectedJobId: JOB_ID });
-  assert.equal(unpublished.publication_state, 'unpublished');
-  assert.equal(unpublished.linked_scenario_family.scenario_count, 3);
-  assert.deepEqual(unpublished.linked_scenario_family.ordered_scenario_keys, ['scenario_000', 'scenario_001', 'scenario_002']);
-  assert.equal(unpublished.linked_scenario_family.published_scenario_family_id, undefined);
-
-  const created = projectUc6FreshReusableAssetPublication(freshPublishedPublicationPayload(), { expectedJobId: JOB_ID });
-  assert.equal(created.publication_state, 'published');
-  assert.equal(created.idempotent_replay, false);
-  assert.equal(created.linked_scenario_family.published_scenario_family_id, 'scenario_family_publication_8290144ea5219754');
-  assert.equal(created.linked_scenario_family.publication_manifest_sha256, '2'.repeat(64));
-
-  const replayed = projectUc6FreshReusableAssetPublication(
-    freshPublishedPublicationPayload({ idempotent_replay: true }),
-    { expectedJobId: JOB_ID }
-  );
-  assert.equal(replayed.idempotent_replay, true, 'HTTP 200 exact replay projects the same published identities');
-  assert.deepEqual(replayed.published_asset, created.published_asset);
-  assert.deepEqual(replayed.linked_scenario_family, created.linked_scenario_family);
-
-  for (const forbiddenBeforePublication of [
-    { published_scenario_family_id: 'scenario_family_publication_8290144ea5219754' },
-    { publication_manifest_sha256: '2'.repeat(64) },
-    { link_identity: 'asset_scenario_family_link_8290144ea5219754' }
-  ]) {
-    assert.throws(() => projectUc6FreshReusableAssetPublication(
-      freshUnpublishedPublicationPayload({
-        linked_scenario_family: freshLinkedScenarioFamily(forbiddenBeforePublication)
-      }),
-      { expectedJobId: JOB_ID }
-    ), /invalid_uc6_reusable_asset_publication/);
-  }
-
-  for (const linkedScenarioFamily of [
-    freshLinkedScenarioFamily({ scenario_count: 1, ordered_scenario_keys: ['scenario_000'] }),
-    freshLinkedScenarioFamily({ ordered_scenario_keys: ['scenario_000', 'scenario_002', 'scenario_001'] }),
-    freshLinkedScenarioFamily({ ordered_scenario_keys: ['scenario_000'] }),
-    freshLinkedScenarioFamily({ scenario_family_artifact_sha256: 'BAD' }),
-    freshLinkedScenarioFamily({ source_context: { secret: true } })
-  ]) {
-    assert.throws(() => projectUc6FreshReusableAssetPublication(
-      freshUnpublishedPublicationPayload({ linked_scenario_family: linkedScenarioFamily }),
-      { expectedJobId: JOB_ID }
-    ));
-  }
-  assert.doesNotThrow(() => projectUc6ReusableAssetPublication(unpublishedPublicationPayload(), { expectedJobId: JOB_ID }), 'legacy A8 projection is unchanged');
-  assert.doesNotThrow(() => projectUc6ReusableAssetPublication(publishedPublicationPayload(), { expectedJobId: JOB_ID }), 'legacy A8 published projection is unchanged');
-});
-
-test('R6F-B publication projectors enforce exact lane-specific top-level schema authority', () => {
-  const freshPayload = freshUnpublishedPublicationPayload();
-  const legacyPayload = unpublishedPublicationPayload();
-  assert.equal(freshPayload.schema_version, 'uc6_a9_0g2a_r6f_a_fresh_reusable_asset_publication_projection_v1');
-  assert.equal(legacyPayload.schema_version, 'uc6_e2e4c2c_a8b_browser_admin_reusable_asset_publication_projection_v1');
-  assert.throws(
-    () => projectUc6ReusableAssetPublication(freshPayload, { expectedJobId: JOB_ID }),
-    /invalid_uc6_reusable_asset_publication/,
-    'legacy A8 projector rejects the Fresh R6F-A schema'
-  );
-  assert.throws(
-    () => projectUc6FreshReusableAssetPublication(legacyPayload, { expectedJobId: JOB_ID }),
-    /invalid_uc6_reusable_asset_publication/,
-    'Fresh projector rejects the legacy A8 schema'
-  );
-});
-
-test.skip('retired R6F-B Fresh publication linked-family receipt', () => {
-  const payload = liveFreshUnpublishedPublicationPayload();
-  const projected = projectUc6FreshReusableAssetPublication(payload, { expectedJobId: LIVE_FRESH_JOB_ID });
-  assert.equal(projected.review_state, 'review_pending');
-  assert.equal(projected.publication_state, 'unpublished');
-  assert.equal(projected.reviewed_final_pptx_sha256, '7eec8e9cf43d379561f7a6c7dcd63fc934159100d4a1deccd209ac268a06d2fc');
-  assert.equal(projected.reviewed_final_pdf_sha256, 'a6b1298ceca55203e8f4c5520aa7c7df0ceb95f3ac8abbdf9ac8007bf086b9b3');
-  assert.deepEqual(projected.linked_scenario_family, {
-    synthetic_scenario_family_id: 'fresh_synthetic_8290144ea521975465db67c7a46aca9b',
-    scenario_count: 3,
-    ordered_scenario_keys: ['scenario_000', 'scenario_001', 'scenario_002'],
-    scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3'
-  });
-  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'published_scenario_family_id'), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'publication_manifest_sha256'), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'link_identity'), false);
-});
-
-test.skip('retired R6F-B linked-family publication identity', () => {
-  const payload = liveFreshPublishedPublicationPayload();
-  const projected = projectUc6FreshReusableAssetPublication(payload, { expectedJobId: LIVE_FRESH_JOB_ID });
-  assert.equal(projected.publication_state, 'published');
-  assert.equal(projected.idempotent_replay, false);
-  assert.equal(projected.published_asset.asset_id, 'reusable_template_asset__b1cdbd6ca2ff94b40e90b5cf55cbd596a224aca1');
-  assert.equal(projected.published_asset.source_pptx_sha256, 'c7f6aa39870873fce264bafe69c452741f3f08044835f99e504ddf2b02022b08');
-  assert.equal(projected.linked_scenario_family.published_scenario_family_id, 'published_scenario_family__95e6dc2b2aa7044913c50a0b6355d28a3fb139e5');
-  assert.equal(projected.linked_scenario_family.publication_manifest_sha256, '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12');
-  assert.equal(projected.linked_scenario_family.link_identity, 'reusable_asset_scenario_family_link__eeff53ae3e65cea12e9d61e31af56f2bad1580d5');
-  assert.equal(Object.prototype.hasOwnProperty.call(projected.linked_scenario_family, 'immutable_link_identity'), false);
-
-  const publishedFamily = payload.linked_scenario_family;
-  const { link_identity: _linkIdentity, ...withoutLinkIdentity } = publishedFamily;
-  const { publication_manifest_sha256: _manifestSha, ...withoutManifest } = publishedFamily;
-  const { published_scenario_family_id: _publishedFamilyId, ...withoutPublishedFamilyId } = publishedFamily;
-  for (const linked_scenario_family of [withoutLinkIdentity, withoutManifest, withoutPublishedFamilyId]) {
-    assert.throws(() => projectUc6FreshReusableAssetPublication(
-      liveFreshPublishedPublicationPayload({ linked_scenario_family }),
-      { expectedJobId: LIVE_FRESH_JOB_ID }
-    ), /invalid_uc6_reusable_asset_publication/);
-  }
-  assert.throws(() => projectUc6FreshReusableAssetPublication(
-    liveFreshPublishedPublicationPayload({
-      linked_scenario_family: { ...publishedFamily, immutable_link_identity: publishedFamily.link_identity }
-    }),
-    { expectedJobId: LIVE_FRESH_JOB_ID }
-  ), /invalid_fresh_linked_scenario_family_fields/, 'old invented field remains strictly rejected');
-  assert.throws(() => projectUc6FreshReusableAssetPublication(
-    liveFreshPublishedPublicationPayload({
-      linked_scenario_family: { ...publishedFamily, link_identity: '../unsafe-link' }
-    }),
-    { expectedJobId: LIVE_FRESH_JOB_ID }
-  ), /invalid_uc6_reusable_asset_publication/);
-});
-
-test('R6F-B Fresh publication GET and explicit POST reuse the Firebase-only one-shot route', async () => {
-  const calls = [];
-  const command = {
-    decision: 'approve_for_reuse_and_publish',
-    decision_identity: 'a8f-r6f-b-stable-001',
-    reviewed_final_pptx_sha256: 'a'.repeat(64),
-    reviewed_final_pdf_sha256: 'b'.repeat(64),
-    administrator_note: 'Fresh final artifacts and linked family reviewed.'
-  };
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-r6f-b-token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return init.method === 'GET'
-        ? response(200, freshUnpublishedPublicationPayload())
-        : response(201, freshPublishedPublicationPayload());
-    }
-  });
-  const readiness = projectUc6FreshReusableAssetPublication(
-    await api.getReusableAssetPublication(JOB_ID),
-    { expectedJobId: JOB_ID }
-  );
-  assert.equal(readiness.review_state, 'review_pending');
-  const published = projectUc6FreshReusableAssetPublication(
-    await api.submitReusableAssetPublication(JOB_ID, command),
-    { expectedJobId: JOB_ID }
-  );
-  assert.equal(published.publication_state, 'published');
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].init.method, 'GET');
-  assert.equal(calls[1].init.method, 'POST');
-  assert.equal(calls[1].init.headers.Authorization, 'Bearer firebase-r6f-b-token');
-  assert.equal(calls[1].init.headers[['X', 'Internal', 'Token'].join('-')], undefined);
-  assert.deepEqual(Object.keys(JSON.parse(calls[1].init.body)).sort(), Object.keys(command).sort());
-  assert.deepEqual(JSON.parse(calls[1].init.body), command);
-  assert.equal(JSON.stringify(calls).includes('principal'), false);
-});
-
-test('R6F-B exact artifact hash binding fails closed before publication', () => {
-  const app = readSource('../public/app.js');
-  const assertParity = (publication, renderStatus) => executeExtractedFunction(app, 'assertUC6PublicationArtifactParity', {
-    uc6State: { renderStatus },
-    publication
-  });
-  const renderStatus = {
-    final_artifacts: {
-      pptx: { sha256: 'a'.repeat(64) },
-      pdf: { sha256: 'b'.repeat(64) }
-    }
-  };
-  const publication = projectUc6FreshReusableAssetPublication(freshUnpublishedPublicationPayload(), { expectedJobId: JOB_ID });
-  assert.doesNotThrow(() => assertParity(publication, renderStatus));
-  assert.throws(
-    () => assertParity({ ...publication, reviewed_final_pdf_sha256: 'c'.repeat(64) }, renderStatus),
-    /review_artifact_sha_mismatch/
-  );
-
-  const submit = extractFunctionBody(app, 'submitUC6ReusableAssetPublication');
-  assert.ok(submit.indexOf('hasUC6PublicationArtifactParity') < submit.indexOf('ensureUC6PublicationDecisionIdentity()'));
-  assert.ok(submit.indexOf('publicationRequestActive = true') < submit.indexOf('submitReusableAssetPublication'));
-  assert.equal((submit.match(/submitReusableAssetPublication/g) || []).length, 1);
-  assert.equal(submit.includes('submitFreshSyntheticScenarioRender'), false);
-  assert.equal(submit.includes('submitFreshSyntheticScenarios'), false);
-  assert.equal(submit.includes('bindFreshSyntheticScenario'), false);
-});
-
-test('R6F-B Fresh completion loads delivery and publication independently without execution polling', () => {
-  const app = readSource('../public/app.js');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const freshStart = refresh.indexOf('if (authoritativeFreshRenderLane)');
-  const freshEnd = refresh.indexOf('if (authoritativeFreshOnboardingLane)', freshStart);
-  const freshBranch = refresh.slice(freshStart, freshEnd);
-  const loadPublication = extractFunctionBody(app, 'loadUC6FreshPublicationState');
-  const loadDelivery = extractFunctionBody(app, 'loadUC6FreshRenderDeliveryState');
-  const pollingDecision = extractFunctionBody(app, 'isUC6JobPollingPending');
-
-  assert.equal(freshBranch.includes("projected.state === 'render_completed'"), true);
-  assert.equal(freshBranch.includes('loadUC6FreshRenderDeliveryState'), true);
-  assert.equal(freshBranch.includes('loadUC6FreshPublicationState'), true);
-  assert.ok(freshBranch.indexOf('loadUC6FreshRenderDeliveryState') < freshBranch.indexOf('loadUC6FreshPublicationState'));
-  assert.equal(loadPublication.includes('getReusableAssetPublication'), true);
-  assert.equal(loadPublication.includes('projectUc6FreshReusableAssetPublication'), true);
-  assert.equal(loadPublication.includes('assertUC6PublicationArtifactParity'), true);
-  assert.equal(loadPublication.includes('getReviewArtifactCapabilities'), false);
-  assert.equal(loadPublication.includes('getRenderArtifactCapabilities'), false);
-  assert.equal(loadPublication.includes('submitReusableAssetPublication'), false);
-  assert.equal(loadPublication.includes('startUC6Polling'), false);
-  assert.equal(loadDelivery.includes('getRenderArtifactCapabilities'), true);
-  assert.equal(pollingDecision.includes('publicationStatus'), false, 'publication state cannot restart execution polling');
-  assert.ok(freshBranch.indexOf('stopUC6Polling()') < freshBranch.indexOf('loadUC6FreshPublicationState'));
-
-  for (const state of ['render_queued', 'render_running']) {
-    const control = projectUc6FreshRenderDeliveryControl({ publicState: state, deliveryStatus: 'idle' });
-    assert.equal(control.executionPollable, true);
-    assert.equal(control.executionTerminal, false, `${state} cannot enter terminal publication loading`);
-  }
-});
-
-test.skip('retired R6F-B Scenario Family administrator copy', () => {
-  const app = readSource('../public/app.js');
-  const panel = extractFunctionBody(app, 'createUC6FreshPublicationPanel');
-  const result = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
-  const surface = extractFunctionBody(app, 'renderUC6FreshPublicationSurfaceOnly');
-  const init = extractFunctionBody(app, 'initUC6');
-
-  assert.equal(panel.includes('원본 업로드 PPTX'), true);
-  assert.equal(panel.includes('생성된 최종 PPTX가 아니라'), true);
-  assert.equal(panel.includes('Scenario Family'), true);
-  assert.equal(panel.includes("family.ordered_scenario_keys.join(' · ')"), true);
-  assert.equal(panel.includes('family.link_identity'), true);
-  assert.equal(panel.includes('family.immutable_link_identity'), false);
-  assert.equal(panel.includes('불변 연결 ID'), true);
-  assert.equal(panel.includes('selectedSyntheticScenarioKey'), false, 'selected scenario alone is never presented as the family');
-  assert.equal(panel.includes('uc6-publicationReviewConfirmed'), true);
-  assert.equal(panel.includes('uc6-submitPublicationBtn'), true);
-  assert.equal(panel.includes('검토 완료 및 재사용 Asset 게시'), true);
-  assert.equal(panel.includes("publicationStatus === 'review_pending'"), true);
-  assert.equal(panel.includes('private_fallback_count > 0'), false, 'grounded fallback never blocks the button');
-  assert.equal(panel.includes('백엔드 게시 준비 검증을 통과'), true);
-  assert.equal(result.includes('createUC6FreshPublicationPanel'), true);
-  assert.equal(surface.includes('currentPanel.replaceWith'), true, 'publication updates preserve the mounted PDF viewer');
-  assert.equal(surface.includes('root.replaceChildren'), false);
-  assert.equal((init.match(/uc6-submitPublicationBtn/g) || []).length, 1, 'one delegated publication click path');
-});
-
-test('R6F-B resume and ambiguity paths are GET-first, stable-identity, and never regenerate Fresh work', () => {
-  const app = readSource('../public/app.js');
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const reconcile = extractFunctionBody(app, 'reconcileUC6PublicationState');
-  const submit = extractFunctionBody(app, 'submitUC6ReusableAssetPublication');
-  const identity = extractFunctionBody(app, 'ensureUC6PublicationDecisionIdentity');
-
-  assert.equal(resume.includes('await refreshUC6JobStatus'), true);
-  for (const body of [resume, refresh, reconcile]) {
-    assert.equal(body.includes('submitReusableAssetPublication'), false, 'resume/reconciliation remains GET-only');
-    assert.equal(body.includes('submitFreshSyntheticScenarioRender'), false);
-    assert.equal(body.includes('submitFreshSyntheticScenarios'), false);
-    assert.equal(body.includes('bindFreshSyntheticScenario'), false);
-  }
-  assert.equal(reconcile.includes('getReusableAssetPublication'), true);
-  assert.equal(submit.includes('reconcileUC6PublicationState'), true);
-  assert.equal((submit.match(/submitReusableAssetPublication/g) || []).length, 1, 'ambiguous outcome never replays POST automatically');
-  assert.equal(identity.includes('if (uc6State.publicationDecisionIdentity) return'), true);
-  assert.equal(submit.includes('ensureUC6PublicationDecisionIdentity()'), true);
-  assert.equal(submit.includes("publication.idempotent_replay === true"), true);
-  assert.equal(refresh.includes('loadUC6A8FReviewState'), true, 'legacy A8 review/publication remains available');
-  assert.equal(extractFunctionBody(app, 'submitUC6DummyRender').includes('submitDummyDatabagRender'), true);
-  assert.equal(extractFunctionBody(app, 'submitUC6ReusableAssetRender').includes('submitReusableAssetRender'), true);
-});
-
-test.skip('retired R6F-B linked-family resume receipt', async () => {
-  for (const { jobId, publicationPayload } of [
-    { jobId: JOB_ID, publicationPayload: freshUnpublishedPublicationPayload() },
-    { jobId: LIVE_FRESH_JOB_ID, publicationPayload: liveFreshPublishedPublicationPayload() }
-  ]) {
-    const calls = [];
-    const api = createUc6BrowserAdminApi({
-      apiBaseUrl: API_BASE,
-      getIdToken: async () => 'firebase-resume-token',
-      fetchImpl: async (url, init) => {
-        calls.push({ url, init });
-        if (url.endsWith(`/jobs/${jobId}`)) return response(200, { job_id: jobId, state: 'render_completed' });
-        if (url.endsWith('/render-artifact-capabilities')) return response(200, validFinalDeliveryPayload({ job_id: jobId }));
-        if (url.endsWith('/reusable-asset-publication')) return response(200, publicationPayload);
-        throw new Error('unexpected resume request');
-      }
-    });
-
-    const job = await api.getJob(jobId);
-    assert.equal(job.state, 'render_completed');
-    const capabilities = projectUc6FinalDeliveryCapabilities(
-      await api.getRenderArtifactCapabilities(jobId),
-      { expectedJobId: jobId, apiBaseUrl: API_BASE }
-    );
-    const publication = projectUc6FreshReusableAssetPublication(
-      await api.getReusableAssetPublication(jobId),
-      { expectedJobId: jobId }
-    );
-    assert.equal(capabilities.readyCount, 2);
-    assert.equal(publication.publication_state, publicationPayload.publication_state);
-    if (publicationPayload.publication_state === 'published') {
-      assert.equal(publication.published_asset.asset_id, publicationPayload.published_asset.asset_id);
-      assert.deepEqual(publication.linked_scenario_family, publicationPayload.linked_scenario_family);
-    }
-    assert.equal(calls.length, 3);
-    assert.deepEqual(calls.map((call) => call.init.method), ['GET', 'GET', 'GET']);
-    assert.equal(calls.some((call) => call.url.endsWith('/review-artifact-capabilities')), false);
-    assert.equal(calls.some((call) => call.url.endsWith('/synthetic-scenarios/render')), false);
-    assert.equal(calls.some((call) => call.url.endsWith('/synthetic-scenarios')), false);
-  }
-});
-
-const R6G_ASSET_ID = 'reusable_template_asset__b1cdbd6ca2ff94b40e90b5cf55cbd596a224aca1';
-const R6G_FAMILY_ID = 'published_scenario_family__95e6dc2b2aa7044913c50a0b6355d28a3fb139e5';
-const R6G_SYNTHETIC_FAMILY_ID = 'fresh_synthetic_8290144ea521975465db67c7a46aca9b';
-const R6G_LINK_ID = 'reusable_asset_scenario_family_link__eeff53ae3e65cea12e9d61e31af56f2bad1580d5';
-const R6G_JOB_ID = 'fd_uc6_admin_20260814T082343Z_5d831745ae323525';
-const R6G_LIVE_SUBMISSION_JOB_ID = 'fd_uc6_admin_20260814T080241Z_23fb4ca7b0489345';
-const R6G_SOURCE_SHA = 'c7f6aa39870873fce264bafe69c452741f3f08044835f99e504ddf2b02022b08';
-
-function r6gAssetRow(overrides = {}) {
-  return a8hAssetRow({
-    asset_id: R6G_ASSET_ID,
-    source_pptx_sha256: R6G_SOURCE_SHA,
-    generation_unit_count: 28,
-    slot_count: 59,
-    slide_count: 17,
-    compatible_dummy_databag_package_count: 1,
-    ...overrides
-  });
-}
-
-function r6gLinkedIdentity(overrides = {}) {
-  return {
-    published_scenario_family_id: R6G_FAMILY_ID,
-    synthetic_scenario_family_id: R6G_SYNTHETIC_FAMILY_ID,
-    scenario_count: 3,
-    scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3',
-    publication_manifest_sha256: '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12',
-    link_identity: R6G_LINK_ID,
-    ...overrides
-  };
-}
-
-function r6gScenarioOption(index, overrides = {}) {
-  const suffix = String(index).padStart(3, '0');
-  const labels = [
-    'Metro Convention Portfolio Renewal',
-    'Gulf Coast Resort Resilience Upgrade',
-    'Airport Business Hotel Efficiency Program'
-  ];
-  return {
-    scenario_key: `scenario_${suffix}`,
-    label: labels[index],
-    package_id: `fresh_synthetic_scenario_${suffix}`,
-    package_version: 'v1',
-    ...overrides
-  };
-}
-
-function r6gLinkedProjection(overrides = {}) {
-  return {
-    schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_options_v1',
-    asset: { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA },
-    linked_scenario_family: {
-      published_scenario_family_id: R6G_FAMILY_ID,
-      synthetic_scenario_family_id: R6G_SYNTHETIC_FAMILY_ID,
-      scenario_count: 3,
-      scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3',
-      publication_manifest_sha256: '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12',
-      link_identity: R6G_LINK_ID,
-      scenarios: [0, 1, 2].map(r6gScenarioOption)
-    },
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS',
-    ...overrides
-  };
-}
-
-function r6gBoundPackage(overrides = {}) {
-  return {
-    package_id: 'fresh_synthetic_scenario_001',
-    package_version: 'v1',
-    title: '재사용 시나리오 2',
-    package_manifest_sha256: '87200443ce1344f466000600e5e539731c2c989f82e41f427d137dbaf65f9c41',
-    source_context_bundle_sha256: 'e8c1a3e3430e0bd15a523c8da1152c1c34fcb9248f01b95c12217d0888e857e5',
-    ...overrides
-  };
-}
-
-function r6gLiveSubmission(overrides = {}) {
-  return {
-    schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_submission_v1',
-    job_id: R6G_LIVE_SUBMISSION_JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_render_published_asset_scenario',
-    task_id: 2497,
+test('final Generation submission enforces exact live structure and completed replay semantics', () => {
+  const queued = {
+    schema_version: RENDER_SUBMISSION_SCHEMA,
+    job_id: JOB,
+    task_type: RENDER_SUBMISSION_TASK,
+    task_id: 73,
     queue_status: 'pending',
     created: true,
     state: 'render_queued',
-    asset: { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA },
-    linked_scenario_family: {
-      published_scenario_family_id: R6G_FAMILY_ID,
-      synthetic_scenario_family_id: R6G_SYNTHETIC_FAMILY_ID,
-      scenario_count: 3,
-      scenario_family_artifact_sha256: '73929c7322e31c21628ede4f890bacf304660dc52b69ce20e46e2305160b37d3',
-      publication_manifest_sha256: '90b7a051007cc6d9edfdf17553c29221ad6b10dc8bd82a82cc2d3428ed983e12',
-      link_identity: R6G_LINK_ID,
-      scenario_key: 'scenario_002'
-    },
-    bound_package: {
-      package_id: 'fresh_synthetic_scenario_002',
-      package_version: 'v1',
-      title: 'Airport Business Hotel Efficiency Program',
-      source_context_bundle_sha256: '35b132ed10aefe09dedd9f0463c4697db963731cb1b6e0ff3890de941d804c9a'
-    },
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: 'PASS',
-    ...overrides
-  };
-}
-
-const R6G_SUBMISSION_OPTIONS = Object.freeze({
-  expectedAssetId: R6G_ASSET_ID,
-  expectedPublishedScenarioFamilyId: R6G_FAMILY_ID,
-  expectedScenarioKey: 'scenario_002'
-});
-
-function r6gCompletedResult(overrides = {}) {
-  return {
-    schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_result_v1',
-    status: 'completed',
-    job_id: R6G_JOB_ID,
-    task_type: 'fetchdoc_browser_admin_uc6_render_published_asset_scenario',
-    artifact_id: 'browser_admin_uc6_published_asset_scenario_render_result',
-    artifact_visibility: 'public',
-    asset: {
-      asset_id: R6G_ASSET_ID,
-      source_pptx_sha256: R6G_SOURCE_SHA,
-      asset_manifest_sha256: '4484e41ad1880c7d091340fa95562ca354440510ac2d334fc7cc03f393da6c62',
-      catalog_entry_sha256: '8ee77664e07fa5eff2e303cd2041ce08fa7aeb47be191bf143273ade999bd3c0',
-      approval_receipt_sha256: '13d5f398c900fd487477fa9f1c3d4e1c7bc02268fecac5b5a919030abb7a8076'
-    },
-    linked_scenario_family: r6gLinkedIdentity({ scenario_key: 'scenario_001' }),
-    bound_package: r6gBoundPackage(),
-    provider_profile_id: 'provider_profile_public_v1',
-    source_generation_batch_count: 17,
-    provider_call_count: 17,
-    generation_unit_count: 28,
-    slot_count: 59,
-    generated_slot_count: 45,
-    private_fallback_slot_count: 14,
-    active_canonical_source_groups: ['account_context', 'business_metrics'],
-    render_state: 'render_completed',
-    review_state: 'not_required',
-    publication_state: 'not_applicable',
-    publication_requires_manual_admin_action: false,
-    promotion_eligible: false,
-    final_artifacts: {
-      pptx: { alias: 'final_render_output_pptx', sha256: 'f17e0f17fee26c1a32e2ec8c163f0efcf322984dd7f3513fd8a6831c6f5da7f2', size_bytes: 2048 },
-      pdf: { alias: 'final_render_output_pdf', sha256: '08fe88b734ea8691066c2f785ef610ae701c962605748ddb235a62c9b4efa037', size_bytes: 1024 }
-    },
-    blocking_issue_count: 0,
-    red_physical_mutation_failure_count: 0,
-    provider_execution: {
-      actual_provider_call_count: 17,
-      logical_provider_call_count: 17,
-      provider_attempt_count: 17,
-      retry_count: 0,
-      receipt_replay_count: 0,
-      checkpoint_replay_count: 0
-    },
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
-    public_safety: {
-      raw_source_context_exposed: false,
-      backend_filesystem_path_exposed: false,
-      signed_artifact_url_exposed: false,
-      secret_value_exposed: false
-    },
-    ...overrides
-  };
-}
-
-test('R6G-B2 exact live linked-family response projects nested scenarios and canonical identity', () => {
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.linkedScenarioFamily(`  ${R6G_ASSET_ID}  `),
-    `/fetchdoc/browser-admin/uc6/reusable-assets/${R6G_ASSET_ID}/linked-scenario-family`
-  );
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.publishedScenarioRenders(R6G_ASSET_ID),
-    `/fetchdoc/browser-admin/uc6/reusable-assets/${R6G_ASSET_ID}/published-scenario-renders`
-  );
-  const projected = projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection(), { expectedAssetId: R6G_ASSET_ID });
-  assert.deepEqual(projected.asset, { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA });
-  assert.equal(projected.linked_scenario_family.link_identity, R6G_LINK_ID);
-  assert.deepEqual(projected.linked_scenario_family.scenarios.map((scenario) => scenario.scenario_key), ['scenario_000', 'scenario_001', 'scenario_002']);
-  assert.deepEqual(projected.linked_scenario_family.scenarios.map((scenario) => scenario.label), [
-    'Metro Convention Portfolio Renewal',
-    'Gulf Coast Resort Resilience Upgrade',
-    'Airport Business Hotel Efficiency Program'
-  ]);
-  assert.equal(Object.prototype.hasOwnProperty.call(projected, 'scenario_options'), false);
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({ schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_package_options_v1' }), { expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({ public_safety: 'FAIL' }), { expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({ asset: { asset_id: A8H_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA } }), { expectedAssetId: R6G_ASSET_ID }));
-  const wrongLinkField = structuredClone(r6gLinkedProjection().linked_scenario_family);
-  delete wrongLinkField.link_identity;
-  wrongLinkField.immutable_link_identity = R6G_LINK_ID;
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({ linked_scenario_family: wrongLinkField }), { expectedAssetId: R6G_ASSET_ID }));
-});
-
-test('R6G-B2 linked-family projector rejects invented aliases and invalid nested scenario contracts', () => {
-  const inventedAlias = r6gLinkedProjection();
-  inventedAlias.scenario_options = inventedAlias.linked_scenario_family.scenarios;
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(inventedAlias, { expectedAssetId: R6G_ASSET_ID }));
-
-  for (const invalidScenarios of [
-    [r6gScenarioOption(0), r6gScenarioOption(1)],
-    [r6gScenarioOption(0), r6gScenarioOption(0), r6gScenarioOption(2)],
-    [r6gScenarioOption(1), r6gScenarioOption(0), r6gScenarioOption(2)]
-  ]) {
-    const linked_scenario_family = { ...r6gLinkedProjection().linked_scenario_family, scenarios: invalidScenarios };
-    assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({ linked_scenario_family }), { expectedAssetId: R6G_ASSET_ID }));
-  }
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({
-    linked_scenario_family: { ...r6gLinkedProjection().linked_scenario_family, scenario_count: 2 }
-  }), { expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({
-    linked_scenario_family: { ...r6gLinkedProjection().linked_scenario_family, scenarios: [r6gScenarioOption(0, { label: '/data/fetchdoc/jobs/private' }), r6gScenarioOption(1), r6gScenarioOption(2)] }
-  }), { expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({
-    linked_scenario_family: { ...r6gLinkedProjection().linked_scenario_family, scenarios: [r6gScenarioOption(0), r6gScenarioOption(1, { description: 'invented field' }), r6gScenarioOption(2)] }
-  }), { expectedAssetId: R6G_ASSET_ID }));
-  for (const missingField of ['scenario_key', 'label', 'package_id', 'package_version']) {
-    const incomplete = r6gScenarioOption(1);
-    delete incomplete[missingField];
-    assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({
-      linked_scenario_family: { ...r6gLinkedProjection().linked_scenario_family, scenarios: [r6gScenarioOption(0), incomplete, r6gScenarioOption(2)] }
-    }), { expectedAssetId: R6G_ASSET_ID }));
-  }
-  assert.throws(() => projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection({
-    linked_scenario_family: { ...r6gLinkedProjection().linked_scenario_family, publication_manifest_sha256: 'not-a-sha' }
-  }), { expectedAssetId: R6G_ASSET_ID }));
-});
-
-test('R6G-B render command accepts only the authoritative family ID and one exact scenario key', () => {
-  const family = projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection(), { expectedAssetId: R6G_ASSET_ID });
-  for (const scenario_key of ['scenario_000', 'scenario_001', 'scenario_002']) {
-    const validation = validateUc6PublishedAssetScenarioRenderCommand({ published_scenario_family_id: R6G_FAMILY_ID, scenario_key }, family);
-    assert.equal(validation.ok, true);
-    assert.deepEqual(validation.body, { published_scenario_family_id: R6G_FAMILY_ID, scenario_key });
-  }
-  for (const scenario_key of ['', 'scenario_003', 'scenario_01']) {
-    assert.equal(validateUc6PublishedAssetScenarioRenderCommand({ published_scenario_family_id: R6G_FAMILY_ID, scenario_key }, family).ok, false);
-  }
-  for (const forbidden of ['package_id', 'package_version', 'source_context_bundle_sha256', 'raw_source_context']) {
-    assert.equal(validateUc6PublishedAssetScenarioRenderCommand({
-      published_scenario_family_id: R6G_FAMILY_ID,
-      scenario_key: 'scenario_001',
-      [forbidden]: 'not-allowed'
-    }, family).ok, false);
-  }
-});
-
-test('R6G-B3 exact live 202 submission projects minimal Asset, selected family, scenario, and server package', () => {
-  const submission = r6gLiveSubmission();
-  const projected = projectUc6PublishedAssetScenarioRenderSubmission(submission, R6G_SUBMISSION_OPTIONS);
-  assert.equal(projected.job_id, R6G_LIVE_SUBMISSION_JOB_ID);
-  assert.equal(projected.task_id, 2497);
-  assert.equal(projected.queue_status, 'pending');
-  assert.equal(projected.created, true);
-  assert.equal(projected.state, 'render_queued');
-  assert.deepEqual(projected.asset, { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA });
-  assert.equal(projected.linked_scenario_family.scenario_key, 'scenario_002');
-  assert.equal(projected.linked_scenario_family.link_identity, R6G_LINK_ID);
-  assert.deepEqual(projected.bound_package, submission.bound_package);
-
-  for (const invalid of [
-    { schema_version: 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_submission_v0' },
-    { task_type: 'fetchdoc_browser_admin_uc6_render_reusable_asset' },
-    { task_id: 0 },
-    { task_id: 1.5 },
-    { queue_status: 'processing' },
-    { created: 'true' },
-    { state: 'render_running' },
-    { public_safety: 'FAIL' },
-    { asset: { asset_id: A8H_ASSET_ID, source_pptx_sha256: R6G_SOURCE_SHA } }
-  ]) {
-    assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(r6gLiveSubmission(invalid), R6G_SUBMISSION_OPTIONS));
-  }
-
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
-    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, published_scenario_family_id: 'published_scenario_family__other' } }),
-    R6G_SUBMISSION_OPTIONS
-  ));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
-    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, scenario_key: 'scenario_001' } }),
-    R6G_SUBMISSION_OPTIONS
-  ));
-  const inventedLinkAlias = { ...submission.linked_scenario_family, immutable_link_identity: R6G_LINK_ID };
-  delete inventedLinkAlias.link_identity;
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
-    r6gLiveSubmission({ linked_scenario_family: inventedLinkAlias }),
-    R6G_SUBMISSION_OPTIONS
-  ));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
-    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, scenario_count: 2 } }),
-    R6G_SUBMISSION_OPTIONS
-  ));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
-    r6gLiveSubmission({ linked_scenario_family: { ...submission.linked_scenario_family, scenario_family_artifact_sha256: 'not-a-sha' } }),
-    R6G_SUBMISSION_OPTIONS
-  ));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderSubmission(
-    r6gLiveSubmission({ bound_package: { ...submission.bound_package, label: submission.bound_package.title } }),
-    R6G_SUBMISSION_OPTIONS
-  ));
-});
-
-test('R6G-B4 nested completed render preserves exact artifact metadata and fallback success', () => {
-  const projected = projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult(), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID });
-  assert.equal(projected.source_generation_batch_count, 17);
-  assert.equal(projected.provider_call_count, 17);
-  assert.equal(projected.generation_unit_count, 28);
-  assert.equal(projected.artifact_id, 'browser_admin_uc6_published_asset_scenario_render_result');
-  assert.equal(projected.artifact_visibility, 'public');
-  assert.equal(Object.values(projected.public_safety).every((exposed) => exposed === false), true);
-  assert.equal(projected.generated_slot_count, 45);
-  assert.equal(projected.private_fallback_slot_count, 14);
-  assert.equal(projected.slot_count, 59);
-  assert.equal(projected.render_state, 'render_completed');
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ schema_version: 'uc6_e2e4c2c_a8g_browser_admin_reusable_asset_render_result_v1' }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ blocking_issue_count: 1 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ red_physical_mutation_failure_count: 1 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ generated_slot_count: 46 }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult(r6gCompletedResult({ public_safety: { raw_source_context_exposed: true } }), { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderResult({
-    job_id: R6G_JOB_ID,
-    state: 'render_completed',
-    source: { sha256: R6G_SOURCE_SHA, size_bytes: 540947, slide_count: 5, filename: `${R6G_ASSET_ID}.pptx` },
-    render: r6gCompletedResult(),
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION
-  }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-});
-
-test('R6G-B4 exact completed job envelope requires nested render and coherent job/source identity', () => {
-  const payload = {
-    job_id: R6G_JOB_ID,
-    state: 'render_completed',
-    source: { sha256: R6G_SOURCE_SHA, size_bytes: 540947, slide_count: 5, filename: `${R6G_ASSET_ID}.pptx` },
-    render: r6gCompletedResult(),
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION
-  };
-  const projected = projectUc6PublishedAssetScenarioRenderJobStatus(payload, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID });
-  assert.equal(projected.state, 'render_completed');
-  assert.equal(projected.private_fallback_slot_count, 14);
-  assert.equal(projected.render.job_id, R6G_JOB_ID);
-  assert.equal(projected.render.schema_version, 'uc6_a9_0g2a_r6g_a_published_asset_scenario_render_result_v1');
-  assert.deepEqual(projected.source, payload.source);
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderJobStatus({ ...payload, render: undefined }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderJobStatus({ ...payload, render: r6gCompletedResult({ job_id: R6G_LIVE_SUBMISSION_JOB_ID }) }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6PublishedAssetScenarioRenderJobStatus({ ...payload, source: { ...payload.source, sha256: 'a'.repeat(64) } }, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-  assert.throws(() => projectUc6ReusableAssetRenderJobStatus(payload, { expectedJobId: R6G_JOB_ID, expectedAssetId: R6G_ASSET_ID }));
-});
-
-test('R6G-B3 API keeps exact two-field POST, Firebase Bearer, and single-attempt mutation safety', async () => {
-  const calls = [];
-  const family = projectUc6PublishedAssetLinkedScenarioFamily(r6gLinkedProjection(), { expectedAssetId: R6G_ASSET_ID });
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-r6g-token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(200, {});
-    }
-  });
-  await api.getPublishedAssetLinkedScenarioFamily(R6G_ASSET_ID);
-  await api.submitPublishedAssetScenarioRender(R6G_ASSET_ID, {
-    published_scenario_family_id: R6G_FAMILY_ID,
-    scenario_key: 'scenario_002'
-  }, { linkedFamilyProjection: family });
-  await api.getRenderArtifactCapabilities(R6G_JOB_ID);
-  assert.deepEqual(calls.map((call) => new URL(call.url).pathname), [
-    `/fetchdoc/browser-admin/uc6/reusable-assets/${R6G_ASSET_ID}/linked-scenario-family`,
-    `/fetchdoc/browser-admin/uc6/reusable-assets/${R6G_ASSET_ID}/published-scenario-renders`,
-    `/fetchdoc/browser-admin/uc6/jobs/${R6G_JOB_ID}/render-artifact-capabilities`
-  ]);
-  assert.deepEqual(JSON.parse(calls[1].init.body), { published_scenario_family_id: R6G_FAMILY_ID, scenario_key: 'scenario_002' });
-  assert.equal(calls.filter((call) => call.init.method === 'POST').length, 1);
-  assert.equal(calls.every((call) => call.init.headers.Authorization === 'Bearer firebase-r6g-token'), true);
-  assert.equal(calls.every((call) => call.init.headers['X-Internal-Token'] === undefined), true);
-
-  let attempts = 0;
-  const ambiguousApi = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'firebase-r6g-token',
-    fetchImpl: async () => { attempts += 1; throw new Error('network'); }
-  });
-  await assert.rejects(() => ambiguousApi.submitPublishedAssetScenarioRender(R6G_ASSET_ID, {
-    published_scenario_family_id: R6G_FAMILY_ID,
-    scenario_key: 'scenario_001'
-  }, { linkedFamilyProjection: family }), { name: 'Uc6AmbiguousSubmissionError', code: 'ambiguous_submission' });
-  assert.equal(attempts, 1);
-});
-
-test('R6G-B3 app retains accepted job identity, locks duplicate submission, and starts the shared poller', () => {
-  const app = readSource('../public/app.js');
-  const admin = readSource('../public/uc6-browser-admin.mjs');
-  const css = readSource('../public/style.css');
-  const loadFamily = extractFunctionBody(app, 'loadUC6PublishedAssetLinkedScenarioFamily');
-  const renderChoice = extractFunctionBody(app, 'renderUC6AssetPackageStage');
-  const submit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const result = extractFunctionBody(app, 'renderUC6AssetRenderResultStage');
-  assert.equal(app.includes("app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1"), true);
-  assert.equal(app.includes('A. Curated/static 데이터 패키지'), true);
-  assert.equal(app.includes('B. 연결된 게시 Scenario Family'), true);
-  assert.equal(app.includes('uc6-r6g-scenario-grid'), true);
-  assert.equal(loadFamily.includes('projected.linked_scenario_family.scenarios'), true);
-  assert.equal(renderChoice.includes('linked.linked_scenario_family.scenarios.forEach'), true);
-  assert.equal(renderChoice.includes("'uc6-package-title', scenario.label"), true);
-  assert.equal(renderChoice.includes('linked.scenario_options'), false);
-  assert.equal(css.includes('#view-uc6 .uc6-r6g-source-choices'), true);
-  assert.equal(submit.includes('submitPublishedAssetScenarioRender'), true);
-  assert.equal((submit.match(/submitPublishedAssetScenarioRender/g) || []).length, 1);
-  assert.equal(submit.includes('uc6State.operationInFlight || uc6State.jobId || uc6State.assetSubmissionAmbiguous'), true);
-  assert.equal(submit.includes('expectedPublishedScenarioFamilyId: uc6State.selectedPublishedScenarioFamilyId'), true);
-  assert.equal(submit.includes('expectedScenarioKey: uc6State.selectedPublishedScenarioKey'), true);
-  assert.ok(submit.indexOf('uc6State.jobId = submitted.job_id') < submit.indexOf('startUC6JobObservation()'));
-  assert.equal((submit.match(/startUC6JobObservation\(\)/g) || []).length, 1);
-  assert.equal(submit.includes('mutationResponseReceived = true'), true);
-  assert.equal(submit.includes('mutationResponseReceived || error?.name'), true);
-  assert.equal(renderChoice.includes('!uc6State.assetSubmissionAmbiguous'), true);
-  assert.equal(submit.includes('package_id:'), false);
-  assert.equal(submit.includes('source_context_bundle_sha256'), false);
-  assert.equal(submit.includes('자동 재전송하지 않습니다'), true);
-  assert.equal(refresh.includes('projectUc6PublishedAssetScenarioRenderJobStatus'), true);
-  assert.equal(refresh.includes('loadUC6A8HDeliveryState'), true);
-  assert.equal(result.includes('generated_slot_count'), true);
-  assert.equal(result.includes('private_fallback_slot_count'), true);
-  assert.equal(result.includes('submitUC6ReusableAssetPublication'), false);
-  assert.equal(admin.includes("publishedScenarioRenders: (assetId)"), true);
-  assert.equal(admin.includes('requestSingle(UC6_BROWSER_ADMIN_ENDPOINTS.publishedScenarioRenders'), true);
-  assert.equal(admin.includes('/dummy-databag-packages'), true);
-  assert.equal(admin.includes('/renders`'), true);
-});
-
-test('R6G-B4 valid terminal readback clears polling suspension, stops polling, and loads artifact capabilities', () => {
-  const app = readSource('../public/app.js');
-  const admin = readSource('../public/uc6-browser-admin.mjs');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const stageMap = extractFunctionBody(app, 'mapUC6PublicStateToStage');
-  const jobProjector = extractFunctionBody(admin, 'projectUc6PublishedAssetScenarioRenderJobStatus');
-
-  assert.equal(jobProjector.includes('projectUc6PublishedAssetScenarioRenderResult(payload.render, options)'), true);
-  assert.equal(jobProjector.includes('projectUc6PublishedAssetScenarioRenderResult(payload, options)'), false);
-  assert.equal(jobProjector.includes("render.asset.source_pptx_sha256 !== source.sha256"), true);
-  assert.equal(refresh.includes("uc6State.renderStatus = projected.state === 'render_completed' ? projected : null"), true);
-  assert.equal(refresh.includes('uc6State.consecutivePollErrors = 0'), true);
-  assert.equal(refresh.includes('stopUC6Polling({ abortRequest: false })'), true);
-  assert.equal(refresh.includes('await loadUC6A8HDeliveryState(options.signal)'), true);
-  assert.equal(poll.includes('else stopUC6Polling()'), true);
-  assert.equal(stageMap.includes("if (state === 'render_completed') return 'result'"), true);
-});
-
-test('R6G-B5 only ambiguous Fresh same-job render_unknown is explicitly reconciliation-pollable', () => {
-  const app = readSource('../public/app.js');
-  const pendingFor = (state) => executeExtractedFunction(app, 'isUC6FreshRenderSubmissionReconciliationPending', { uc6State: state });
-  const base = {
-    flowLane: 'dummy_render',
-    freshSyntheticExpected: true,
-    freshRenderSubmitted: true,
-    freshRenderSubmissionAmbiguous: true,
-    jobId: JOB_ID,
-    jobState: 'render_unknown',
-    renderStatus: null,
-    reviewArtifactsStatus: 'idle'
-  };
-  assert.equal(pendingFor(base), true);
-  for (const invalid of [
-    { flowLane: 'asset_render', assetRuntimeExpected: false },
-    { freshSyntheticExpected: false },
-    { freshRenderSubmitted: false },
-    { freshRenderSubmissionAmbiguous: false },
-    { jobId: '' },
-    { jobState: 'render_queued' },
-    { jobState: 'render_completed', renderStatus: { state: 'render_completed' } },
-    { jobState: 'failed' }
-  ]) assert.equal(pendingFor({ ...base, ...invalid }), false);
-
-  const pollingFor = (state, reconciliationPending, terminal = false) => executeExtractedFunction(app, 'isUC6JobPollingPending', {
-    uc6State: state,
-    isUC6FreshExecutionTerminal: () => terminal,
-    mapUc6StateToView,
-    isUC6FreshSourceReconciliationPending: () => false,
-    isUC6FreshSyntheticPollingPending: () => false,
-    isUC6FreshRenderSubmissionReconciliationPending: () => reconciliationPending
-  });
-  assert.equal(Boolean(mapUc6StateToView('render_unknown').renderPollable), false, 'render_unknown is not globally pollable');
-  assert.equal(pollingFor(base, pendingFor(base)), true);
-  for (const jobState of ['render_queued', 'render_running']) {
-    const authoritative = { ...base, jobState, freshRenderSubmissionAmbiguous: false };
-    assert.equal(pollingFor(authoritative, false), true, `${jobState} continues normal polling after ambiguity clears`);
-  }
-  for (const jobState of ['render_completed', 'failed']) {
-    const authoritative = { ...base, jobState, freshRenderSubmissionAmbiguous: false };
-    assert.equal(pollingFor(authoritative, false, true), false, `${jobState} is terminal after ambiguity clears`);
-  }
-});
-
-test('R6G-B5 ambiguous POST starts bounded polling with a distinct controller and never replays mutation', () => {
-  const app = readSource('../public/app.js');
-  const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
-  const start = extractFunctionBody(app, 'startUC6PollingFallback');
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const refreshNow = extractFunctionBody(app, 'refreshUC6PollingNow');
-  const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
-  const resumeHandler = app.slice(app.indexOf("target.id === 'uc6-resumePollingBtn'"), app.indexOf("target.id === 'uc6-enterDecisionBtn'"));
-
-  assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
-  assert.ok(submit.indexOf('uc6State.freshRenderSubmitted = true') < submit.indexOf('api.submitFreshSyntheticScenarioRender'));
-  assert.equal(submit.includes("error?.name === 'AbortError' && isUc6Authorized() && Boolean(uc6State.jobId)"), true);
-  assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false);
-  assert.equal(submit.includes('startUC6JobObservation()'), true);
-  assert.equal(submit.includes("uc6State.jobState = 'render_unknown'"), true);
-  assert.equal(submit.includes("uc6State.jobId = ''"), false, 'known same-job identity remains retained');
-  assert.equal(start.includes('uc6State.pollingAbortController = new AbortController()'), true);
-  assert.equal(poll.includes('signal: uc6State.pollingAbortController.signal'), true);
-  assert.equal(poll.includes("error?.name !== 'AbortError' || isUC6FreshRenderSubmissionReconciliationPending()"), true);
-  assert.equal(poll.includes('uc6State.consecutivePollErrors += 1'), true);
-  assert.equal(poll.includes('uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS'), true);
-  assert.equal(poll.includes('scheduleUC6Poll()'), true, 'a first transient reconciliation failure schedules another safe GET');
-  assert.equal(refresh.includes('uc6State.freshRenderSubmissionAmbiguous = false'), true, 'authoritative render readback clears ambiguity');
-  assert.equal(refresh.includes("uc6State.jobState = 'render_unknown'"), true, 'non-authoritative bound readback preserves reconciliation');
-  assert.equal(refresh.includes('uc6State.freshRenderSubmitted = false'), false, 'upstream readback cannot unlock duplicate POST');
-  assert.equal(refreshNow.includes('uc6State.consecutivePollErrors = 0'), true);
-  assert.equal(refreshNow.includes('await refreshUC6JobStatus'), true);
-  assert.equal(refreshNow.includes('startUC6JobObservation()'), true, 'manual recovery returns to listener-driven observation after one-shot GET');
-  assert.equal(resumeHandler.includes('refreshUC6PollingNow().catch'), true);
-});
-
-test('R6G-B5 render_unknown uses neutral warning copy while confirmed failure remains destructive', () => {
-  const app = readSource('../public/app.js');
-  const css = readSource('../public/style.css');
-  const unknown = extractFunctionBody(app, 'renderUC6RenderUnknownStage');
-  const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
-  const selection = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
-
-  assert.equal(app.includes('app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'), true);
-  assert.equal(unknown.includes("'uc6-stage-card is-warning'"), true);
-  assert.equal(unknown.includes('생성 요청 확인 중'), true);
-  assert.equal(unknown.includes('실시간 서버 이벤트로 작업 상태를 확인하고 있습니다.'), true);
-  assert.equal(unknown.includes('실시간 연결과 제한된 상태 확인이 모두 일시적으로 중단되었습니다.'), true);
-  assert.equal(unknown.includes("'uc6-resumePollingBtn', '상태 새로고침'"), true);
-  assert.equal(unknown.includes('is-error'), false);
-  assert.equal(unknown.includes('uc6-inline-error'), false);
-  assert.equal(unknown.includes('문서 생성 실패'), false);
-  assert.equal(selection.includes("'uc6-inline-warning'"), true);
-  assert.equal(failed.includes("'uc6-stage-card is-error'"), true);
-  assert.equal(failed.includes('문서 생성 실패'), true);
-  assert.match(css, /#view-uc6 \.uc6-stage-card\.is-warning\s*\{/);
-  assert.match(css, /#view-uc6 \.uc6-inline-warning\s*\{/);
-});
-
-test('R6G-C0B polling policy is bounded, keeps render responsive, and resets for stage or job changes', () => {
-  const app = readSource('../public/app.js');
-  const sequences = Object.freeze({
-    long_running: Object.freeze([5000, 8000, 12000, 15000]),
-    render: Object.freeze([3500]),
-    ambiguous_render: Object.freeze([3500, 5000, 8000])
-  });
-  assert.equal(app.includes('long_running: Object.freeze([5000, 8000, 12000, 15000])'), true);
-  assert.equal(app.includes('render: Object.freeze([3500])'), true);
-  assert.equal(app.includes('ambiguous_render: Object.freeze([3500, 5000, 8000])'), true);
-
-  const getDelay = createExtractedFunction(app, 'getUC6PollingDelay', {
-    UC6_POLL_DELAY_SEQUENCES_MS: sequences
-  });
-  assert.deepEqual([0, 1, 2, 3, 4, 99].map((pollAttempt) => getDelay({ pollingClass: 'long_running', pollAttempt })), [5000, 8000, 12000, 15000, 15000, 15000]);
-  assert.deepEqual([0, 1, 8].map((pollAttempt) => getDelay({ pollingClass: 'render', pollAttempt })), [3500, 3500, 3500]);
-  assert.deepEqual([0, 1, 2, 9].map((pollAttempt) => getDelay({ pollingClass: 'ambiguous_render', pollAttempt })), [3500, 5000, 8000, 8000]);
-  assert.ok(getDelay({ pollingClass: 'render', pollAttempt: 50 }) < getDelay({ pollingClass: 'long_running', pollAttempt: 50 }));
-
-  const state = {
-    jobId: 'job-a',
-    jobState: 'onboarding_running',
-    pollingJobId: 'job-a',
-    pollingStageKey: '',
-    pollAttempt: 0
-  };
-  let pollingClass = 'long_running';
-  const nextDelay = createExtractedFunction(app, 'getUC6NextPollingDelay', {
-    uc6State: state,
-    getUC6PollingClass: () => pollingClass,
-    getUC6PollingStageKey: (value) => `${state.jobId}:${value}:${state.jobState}`,
-    getUC6PollingDelay: getDelay,
-    UC6_POLL_DELAY_SEQUENCES_MS: sequences
-  });
-  assert.deepEqual([nextDelay(), nextDelay(), nextDelay(), nextDelay(), nextDelay()], [5000, 8000, 12000, 15000, 15000]);
-  state.jobState = 'synthetic_scenarios_running';
-  assert.equal(nextDelay(), 5000, 'a material stage transition re-anchors long-running backoff');
-  pollingClass = 'render';
-  state.jobState = 'render_running';
-  assert.equal(nextDelay(), 3500, 'render does not inherit the prior long-running maximum');
-  pollingClass = 'long_running';
-  state.jobId = 'job-b';
-  state.jobState = 'onboarding_running';
-  assert.equal(nextDelay(), 5000, 'a new job starts at the first long-running delay');
-});
-
-test('R6G-C0B classifies preparation, render, ambiguous, and terminal states without an onboarding timeout', () => {
-  const app = readSource('../public/app.js');
-  const classify = ({ state, sourcePending = false, syntheticPending = false, ambiguous = false, freshTerminal = false }) => {
-    const uc6State = { jobState: state };
-    return createExtractedFunction(app, 'getUC6PollingClass', {
-      uc6State,
-      isUC6FreshRenderSubmissionReconciliationPending: () => ambiguous,
-      isUC6FreshExecutionTerminal: () => freshTerminal,
-      isUC6FreshSourceReconciliationPending: () => sourcePending,
-      isUC6FreshSyntheticPollingPending: () => syntheticPending,
-      mapUc6StateToView
-    })();
-  };
-  assert.equal(classify({ state: 'source_ready', sourcePending: true }), 'long_running');
-  assert.equal(classify({ state: 'onboarding_queued' }), 'long_running');
-  assert.equal(classify({ state: 'onboarding_running' }), 'long_running');
-  assert.equal(classify({ state: 'synthetic_scenarios_running', syntheticPending: true }), 'long_running');
-  assert.equal(classify({ state: 'analysis_running' }), 'long_running');
-  assert.equal(classify({ state: 'render_queued' }), 'render');
-  assert.equal(classify({ state: 'render_running' }), 'render');
-  assert.equal(classify({ state: 'render_unknown', ambiguous: true }), 'ambiguous_render');
-  assert.equal(classify({ state: 'render_completed' }), 'terminal');
-  assert.equal(classify({ state: 'failed' }), 'terminal');
-  assert.equal(classify({ state: 'unknown' }), 'idle');
-  assert.equal(app.includes('UC6_ONBOARDING_TIMEOUT'), false);
-  assert.equal(app.includes('UC6_MAX_ONBOARDING_DURATION'), false);
-});
-
-test('Transport-C keeps the legacy polling fallback bounded and rejects stale timer or job contexts', async () => {
-  const app = readSource('../public/app.js');
-  const timers = new Map();
-  const polls = [];
-  let nextTimerId = 1;
-  const fakeSetTimeout = (callback, delay) => {
-    const id = nextTimerId;
-    nextTimerId += 1;
-    timers.set(id, { callback, delay });
-    return id;
-  };
-  const fakeClearTimeout = (id) => timers.delete(id);
-  class FakeAbortController {
-    constructor() {
-      this.signal = { aborted: false };
-    }
-    abort() {
-      this.signal.aborted = true;
-    }
-  }
-  const state = {
-    jobId: 'job-a',
-    pollingTimer: null,
-    pollingAbortController: null,
-    pollingSequence: 0,
-    pollingJobId: '',
-    pollingStageKey: '',
-    pollAttempt: 0,
-    activePollingRequestSequence: 0,
-    statusRequestActive: false
-  };
-  const entries = {
-    uc6State: state,
-    clearTimeout: fakeClearTimeout,
-    setTimeout: fakeSetTimeout,
-    AbortController: FakeAbortController,
-    isUc6Authorized: () => true,
-    isUC6JobPollingPending: () => true,
-    getUC6PollingStageKey: () => `${state.jobId}:render:${state.jobState || 'render_running'}`,
-    getUC6NextPollingDelay: () => 3500,
-    pollUC6JobStatus: async (context) => { polls.push(context); },
-    stopUC6JobEventListener: () => {}
-  };
-  const names = Object.keys(entries);
-  const owner = Function(...names, `
-    ${extractFunctionSource(app, 'clearUC6PollingTimer')}
-    ${extractFunctionSource(app, 'resetUC6PollingBackoff')}
-    ${extractFunctionSource(app, 'stopUC6Polling')}
-    ${extractFunctionSource(app, 'isUC6PollingContextCurrent')}
-    ${extractFunctionSource(app, 'scheduleUC6Poll')}
-    ${extractFunctionSource(app, 'startUC6PollingFallback')}
-    return { startUC6PollingFallback, scheduleUC6Poll, isUC6PollingContextCurrent };
-  `)(...Object.values(entries));
-
-  const firstContext = owner.startUC6PollingFallback();
-  const firstController = state.pollingAbortController;
-  const firstTimer = [...timers.values()][0];
-  assert.equal(timers.size, 1);
-  const secondContext = owner.startUC6PollingFallback();
-  assert.equal(firstController.signal.aborted, true);
-  assert.equal(timers.size, 1, 'restarting replaces rather than duplicates the pending timer');
-  firstTimer.callback();
-  assert.equal(polls.length, 0, 'a cancelled sequence callback cannot reach the GET poller');
-
-  const secondTimerEntry = [...timers.entries()][0];
-  timers.delete(secondTimerEntry[0]);
-  secondTimerEntry[1].callback();
-  await Promise.resolve();
-  assert.deepEqual(polls, [secondContext]);
-
-  state.jobId = 'job-b';
-  const thirdContext = owner.startUC6PollingFallback();
-  secondTimerEntry[1].callback();
-  assert.equal(polls.length, 1, 'an older job callback cannot enter the newer job owner');
-  assert.equal(owner.isUC6PollingContextCurrent(firstContext), false);
-  assert.equal(owner.isUC6PollingContextCurrent(thirdContext), true);
-
-  const refresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  assert.ok(refresh.indexOf('const rawJob = await uc6State.api.getJob(requestedJobId') < refresh.indexOf('if (options.pollingContext && !isUC6PollingContextCurrent(options.pollingContext)) return false'));
-  assert.ok(refresh.indexOf('if (options.pollingContext && !isUC6PollingContextCurrent(options.pollingContext)) return false') < refresh.indexOf('const authoritativeDummyRenderLane'));
-});
-
-test('Transport-C manual refresh is one-shot GET reconciliation and resumes the unified listener', async () => {
-  const app = readSource('../public/app.js');
-  const state = { consecutivePollErrors: 3, jobEventRecoveryFailures: 2, flowLane: 'dummy_render' };
-  const calls = [];
-  const refreshNow = createExtractedFunction(app, 'refreshUC6PollingNow', {
-    uc6State: state,
-    refreshUC6JobStatus: async (options) => { calls.push(['get', options]); },
-    isUC6JobObservationPending: () => true,
-    startUC6JobObservation: () => { calls.push(['listen']); }
-  });
-  await refreshNow();
-  assert.deepEqual(calls, [
-    ['get', { fetchReview: false }],
-    ['listen']
-  ]);
-  assert.equal(state.consecutivePollErrors, 0);
-  assert.equal(state.jobEventRecoveryFailures, 0);
-  assert.equal(extractFunctionBody(app, 'refreshUC6PollingNow').includes('submit'), false);
-
-  const submit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
-  const ambiguousCatch = submit.slice(submit.indexOf("error?.name === 'Uc6AmbiguousSubmissionError'"));
-  const poll = extractFunctionBody(app, 'pollUC6JobStatus');
-  const recover = extractFunctionBody(app, 'recoverUC6JobEventListener');
-  assert.equal((submit.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1);
-  assert.equal(ambiguousCatch.includes('startUC6JobObservation()'), true);
-  assert.equal(ambiguousCatch.includes('refreshUC6JobStatus({ signal: controller.signal'), false);
-  assert.equal(recover.includes('await refreshUC6JobStatus'), true, 'stream disconnect performs one-shot authoritative reconciliation');
-  assert.equal(recover.includes('UC6_MAX_JOB_EVENT_RECOVERY_FAILURES'), true);
-  assert.equal(recover.includes('startUC6PollingFallback()'), true, 'legacy polling is reachable only after bounded stream recovery failure');
-  assert.equal(poll.includes('signal: uc6State.pollingAbortController.signal'), true);
-  assert.equal(poll.includes('uc6State.consecutivePollErrors >= UC6_MAX_TRANSIENT_ERRORS'), true);
-});
-
-test('Transport-C preserves Fresh, published Asset, artifact, and B5 UX contracts while changing observation transport', () => {
-  const app = readSource('../public/app.js');
-  const admin = readSource('../public/uc6-browser-admin.mjs');
-  const freshSubmit = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
-  const publishedSubmit = extractFunctionBody(app, 'submitUC6PublishedAssetScenarioRender');
-  const publishedRefresh = extractFunctionBody(app, 'refreshUC6JobStatus');
-  const syntheticStage = extractFunctionBody(app, 'renderUC6FreshSyntheticScenarioStage');
-  const unknown = extractFunctionBody(app, 'renderUC6RenderUnknownStage');
-  const failed = extractFunctionBody(app, 'renderUC6RenderErrorStage');
-  assert.equal(app.includes("const APP_VERSION = 'app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'"), true);
-  assert.equal(freshSubmit.includes('submitFreshSyntheticScenarioRender(uc6State.jobId, { signal: controller.signal })'), true);
-  assert.equal(freshSubmit.includes('scenario_key:'), false);
-  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.forEach'), true);
-  assert.equal(syntheticStage.includes('uc6State.syntheticScenarioOptions.length === 2'), false);
-  assert.equal(publishedSubmit.includes('published_scenario_family_id: uc6State.selectedPublishedScenarioFamilyId'), true);
-  assert.equal(publishedSubmit.includes('scenario_key: uc6State.selectedPublishedScenarioKey'), true);
-  assert.equal(publishedSubmit.includes('package_id:'), false);
-  assert.equal(publishedRefresh.includes('projectUc6PublishedAssetScenarioRenderJobStatus'), true);
-  assert.equal(admin.includes('projectUc6PublishedAssetScenarioRenderResult(payload.render, options)'), true);
-  assert.equal(app.includes('linked.linked_scenario_family.scenarios.forEach'), true);
-  assert.equal(publishedRefresh.includes('await loadUC6A8HDeliveryState(options.signal)'), true);
-  assert.equal(app.includes('final_render_output_pdf'), true);
-  assert.equal(app.includes('final_render_output_pptx'), true);
-  assert.equal(unknown.includes("'uc6-stage-card is-warning'"), true);
-  assert.equal(unknown.includes('is-error'), false);
-  assert.equal(failed.includes("'uc6-stage-card is-error'"), true);
-  assert.equal(failed.includes('문서 생성 실패'), true);
-});
-
-test('R6G-B1 Fresh publication completion remains in normal flow above a reachable final action', () => {
-  const app = readSource('../public/app.js');
-  const css = readSource('../public/style.css');
-  const result = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
-  const panelIndex = result.indexOf('createUC6FreshPublicationPanel(status, uc6State.publication)');
-  const actionIndex = result.indexOf("'uc6-action-row uc6-r6g-b1-final-actions'");
-  const clearIndex = result.indexOf("createUC6ActionButton('uc6-clearBtn', '새 문서 시작'");
-
-  assert.ok(panelIndex >= 0 && panelIndex < actionIndex, 'publication panel must precede the final action row');
-  assert.ok(actionIndex < clearIndex, 'the final action row must contain the new-document action');
-  assert.match(css, /#view-uc6 \.uc6-r6f-b-publication-panel\s*\{[^}]*position:\s*static;[^}]*max-height:\s*none;[^}]*overflow:\s*visible;/s);
-  assert.match(css, /#view-uc6 \.uc6-r6e-d2-result-stage\s*\{[^}]*grid-auto-rows:\s*max-content;[^}]*overflow:\s*visible;/s);
-  assert.match(css, /#view-uc6 \.uc6-r6g-b1-final-actions\s*\{[^}]*position:\s*static;[^}]*padding-bottom:\s*18px;/s);
-  assert.equal(css.includes('#view-uc6 .uc6-r6f-b-publication-panel {\n    z-index:'), false);
-  assert.match(css, /#view-uc6 \.uc6-r6f-b-publication-panel :is\(dd, p, strong\)[^{]*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
-  assert.match(css, /#main-content\s*\{[^}]*overflow-y:\s*auto;/s);
-});
-
-test('Transport-C SSE frame parser accepts only the unified public job-event envelope', () => {
-  const frame = [
-    'id: 17',
-    'event: job_state',
-    'data: {"schema_version":"fetchdoc_job_event_v1","event_kind":"state_change","job_id":"fd_uc6_admin_test_12345","task_id":77,"task_type":"fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario","stage":"provider_generation_running","status":"running","sequence":17,"completed_units":3,"total_units":16,"updated_at":"2026-08-15T12:00:00+00:00"}',
-    ''
-  ].join('\n');
-  assert.deepEqual(parseUc6JobEventFrame(frame), {
-    schema_version: 'fetchdoc_job_event_v1',
-    event_kind: 'state_change',
-    job_id: JOB_ID,
-    task_id: 77,
-    task_type: 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario',
-    stage: 'provider_generation_running',
-    status: 'running',
-    sequence: 17,
-    completed_units: 3,
-    total_units: 16,
-    updated_at: '2026-08-15T12:00:00+00:00'
-  });
-  assert.equal(parseUc6JobEventFrame(': heartbeat\n\n'), null);
-  assert.equal(parseUc6JobEventFrame('event: job_state\n\n'), null);
-  assert.throws(() => parseUc6JobEventFrame('data: {bad json}\n\n'), /uc6_job_event_invalid_json/);
-  assert.throws(() => parseUc6JobEventFrame(`data: ${JSON.stringify({
-    schema_version: 'wrong', event_kind: 'snapshot', job_id: JOB_ID, stage: 'render_running', status: 'running', sequence: 1
-  })}\n\n`), /uc6_job_event_schema_unsupported/);
-  assert.throws(() => parseUc6JobEventFrame(`data: ${JSON.stringify({
-    schema_version: 'fetchdoc_job_event_v1', event_kind: 'state_change', job_id: JOB_ID,
-    stage: 'provider_generation_running', status: 'running', sequence: 2, completed_units: 17, total_units: 16
-  })}\n\n`), /uc6_job_event_progress_invalid/);
-});
-
-test('Transport-C stream GET keeps Firebase Bearer auth, refreshes one 401, and never exposes internal auth', async () => {
-  assert.equal(
-    UC6_BROWSER_ADMIN_ENDPOINTS.jobEvents(`  ${JOB_ID}  `),
-    `/fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/events`
-  );
-  const calls = [];
-  const tokenRefreshes = [];
-  const streamResponse = {
-    status: 200,
-    ok: true,
-    headers: { get: (name) => String(name).toLowerCase() === 'content-type' ? 'text/event-stream; charset=utf-8' : null },
-    body: { getReader() { return {}; } }
-  };
-  let attempt = 0;
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async (forceRefresh) => {
-      tokenRefreshes.push(forceRefresh);
-      return forceRefresh ? 'firebase-refreshed' : 'firebase-initial';
-    },
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      attempt += 1;
-      return attempt === 1 ? response(401, { detail: { code: 'browser_admin_token_expired' } }) : streamResponse;
-    }
-  });
-  const opened = await api.openJobEvents(JOB_ID);
-  assert.equal(opened, streamResponse);
-  assert.deepEqual(tokenRefreshes, [false, true]);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].url, `${API_BASE}fetchdoc/browser-admin/uc6/jobs/${JOB_ID}/events`);
-  assert.equal(calls[0].init.method, 'GET');
-  assert.equal(calls[0].init.headers.Accept, 'text/event-stream');
-  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-initial');
-  assert.equal(calls[1].init.headers.Authorization, 'Bearer firebase-refreshed');
-  assert.equal(calls.every(({ init }) => init.headers['X-Internal-Token'] === undefined), true);
-  assert.equal(calls.every(({ init }) => init.credentials === 'omit' && init.cache === 'no-store'), true);
-});
-
-test('Transport-C listener is the normal observation path and polling is bounded recovery only', () => {
-  const app = readSource('../public/app.js');
-  const admin = readSource('../public/uc6-browser-admin.mjs');
-  const start = extractFunctionBody(app, 'startUC6JobObservation');
-  const run = extractFunctionBody(app, 'runUC6JobEventListener');
-  const consume = extractFunctionBody(app, 'consumeUC6JobEventStream');
-  const recover = extractFunctionBody(app, 'recoverUC6JobEventListener');
-  const fallback = extractFunctionBody(app, 'startUC6PollingFallback');
-  const manual = extractFunctionBody(app, 'refreshUC6PollingNow');
-  const freshRender = extractFunctionBody(app, 'submitUC6FreshSyntheticRender');
-  const upload = extractFunctionBody(app, 'uploadUC6PptxJob');
-
-  assert.equal(admin.includes('openJobEvents(jobId'), true);
-  assert.equal(app.includes('new EventSource('), false, 'native EventSource must not weaken Firebase Bearer auth');
-  assert.equal(start.includes('runUC6JobEventListener(context)'), true);
-  assert.equal(start.includes('startUC6PollingFallback'), false, 'normal observation does not start legacy polling');
-  assert.equal(run.includes('uc6State.api.openJobEvents'), true);
-  assert.equal(consume.includes('parseUc6JobEventFrame(frame)'), true);
-  assert.equal(consume.includes('eventContext: context'), true, 'event wake-up reconciles through the authoritative current-state GET');
-  assert.ok(recover.indexOf('await refreshUC6JobStatus') < recover.indexOf('uc6State.jobEventRecoveryFailures += 1'));
-  assert.ok(recover.indexOf('uc6State.jobEventRecoveryFailures >= UC6_MAX_JOB_EVENT_RECOVERY_FAILURES') < recover.indexOf('startUC6PollingFallback()'));
-  assert.equal(fallback.includes('pollUC6JobStatus'), false, 'fallback owner only schedules the existing bounded GET poller');
-  assert.equal(manual.includes('await refreshUC6JobStatus'), true);
-  assert.equal(manual.includes('startUC6JobObservation()'), true);
-  assert.equal(manual.includes('pollUC6JobStatus'), false);
-  assert.ok(freshRender.indexOf('startUC6JobObservation({ force: true })') < freshRender.indexOf('api.submitFreshSyntheticScenarioRender'));
-  assert.ok(upload.indexOf('uc6State.jobId = normalizeUc6JobId') < upload.indexOf('startUC6JobObservation({ force: true })'));
-  assert.ok(upload.indexOf('startUC6JobObservation({ force: true })') < upload.indexOf('api.submitFreshTemplateOnboarding'));
-  assert.equal((freshRender.match(/api\.submitFreshSyntheticScenarioRender/g) || []).length, 1, 'non-idempotent render POST stays single-attempt');
-});
-
-test('UC6 cutover projects retired-family-free publication and bootstraps published Assets into dynamic runtime jobs', async () => {
-  const publication = freshUnpublishedPublicationPayload();
-  delete publication.linked_scenario_family;
-  const projectedPublication = projectUc6FreshReusableAssetPublication(publication, { expectedJobId: JOB_ID });
-  assert.equal(projectedPublication.publication_state, 'unpublished');
-  assert.equal(projectedPublication.review_state, 'review_pending');
-  assert.equal(Object.hasOwn(projectedPublication, 'linked_scenario_family'), false);
-
-  const bootstrapPayload = {
-    schema_version: 'uc6_fresh_published_asset_runtime_bootstrap_projection_v1',
-    job_id: JOB_ID,
-    state: 'persona_selection_ready',
-    source_pptx_sha256: R6C_SOURCE_SHA,
-    asset: { asset_id: R6G_ASSET_ID, source_pptx_sha256: R6C_SOURCE_SHA, generation_unit_count: 41, slot_count: 155, slide_count: 7 },
-    disposition: 'created',
-    created: true,
-    control_plane_contract_version: R6C_CONTROL_PLANE_VERSION,
+    bound_scenario: PERSONA,
+    control_plane_contract_version: CONTRACT,
     public_safety: 'PASS'
   };
-  assert.equal(projectUc6ReusableAssetRuntimeBootstrap(bootstrapPayload, { expectedAssetId: R6G_ASSET_ID }).job_id, JOB_ID);
-  assert.equal(validateUc6ReusableAssetBootstrapCommand({ bootstrap_identity: 'asset-runtime-0123456789abcdef' }).ok, true);
+  const options = { expectedJobId: JOB, expectedScenarioKey: PERSONA.scenario_key };
+  assert.deepEqual(projectUc6FreshSyntheticRenderSubmission(queued, options), queued);
+  const doneWithoutArtifact = { ...queued, queue_status: 'done', created: false, state: 'failed' };
+  assert.equal(projectUc6FreshSyntheticRenderSubmission(doneWithoutArtifact, options).queue_status, 'done');
+  const failedQueue = { ...queued, queue_status: 'failed', created: false, state: 'failed' };
+  assert.equal(projectUc6FreshSyntheticRenderSubmission(failedQueue, options).queue_status, 'failed');
+  const completedReplay = { ...queued, task_id: null, queue_status: 'done', created: false, state: 'render_completed' };
+  assert.deepEqual(projectUc6FreshSyntheticRenderSubmission(completedReplay, options), completedReplay);
+
+  for (const invalid of [
+    { ...queued, schema_version: 'wrong' },
+    { ...queued, task_type: 'wrong' },
+    { ...queued, queue_status: 'processing' },
+    { ...queued, task_id: null },
+    { ...queued, selection_state: 'bound' },
+    { ...queued, source_pptx_sha256: SHA },
+    { ...queued, bound_scenario: { ...PERSONA, scenario_key: 'operator' } },
+    { ...queued, public_safety: 'FAIL' },
+    { ...queued, provider_receipt: 'internal' },
+    { ...completedReplay, queue_status: 'ready' },
+    { ...completedReplay, task_id: 73 },
+    { ...completedReplay, created: true }
+  ]) assert.throws(() => projectUc6FreshSyntheticRenderSubmission(invalid, options));
+});
+
+test('Published Template runtime bootstrap enforces exact schema and nested Asset coherence', () => {
+  const bootstrap = {
+    schema_version: RUNTIME_BOOTSTRAP_SCHEMA,
+    job_id: JOB,
+    state: 'persona_selection_ready',
+    source_pptx_sha256: SHA,
+    asset: { asset_id: ASSET, source_pptx_sha256: SHA, generation_unit_count: 41, slot_count: 155, slide_count: 7 },
+    disposition: 'created',
+    control_plane_contract_version: CONTRACT,
+    public_safety: 'PASS'
+  };
+  assert.equal(projectUc6ReusableAssetRuntimeBootstrap(bootstrap, { expectedAssetId: ASSET }).asset.asset_id, ASSET);
+  assert.equal(projectUc6ReusableAssetRuntimeBootstrap({ ...bootstrap, disposition: 'replayed' }, { expectedAssetId: ASSET }).disposition, 'replayed');
+  assert.equal(projectUc6ReusableAssetRuntimeBootstrap({ ...bootstrap, disposition: 'resolved' }, { expectedAssetId: ASSET }).disposition, 'resolved');
+
+  for (const invalid of [
+    { ...bootstrap, schema_version: 'wrong' },
+    { ...bootstrap, state: 'source_ready' },
+    { ...bootstrap, disposition: 'unknown' },
+    { ...bootstrap, public_safety: 'FAIL' },
+    { ...bootstrap, asset: { ...bootstrap.asset, asset_id: OTHER_ASSET } },
+    { ...bootstrap, asset: { ...bootstrap.asset, source_pptx_sha256: 'd'.repeat(64) } },
+    { ...bootstrap, asset: { ...bootstrap.asset, slide_count: 0 } },
+    { ...bootstrap, created: true }
+  ]) assert.throws(() => projectUc6ReusableAssetRuntimeBootstrap(invalid, { expectedAssetId: ASSET }));
+});
+
+test('artifact capabilities fail closed on malformed aliases, filenames, and unsafe URLs', () => {
+  const payload = {
+    job_id: JOB,
+    artifacts: [
+      {
+        alias: 'final_render_output_pdf', media_type: 'application/pdf', ready: true, suggested_filename: 'document.pdf',
+        capabilities: { download: { available: true, href: '/artifacts/document.pdf' }, view: { available: true, href: '/artifacts/document.pdf' } }
+      },
+      {
+        alias: 'final_render_output_pptx', media_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ready: true, suggested_filename: 'document.pptx',
+        capabilities: { download: { available: true, href: '/artifacts/document.pptx' }, view: { available: false, href: null } }
+      }
+    ]
+  };
+  const options = { expectedJobId: JOB, apiBaseUrl: API, allowLoopbackHttp: true };
+  assert.equal(projectUc6FinalDeliveryCapabilities(payload, options).readyCount, 2);
+  const wrongAlias = clone(payload); wrongAlias.artifacts[0].alias = 'provider_pdf';
+  const unsafeUrl = clone(payload); unsafeUrl.artifacts[0].capabilities.view.href = '//evil.example/file.pdf';
+  const unsafeFilename = clone(payload); unsafeFilename.artifacts[1].suggested_filename = '../internal.pptx';
+  const pptxViewer = clone(payload); pptxViewer.artifacts[1].capabilities.view = { available: true, href: '/artifacts/document.pptx' };
+  for (const invalid of [wrongAlias, unsafeUrl, unsafeFilename, pptxViewer, { ...payload, artifacts: [payload.artifacts[0]] }]) {
+    assert.throws(() => projectUc6FinalDeliveryCapabilities(invalid, options));
+  }
+});
+
+test('Persona binding ambiguity is Persona-bound, persisted, non-replayable, and cleared by authoritative GET', async () => {
+  const otherPersona = { scenario_key: 'operator', label: 'Operator', scenario_summary: 'Operational focus', differentiation_basis: { emphasis: 'delivery' } };
+  const calls = [];
+  const api = createApi(async (url, init) => { calls.push({ url, init }); throw new TypeError('network'); });
+  let local = { ambiguous: false, attemptedPersonaKey: '' };
+  async function guardedBind(requestedPersonaKey) {
+    const control = projectUc6PersonaBindingMutationControl({ ...local, requestedPersonaKey });
+    if (!control.canSubmit) return false;
+    local = { ambiguous: true, attemptedPersonaKey: requestedPersonaKey };
+    try { await api.bindFreshSyntheticScenario(JOB, requestedPersonaKey, { personas: [PERSONA, otherPersona] }); }
+    catch (error) { if (error.name !== 'Uc6AmbiguousSubmissionError') throw error; }
+    return true;
+  }
+  assert.equal(await guardedBind(PERSONA.scenario_key), true);
+  assert.equal(await guardedBind(PERSONA.scenario_key), false);
+  assert.equal(await guardedBind(otherPersona.scenario_key), false);
+  assert.equal(calls.filter(({ init }) => init.method === 'POST').length, 1);
+
+  const persisted = projectUc6PersistedState({
+    job_id: JOB, mode: 'fresh_template', persona_binding_ambiguous: true, persona_binding_key: PERSONA.scenario_key
+  });
+  assert.equal(persisted.persona_binding_ambiguous, true);
+  assert.equal(persisted.persona_binding_key, PERSONA.scenario_key);
+  assert.equal(projectUc6PersonaBindingMutationControl({
+    ambiguous: persisted.persona_binding_ambiguous,
+    attemptedPersonaKey: persisted.persona_binding_key,
+    requestedPersonaKey: otherPersona.scenario_key
+  }).canSubmit, false);
+
+  const authoritativeCatalog = projectUc6FreshSyntheticScenarios({
+    schema_version: PERSONA_CATALOG_SCHEMA, job_id: JOB, source_pptx_sha256: SHA,
+    onboarding_state: 'onboarding_ready', generation_state: 'not_started',
+    scenario_options: [PERSONA, otherPersona], selection_state: 'bound', bound_scenario: PERSONA,
+    control_plane_contract_version: CONTRACT, public_safety: 'PASS'
+  }, { expectedJobId: JOB, expectedSourceSha: SHA });
+  const reconciled = projectUc6PersonaBindingMutationControl({
+    ambiguous: true, attemptedPersonaKey: PERSONA.scenario_key,
+    selectionState: authoritativeCatalog.selection_state, boundScenario: authoritativeCatalog.bound_scenario
+  });
+  assert.equal(reconciled.resolved, true);
+  assert.equal(reconciled.ambiguityLocked, false);
+  const afterAuthoritativeGet = projectUc6PersistedState({ job_id: JOB, mode: 'fresh_template', persona_binding_ambiguous: !reconciled.resolved, persona_binding_key: reconciled.resolved ? '' : PERSONA.scenario_key });
+  assert.equal(Object.hasOwn(afterAuthoritativeGet, 'persona_binding_ambiguous'), false);
+  assert.equal(Object.hasOwn(afterAuthoritativeGet, 'persona_binding_key'), false);
+});
+
+test('ambiguous onboarding keeps source_ready observation active until authoritative state advances', async () => {
+  const sourceReady = {
+    job_id: JOB, state: 'source_ready',
+    source: { sha256: SHA, size_bytes: 8192, slide_count: 7, filename: 'source.pptx' },
+    control_plane_contract_version: CONTRACT
+  };
+  const onboardingQueued = { ...sourceReady, state: 'onboarding_queued' };
+  const calls = [];
+  let getCount = 0;
+  const api = createApi(async (url, init) => {
+    calls.push({ url, init });
+    if (init.method === 'POST') throw new TypeError('connection_lost_after_send');
+    return response(getCount++ === 0 ? sourceReady : onboardingQueued);
+  });
+  await assert.rejects(api.submitFreshTemplateOnboarding(JOB), { name: 'Uc6AmbiguousSubmissionError' });
+  const first = projectUc6CanonicalJob(await api.getJob(JOB), { expectedJobId: JOB });
+  const unresolved = projectUc6OnboardingObservationControl({ ambiguous: true, state: first.state });
+  assert.equal(unresolved.unresolved, true);
+  assert.equal(unresolved.observationRequired, true);
+  const persisted = projectUc6PersistedState({ job_id: JOB, mode: 'fresh_template', onboarding_ambiguous: true, last_known_public_state: first.state });
+  assert.equal(projectUc6OnboardingObservationControl({ ambiguous: persisted.onboarding_ambiguous, state: persisted.last_known_public_state }).observationRequired, true);
+  const later = projectUc6CanonicalJob(await api.getJob(JOB), { expectedJobId: JOB });
+  const advanced = projectUc6OnboardingObservationControl({ ambiguous: true, state: later.state });
+  assert.equal(advanced.ambiguityCleared, true);
+  assert.equal(advanced.observationRequired, true);
+  assert.equal(calls.filter(({ init }) => init.method === 'POST').length, 1);
+});
+
+test('ambiguous publication with failed GET reconciliation stays identity-bound and blocks a second POST', async () => {
+  const identity = 'uc6_publish_1234567890';
+  const calls = [];
+  const api = createApi(async (url, init) => {
+    calls.push({ url, init });
+    if (init.method === 'POST') throw new TypeError('connection_lost_after_send');
+    return response({ detail: { code: 'unknown_backend_code' } }, 503);
+  });
+  const command = {
+    decision: 'approve_for_reuse_and_publish', decision_identity: identity,
+    reviewed_final_pptx_sha256: SHA, reviewed_final_pdf_sha256: 'c'.repeat(64), administrator_note: null
+  };
+  await assert.rejects(api.submitReusableAssetPublication(JOB, command), { name: 'Uc6AmbiguousSubmissionError' });
+  await assert.rejects(api.getReusableAssetPublication(JOB), { name: 'Uc6PublicError' });
+  const persisted = projectUc6PersistedState({ job_id: JOB, mode: 'fresh_template', publication_decision_identity: identity, publication_ambiguous: true });
+  const locked = projectUc6PublicationMutationControl({
+    ambiguous: persisted.publication_ambiguous, decisionIdentity: persisted.publication_decision_identity,
+    publicationState: 'unpublished', reviewed: true, busy: false
+  });
+  assert.equal(locked.reconciliationRequired, true);
+  assert.equal(locked.canSubmit, false);
+  if (locked.canSubmit) await api.submitReusableAssetPublication(JOB, command);
+  assert.equal(calls.filter(({ init }) => init.method === 'POST').length, 1);
+  assert.equal(persisted.publication_decision_identity, identity);
+  const completed = projectUc6PublicationMutationControl({ ambiguous: true, decisionIdentity: identity, publicationState: 'published', reviewed: true, busy: false });
+  assert.equal(completed.published, true);
+  assert.equal(completed.reconciliationRequired, false);
+  assert.equal(completed.canSubmit, false);
+});
+
+test('bootstrap ambiguity lock is persisted, Asset-bound, and blocks same or different follow-up mutation', async () => {
+  const identity = 'uc6_bootstrap_1234567890';
+  let persisted = projectUc6PersistedState({
+    mode: 'published_template_runtime', selected_asset_id: ASSET,
+    bootstrap_asset_id: ASSET, bootstrap_identity: identity, bootstrap_ambiguous: true
+  });
+  assert.deepEqual(persisted, {
+    selected_asset_id: ASSET,
+    mode: 'published_template_runtime',
+    bootstrap_ambiguous: true,
+    bootstrap_asset_id: ASSET,
+    bootstrap_identity: identity
+  });
+  for (const requestedAssetId of [ASSET, OTHER_ASSET]) {
+    const control = projectUc6BootstrapMutationControl({
+      ambiguous: persisted.bootstrap_ambiguous,
+      attemptedAssetId: persisted.bootstrap_asset_id,
+      bootstrapIdentity: persisted.bootstrap_identity,
+      requestedAssetId
+    });
+    assert.equal(control.ambiguityLocked, true);
+    assert.equal(control.canSubmit, false);
+  }
 
   const calls = [];
-  const api = createUc6BrowserAdminApi({
-    apiBaseUrl: API_BASE,
-    getIdToken: async () => 'bootstrap-token',
-    fetchImpl: async (url, init) => {
-      calls.push({ url, init });
-      return response(201, bootstrapPayload);
-    }
-  });
-  await api.bootstrapReusableAssetRuntimeJob(R6G_ASSET_ID, { bootstrap_identity: 'asset-runtime-0123456789abcdef' });
-  assert.equal(calls[0].url.endsWith(`/reusable-assets/${R6G_ASSET_ID}/jobs`), true);
-  assert.deepEqual(JSON.parse(calls[0].init.body), { bootstrap_identity: 'asset-runtime-0123456789abcdef' });
+  const api = createApi(async (url, init) => { calls.push({ url, init }); throw new TypeError('network'); });
+  let local = { ambiguous: false, attemptedAssetId: '', bootstrapIdentity: '' };
+  async function guardedBootstrap(requestedAssetId) {
+    const control = projectUc6BootstrapMutationControl({ ...local, requestedAssetId });
+    if (!control.canSubmit) return false;
+    local = { ambiguous: false, attemptedAssetId: requestedAssetId, bootstrapIdentity: identity };
+    try { await api.bootstrapReusableAssetRuntimeJob(requestedAssetId, { bootstrap_identity: identity }); }
+    catch (error) { if (error.name === 'Uc6AmbiguousSubmissionError') local.ambiguous = true; else throw error; }
+    return true;
+  }
+  assert.equal(await guardedBootstrap(ASSET), true);
+  assert.equal(await guardedBootstrap(ASSET), false);
+  assert.equal(await guardedBootstrap(OTHER_ASSET), false);
+  assert.equal(calls.length, 1);
 
-  const app = readSource('../public/app.js');
-  const selectAsset = extractFunctionBody(app, 'selectUC6ReusableAsset');
-  const stageMapper = extractFunctionBody(app, 'mapUC6PublicStateToStage');
-  const packageStage = extractFunctionBody(app, 'renderUC6PackageStage');
-  const resume = extractFunctionBody(app, 'resumeUC6PersistedJob');
-  assert.equal(executeExtractedFunction(app, 'mapUC6PublicStateToStage', {
-    authorizationState: 'authorized', publicState: 'persona_selection_ready', flowLane: 'asset_render', selectedAssetId: R6G_ASSET_ID
-  }), 'package');
-  assert.equal(packageStage.includes('assetRuntimeExpected'), true);
-  assert.equal(stageMapper.includes("state === 'persona_selection_ready'"), true);
-  assert.equal(resume.includes('asset_runtime_expected'), true);
-  const runtimeResult = extractFunctionBody(app, 'renderUC6FreshSyntheticRenderResultStage');
-  assert.equal(selectAsset.includes('bootstrapReusableAssetRuntimeJob'), true);
-  assert.equal(selectAsset.includes('loadUC6ReusableAssetPackages'), false);
-  assert.equal(selectAsset.includes('loadUC6PublishedAssetLinkedScenarioFamily'), false);
-  assert.equal(selectAsset.includes("assetSourceLane = 'static_package'"), false);
-  assert.equal(selectAsset.includes('linkedScenarioFamilyStatus'), false);
-  assert.equal(runtimeResult.includes('runtimeAsset'), true);
-  assert.equal(runtimeResult.includes('검토나 게시 절차가 없습니다'), true);
+  const afterSuccess = projectUc6PersistedState({
+    mode: 'published_template_runtime', job_id: JOB, selected_asset_id: ASSET,
+    last_known_public_state: 'persona_selection_ready', bootstrap_ambiguous: false,
+    bootstrap_asset_id: '', bootstrap_identity: ''
+  });
+  assert.equal(Object.hasOwn(afterSuccess, 'bootstrap_ambiguous'), false);
+  assert.equal(Object.hasOwn(afterSuccess, 'bootstrap_asset_id'), false);
+  assert.equal(Object.hasOwn(afterSuccess, 'bootstrap_identity'), false);
+});
+
+test('persistence projects canonical state and safely normalizes resumable old records', () => {
+  assert.deepEqual(projectUc6PersistedState({ job_id: JOB, selected_asset_id: ASSET, unrelated_secret: 'nope' }), {
+    job_id: JOB, selected_asset_id: ASSET, mode: 'published_template_runtime'
+  });
+  assert.equal(projectUc6PersistedState({ bootstrap_ambiguous: true }).bootstrap_ambiguous, undefined);
+});
+
+test('ambiguous source-generation and render submissions keep precursor states observable without replay', () => {
+  const sourcePending = projectUc6MutationObservationControl({ sourceAmbiguous: true, state: 'onboarding_ready' });
+  assert.equal(sourcePending.sourceGenerationUnresolved, true);
+  assert.equal(sourcePending.observationRequired, true);
+  assert.equal(projectUc6MutationObservationControl({ sourceAmbiguous: false, state: 'onboarding_ready' }).observationRequired, false);
+
+  for (const state of ['synthetic_scenarios_ready', 'synthetic_scenario_bound']) {
+    const renderPending = projectUc6MutationObservationControl({ renderAmbiguous: true, state });
+    assert.equal(renderPending.renderUnresolved, true);
+    assert.equal(renderPending.observationRequired, true);
+  }
+  assert.equal(projectUc6MutationObservationControl({ renderAmbiguous: false, state: 'synthetic_scenario_bound' }).observationRequired, false);
+  assert.equal(projectUc6MutationObservationControl({ renderAmbiguous: true, state: 'render_queued' }).observationRequired, false);
+});
+
+test('production sources contain only canonical lanes and live historical transport token', async () => {
+  const [admin, app] = await Promise.all([
+    readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../public/app.js', import.meta.url), 'utf8')
+  ]);
+  const production = `${admin}\n${app}`;
+  for (const residue of ['dummy-databag-packages', 'dummy-databag-package-families', 'linked-scenario-family', 'published-scenario-renders', 'scenario_000', 'scenario_001', 'scenario_002', 'scenario_count', 'dummy_render', 'asset_render', 'legacy_analysis', 'static_package', 'published_scenario_family']) {
+    assert.equal(production.includes(residue), false, residue);
+  }
+  assert.equal(production.includes('synthetic-scenarios'), true);
+  for (const liveContract of [
+    'source_ready', PERSONA_CATALOG_SCHEMA, PERSONA_BINDING_SCHEMA, SOURCE_GENERATION_SCHEMA, SOURCE_GENERATION_TASK,
+    RENDER_SUBMISSION_SCHEMA, RENDER_SUBMISSION_TASK, RUNTIME_BOOTSTRAP_SCHEMA
+  ]) assert.equal(production.includes(liveContract), true, liveContract);
+});
+
+test('controller keeps bounded reconnect, polling fallback, and stale-context guards', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  assert.match(source, /const RECONNECT_MS = \[1000, 2000, 5000\]/);
+  assert.match(source, /startPolling\(epoch\)/);
+  assert.match(source, /epoch !== state\.eventEpoch/);
+  assert.match(source, /jobId !== state\.jobId/);
+  assert.equal(source.includes('EventSource'), false);
+});
+
+test('controller supplements behavioral mutation tests with persisted guards and one-shot call sites', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  assert.match(source, /!\['source_ready', 'onboarding_queued', 'onboarding_running', 'onboarding_blocked'\]\.includes\(job\.state\)/);
+  assert.equal((source.match(/submitFreshTemplateOnboarding\(state\.jobId\)/g) || []).length, 1);
+  assert.match(source, /bootstrap_ambiguous: state\.bootstrapAmbiguous/);
+  assert.match(source, /bootstrap_asset_id: state\.bootstrapAssetId/);
+  assert.match(source, /if \(state\.busy \|\| !control\.canSubmit\) return/);
+  assert.match(source, /state\.bootstrapAmbiguous = true/);
+  assert.match(source, /state\.bootstrapAmbiguous = false; state\.bootstrapAssetId = ''; state\.bootstrapIdentity = ''/);
+  const bootstrapStart = source.indexOf('async function bootstrap(assetId)');
+  const lockSave = source.indexOf('save(); render();', bootstrapStart);
+  const bootstrapPost = source.indexOf('state.api.bootstrapReusableAssetRuntimeJob', bootstrapStart);
+  assert.ok(bootstrapStart >= 0 && lockSave > bootstrapStart && bootstrapPost > lockSave, 'durable one-shot lock must be saved before the POST');
+  assert.match(source, /persona_binding_ambiguous: state\.personaBindingAmbiguous/);
+  assert.match(source, /onboarding_ambiguous: state\.onboardingAmbiguous/);
+  assert.match(source, /publication_ambiguous: state\.publicationAmbiguous/);
+  assert.equal((source.match(/bindFreshSyntheticScenario\(state\.jobId, attemptedPersonaKey/g) || []).length, 1);
+  assert.match(source, /expectedSourceSha: state\.source\?\.sha256, expectedScenarioKey: attemptedPersonaKey/);
+  assert.equal((source.match(/submitReusableAssetPublication\(state\.jobId, command\)/g) || []).length, 1);
+});
+
+test('UC6 markup has one local shell, dynamic rail, and no second navigation', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const uc6 = html.slice(html.indexOf('id="view-uc6"'));
+  assert.match(uc6, /class="uc6-admin-shell"/);
+  assert.match(uc6, /id="uc6-stepper"[^>]*><\/nav>/);
+  assert.match(uc6, /id="uc6-activeStageRoot"/);
+  assert.equal((html.match(/id="view-uc[1-5]"/g) || []).length, 5);
+});
+
+test('UC6 presentation is scoped and contains document-dominant Review layout', async () => {
+  const [css, source] = await Promise.all([
+    readFile(new URL('../public/style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8')
+  ]);
+  const uc6Css = css.slice(css.indexOf('#view-uc6 {'));
+  for (const selector of uc6Css.split(/\n(?=[^\s@}])/).filter((line) => line.includes('{') && !line.startsWith('@'))) {
+    assert.equal(selector.trim().startsWith('#view-uc6') || selector.trim().startsWith('to {') || /^\d/.test(selector.trim()), true, selector);
+  }
+  assert.match(uc6Css, /\.uc6-review-layout/);
+  assert.match(uc6Css, /grid-template-columns: minmax\(0, 1\.85fr\) minmax\(300px, 1fr\)/);
+  assert.match(source, /Generated PDF review/);
+  assert.match(source, /게시된 템플릿으로 문서 생성/);
+  assert.match(source, /요청 결과를 확인하고 있습니다\./);
+  assert.match(source, /별도 검토 이슈 정보가 제공되지 않았습니다\./);
+  assert.equal(source.includes("fact('Blockers'"), false);
+  assert.equal(source.includes("fact('Warnings'"), false);
+  assert.equal(source.includes('확인된 차단 항목이 없습니다.'), false);
+  assert.equal(source.includes('확인된 경고가 없습니다.'), false);
 });

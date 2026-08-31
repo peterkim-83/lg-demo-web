@@ -422,8 +422,8 @@
           <header class="uc6-compact-header" id="uc6-compactHeader">
             <div class="uc6-title-block">
               <span class="uc6-eyebrow">FetchDoc</span>
-              <h1>문서 템플릿 관리자 검토</h1>
-              <p>PPTX를 등록하고 분석 결과를 검토한 뒤 처리 방향을 결정합니다.</p>
+              <h1>Document Studio</h1>
+              <p>템플릿을 만들고 게시된 템플릿으로 새로운 문서를 생성합니다.</p>
             </div>
             <section class="uc6-auth-strip" id="uc6-authRegion" aria-labelledby="uc6-authTitle">
               <h2 id="uc6-authTitle">관리자 세션</h2>
@@ -439,19 +439,10 @@
             </section>
           </header>
 
-          <nav class="uc6-stepper" id="uc6-stepper" aria-label="UC6 진행 단계" hidden>
-            <ol>
-              <li data-uc6-step="intake"><span>1</span><strong>PPTX 등록</strong></li>
-              <li data-uc6-step="analysis"><span>2</span><strong>분석</strong></li>
-              <li data-uc6-step="review"><span>3</span><strong>결과 검토</strong></li>
-              <li data-uc6-step="decision"><span>4</span><strong>결정</strong></li>
-              <li data-uc6-step="complete"><span>5</span><strong>완료</strong></li>
-            </ol>
-          </nav>
+          <nav class="uc6-stepper" id="uc6-stepper" aria-label="UC6 진행 단계" hidden></nav>
 
           <div class="uc6-stage-layout">
             <div class="uc6-active-stage" id="uc6-activeStageRoot" tabindex="-1" role="region" aria-label="현재 UC6 단계"></div>
-            <aside class="uc6-context-summary" id="uc6-contextSummary" aria-label="문서 작업 요약" hidden></aside>
           </div>
 
           <p class="uc6-live-status" id="uc6-liveStatus" aria-live="polite" aria-atomic="true">Firebase Auth와 FetchDoc 관리자 세션을 준비하고 있습니다.</p>
