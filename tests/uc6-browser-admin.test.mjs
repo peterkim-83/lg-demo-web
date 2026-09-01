@@ -69,6 +69,13 @@ function createApi(fetchImpl, tokenCalls = []) {
   });
 }
 
+function sourceBlock(source, start, end) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  assert.ok(startIndex >= 0 && endIndex > startIndex, `missing source block: ${start}`);
+  return source.slice(startIndex, endIndex);
+}
+
 test('API base accepts production HTTPS and explicit loopback HTTP only', () => {
   assert.equal(normalizeUc6ApiBaseUrl('https://api.peter-n8n.duckdns.org'), 'https://api.peter-n8n.duckdns.org/');
   assert.equal(normalizeUc6ApiBaseUrl(API, { allowLoopbackHttp: true }), API);
@@ -556,7 +563,7 @@ test('production sources contain only canonical lanes and live historical transp
     readFile(new URL('../public/app.js', import.meta.url), 'utf8')
   ]);
   const production = `${admin}\n${app}`;
-  for (const residue of ['dummy-databag-packages', 'dummy-databag-package-families', 'linked-scenario-family', 'published-scenario-renders', 'scenario_000', 'scenario_001', 'scenario_002', 'scenario_count', 'dummy_render', 'asset_render', 'legacy_analysis', 'static_package', 'published_scenario_family']) {
+  for (const residue of ['dummy-databag-packages', 'dummy-databag-package-families', 'dummy_databag', 'linked-scenario-family', 'published-scenario-renders', 'scenario_000', 'scenario_001', 'scenario_002', 'scenario_count', 'package_count', 'dummy_render', 'asset_render', 'legacy_analysis', 'static_package', 'published_scenario_family']) {
     assert.equal(production.includes(residue), false, residue);
   }
   assert.equal(production.includes('synthetic-scenarios'), true);
@@ -564,6 +571,78 @@ test('production sources contain only canonical lanes and live historical transp
     'source_ready', PERSONA_CATALOG_SCHEMA, PERSONA_BINDING_SCHEMA, SOURCE_GENERATION_SCHEMA, SOURCE_GENERATION_TASK,
     RENDER_SUBMISSION_SCHEMA, RENDER_SUBMISSION_TASK, RUNTIME_BOOTSTRAP_SCHEMA
   ]) assert.equal(production.includes(liveContract), true, liveContract);
+});
+
+test('Analyze, normal Persona, Prepare, and every running Generate state expose safe local detach', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const helper = sourceBlock(source, 'function newWorkspaceButton', 'function setMessage');
+  assert.match(helper, /button\('uc6-newWorkspaceBtn', '새 작업 시작', primary, state\.busy \|\| state\.reconciling\)/);
+
+  const analyze = sourceBlock(source, 'function renderAnalyze', 'function personaDetail');
+  assert.match(analyze, /actions\(newWorkspaceButton\(\), button\('uc6-refreshJobBtn'/);
+
+  const persona = sourceBlock(source, 'function renderPersona', 'function renderPrepare');
+  assert.match(persona, /\? actions\(newWorkspaceButton\(\)\)/);
+  assert.match(persona, /: actions\(newWorkspaceButton\(\), button\('uc6-bindPersonaBtn'/);
+
+  const prepare = sourceBlock(source, 'function renderPrepare', 'function renderGenerate');
+  assert.equal((prepare.match(/actions\(newWorkspaceButton\(\), button\(/g) || []).length, 2);
+
+  const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
+  assert.match(generate, /\['render_queued', 'render_running', 'render_unknown'\]\.includes\(state\.jobState\)/);
+  assert.match(generate, /running \? actions\(newWorkspaceButton\(\), button\('uc6-refreshJobBtn'/);
+  assert.match(generate, /: actions\(newWorkspaceButton\(\), button\('uc6-generateBtn'/);
+});
+
+test('new workspace action remains guarded and delegates only to the existing reset implementation', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const reset = sourceBlock(source, 'function reset()', 'function currentStage');
+  assert.match(reset, /stopObservation\(\)/);
+  assert.match(reset, /localStorage\.removeItem\(STORAGE_KEY\); localStorage\.removeItem\(PREVIOUS_STORAGE_KEY\)/);
+  assert.equal(reset.includes('state.api'), false);
+  assert.equal(reset.includes('fetch('), false);
+  assert.match(source, /const STORAGE_KEY = 'fetchdoc\.uc6\.canonical_workspace\.v2'/);
+  assert.match(source, /const PREVIOUS_STORAGE_KEY = 'fetchdoc\.uc6\.browser_admin_control_plane\.v1'/);
+  assert.match(source, /target\.id === 'uc6-newWorkspaceBtn' && !state\.busy && !state\.reconciling\) reset\(\)/);
+});
+
+test('bound-job reconciliation failures retain identity and present neutral refresh-or-detach recovery', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const reconcile = sourceBlock(source, 'async function reconcile', 'function observationRequired');
+  assert.match(reconcile, /const jobId = state\.jobId; state\.reconciling = true/);
+  assert.match(reconcile, /현재 작업 상태를 확인할 수 없습니다\. 상태를 새로고침하거나 새 작업을 시작할 수 있습니다\.`?, 'neutral'/);
+  assert.equal(reconcile.includes('removeItem'), false);
+  assert.equal(reconcile.includes('submitFresh'), false);
+  assert.equal(reconcile.includes("method: 'POST'"), false);
+  assert.equal(parseUc6PublicErrorPayload({ detail: { code: 'browser_admin_uc6_job_not_found' } }, 404).status, 404);
+  assert.equal(parseUc6PublicErrorPayload({ detail: { code: 'browser_admin_uc6_synthetic_scenario_binding_conflict' } }, 409).status, 409);
+});
+
+test('confirmed render results preserve authoritative 202 state while ambiguity alone uses render_unknown', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const generate = sourceBlock(source, 'async function generate()', 'async function loadCatalog');
+  const confirmed = sourceBlock(generate, 'try { const result', 'catch (error)');
+  assert.match(confirmed, /state\.renderSubmitted = true; state\.jobState = result\.state; setMessage\('요청이 접수되었습니다.'\); save\(\); startObservation\(\)/);
+  assert.equal(confirmed.includes('render_unknown'), false);
+  assert.match(generate, /error\?\.name === 'Uc6AmbiguousSubmissionError'.*state\.jobState = 'render_unknown'/s);
+});
+
+test('artifact readback failure keeps completed Review semantics and non-destructive copy', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const stages = sourceBlock(source, 'function currentStage', 'function surface');
+  const artifacts = sourceBlock(source, 'async function loadArtifacts', 'async function loadPublication');
+  const reconcile = sourceBlock(source, 'async function reconcile', 'function observationRequired');
+  assert.match(stages, /state\.jobState === 'render_completed'\) return 'review'/);
+  assert.match(artifacts, /state\.artifactStatus = 'error'; setMessage\('문서 생성은 완료되었습니다\. 파일 정보를 다시 확인해 주세요\.', 'warning'\)/);
+  assert.equal(artifacts.includes('state.jobState'), false);
+  assert.match(reconcile, /state\.jobState = job\.state/);
+  assert.match(reconcile, /job\.state === 'render_completed'.*await Promise\.all\(\[loadArtifacts\(\), loadPublication\(\)\]\)/s);
+});
+
+test('UC6 deployment marker identifies canonical workspace recovery patch', async () => {
+  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /const APP_VERSION = 'app\.uc6-canonical-workspace-recovery-2026-09-01-v1'/);
+  assert.equal(app.includes('app.uc6-q4-r1e-publication-error-semantics-2026-08-18-v1'), false);
 });
 
 test('controller keeps bounded reconnect, polling fallback, and stale-context guards', async () => {
