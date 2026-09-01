@@ -556,6 +556,10 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     return node;
   }
 
+  function newWorkspaceButton(primary = false) {
+    return button('uc6-newWorkspaceBtn', '새 작업 시작', primary, state.busy || state.reconciling);
+  }
+
   function setMessage(message = '', tone = 'neutral') {
     state.message = String(message); state.tone = tone;
     if (els.live) els.live.textContent = state.message;
@@ -721,7 +725,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const node = surface('문서 구조를 분석하고 있습니다', '슬라이드의 레이아웃과 문서 구조를 분석하여 재사용 가능한 템플릿 정보를 준비하고 있습니다.', 'uc6-analyze-stage');
     if (sourceRow()) node.append(sourceRow());
     node.append(process('Analyze', state.jobState === 'onboarding_blocked' ? '분석이 중단되었습니다. 상태를 새로고침하여 확인하세요.' : '문서 구조와 생성 단위를 안전하게 확인하고 있습니다.'));
-    if (status()) node.append(status()); node.append(actions(button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling))); return node;
+    if (status()) node.append(status()); node.append(actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling))); return node;
   }
 
   function personaDetail(value) {
@@ -744,8 +748,8 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     if (bindingControl.ambiguityLocked) node.append(el('p', 'uc6-stage-message is-neutral', '선택 요청 결과를 확인하고 있습니다. 결과가 확인되기 전에는 다른 Persona를 선택할 수 없습니다.'));
     else if (status()) node.append(status());
     node.append(bindingControl.ambiguityLocked
-      ? actions(button('uc6-newWorkspaceBtn', '새 작업으로 초기화'))
-      : actions(button('uc6-bindPersonaBtn', state.busy ? '선택 중…' : '이 Persona로 계속', true, !bindingControl.canSubmit || state.busy)));
+      ? actions(newWorkspaceButton())
+      : actions(newWorkspaceButton(), button('uc6-bindPersonaBtn', state.busy ? '선택 중…' : '이 Persona로 계속', true, !bindingControl.canSubmit || state.busy)));
     return node;
   }
 
@@ -756,7 +760,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const generation = state.personas?.generation_state;
     node.append(process(generation === 'not_started' ? '데이터 준비 대기' : generation === 'generation_failed' ? '데이터 준비 실패' : 'Prepare Context', generation === 'not_started' ? '선택한 Persona가 확인되었습니다. 데이터 준비를 시작할 수 있습니다.' : generation === 'generation_failed' ? '상태를 새로고침하여 결과를 다시 확인하세요.' : '문서 생성에 필요한 공개 데이터 컨텍스트를 준비하고 있습니다.'));
     if (status()) node.append(status());
-    node.append(generation === 'not_started' ? actions(button('uc6-startContextBtn', state.busy ? '요청 중…' : '데이터 준비 시작', true, state.busy || state.sourceSubmitted || state.sourceAmbiguous)) : actions(button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)));
+    node.append(generation === 'not_started' ? actions(newWorkspaceButton(), button('uc6-startContextBtn', state.busy ? '요청 중…' : '데이터 준비 시작', true, state.busy || state.sourceSubmitted || state.sourceAmbiguous)) : actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)));
     return node;
   }
 
@@ -770,7 +774,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     transform.append(source, center, output); node.append(transform);
     if (running) node.append(process('Generate', state.renderAmbiguous ? '요청 결과를 확인하고 있습니다.' : '생성 결과를 관찰하고 검증하고 있습니다.'));
     if (status()) node.append(status());
-    node.append(running ? actions(button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)) : actions(button('uc6-generateBtn', state.busy ? '요청 중…' : '문서 생성', true, state.busy || state.renderSubmitted || state.renderAmbiguous)));
+    node.append(running ? actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)) : actions(newWorkspaceButton(), button('uc6-generateBtn', state.busy ? '요청 중…' : '문서 생성', true, state.busy || state.renderSubmitted || state.renderAmbiguous)));
     return node;
   }
 
@@ -794,7 +798,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const note = el('textarea'); note.id = 'uc6-publicationNote'; note.rows = 4; note.maxLength = 1000; note.value = state.note; note.placeholder = '검토 노트를 입력하세요 (선택)'; noteLabel.append(note); rail.append(noteLabel);
     const downloads = el('div', 'uc6-review-downloads'); const pdfButton = button('', 'PDF 다운로드', false, !pdf?.ready); pdfButton.dataset.uc6Download = 'final_render_output_pdf';
     const pptx = artifact('final_render_output_pptx'); const pptxButton = button('', 'PPTX 다운로드', false, !pptx?.ready); pptxButton.dataset.uc6Download = 'final_render_output_pptx'; downloads.append(pdfButton, pptxButton); rail.append(downloads);
-    rail.append(state.mode === 'fresh_template' ? button('uc6-openPublishBtn', '템플릿 게시', true, !state.reviewed) : button('uc6-newWorkspaceBtn', '새 작업 시작', true));
+    rail.append(state.mode === 'fresh_template' ? button('uc6-openPublishBtn', '템플릿 게시', true, !state.reviewed) : newWorkspaceButton(true));
     layout.append(viewer, rail); node.append(layout); if (status()) node.append(status()); return node;
   }
 
@@ -804,7 +808,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const card = el('div', 'uc6-publish-card'); if (sourceRow()) card.append(sourceRow());
     if (published) {
       card.append(el('div', 'uc6-success-receipt', '✓'), el('strong', '', '게시가 완료되었습니다.'), el('p', '', `Template ${shortId(state.publication.published_asset.asset_id)}`));
-      card.append(actions(button('uc6-openLibraryBtn', '게시된 템플릿 보기', true), button('uc6-newWorkspaceBtn', '새 작업 시작')));
+      card.append(actions(button('uc6-openLibraryBtn', '게시된 템플릿 보기', true), newWorkspaceButton()));
     } else {
       const confirm = el('div', 'uc6-publish-confirmation'); confirm.append(el('span', '', '관리자 확인'), el('strong', '', state.reviewed ? '검토 완료' : '검토 필요')); if (state.note) confirm.append(el('p', '', state.note)); card.append(confirm);
       if (state.publicationStatus === 'loading') card.append(process('게시 상태 확인', '현재 게시 가능 상태를 확인하고 있습니다.'));
@@ -839,7 +843,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
       node.append(el('p', 'uc6-stage-message is-neutral', '요청 결과를 확인하고 있습니다. 안전하게 중복할 수 없어 다른 템플릿을 시작할 수 없습니다.'));
     } else if (status()) node.append(status());
     node.append(bootstrapControl.ambiguityLocked
-      ? actions(button('uc6-newWorkspaceBtn', '새 작업으로 초기화'))
+      ? actions(newWorkspaceButton())
       : actions(button('uc6-backWorkspaceBtn', '돌아가기'), button('uc6-refreshCatalogBtn', '목록 새로고침', false, state.catalogStatus === 'loading')));
     return node;
   }
@@ -904,7 +908,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
   async function loadArtifacts(signal) {
     state.artifactStatus = 'loading';
     try { state.artifacts = projectUc6FinalDeliveryCapabilities(await state.api.getRenderArtifactCapabilities(state.jobId, { signal }), { expectedJobId: state.jobId, apiBaseUrl }); state.artifactStatus = 'ready'; }
-    catch (error) { if (error?.name === 'AbortError') throw error; state.artifactStatus = 'error'; setMessage(errorMessage(error), 'error'); }
+    catch (error) { if (error?.name === 'AbortError') throw error; state.artifactStatus = 'error'; setMessage('문서 생성은 완료되었습니다. 파일 정보를 다시 확인해 주세요.', 'warning'); }
   }
 
   async function loadPublication(signal) {
@@ -927,7 +931,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
       if (job.state === 'render_completed') { state.renderSubmitted = true; state.renderAmbiguous = false; await Promise.all([loadArtifacts(), loadPublication()]); stopObservation(); }
       else if (job.state === 'failed') stopObservation();
       save(); if (observe && observationRequired()) startObservation();
-    } catch (error) { if (!authFailure(error)) setMessage(errorMessage(error), 'error'); }
+    } catch (error) { if (!authFailure(error)) setMessage(`${errorMessage(error)} 현재 작업 상태를 확인할 수 없습니다. 상태를 새로고침하거나 새 작업을 시작할 수 있습니다.`, 'neutral'); }
     finally { state.reconciling = false; render(); }
   }
 
@@ -1046,7 +1050,8 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const target = event.target instanceof Element ? event.target.closest('button') : null; if (!target) return;
     if (target.id === 'uc6-startFreshBtn') { reset(); state.mode = 'fresh_template'; render(); }
     else if (target.id === 'uc6-openLibraryBtn') { stopObservation(); Object.assign(state, { mode: 'published_template_runtime', jobId: '', jobState: '', publication: null, showPublish: false }); loadCatalog(); }
-    else if (target.id === 'uc6-backWorkspaceBtn' || target.id === 'uc6-newWorkspaceBtn') reset();
+    else if (target.id === 'uc6-backWorkspaceBtn') reset();
+    else if (target.id === 'uc6-newWorkspaceBtn' && !state.busy && !state.reconciling) reset();
     else if (target.id === 'uc6-analyzeBtn') upload(); else if (target.id === 'uc6-bindPersonaBtn') bindPersona();
     else if (target.id === 'uc6-startContextBtn') prepare(); else if (target.id === 'uc6-generateBtn') generate();
     else if (target.id === 'uc6-refreshJobBtn') reconcile(true); else if (target.id === 'uc6-refreshCatalogBtn') loadCatalog();
