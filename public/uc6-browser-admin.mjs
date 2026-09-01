@@ -758,7 +758,11 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const persona = state.personas?.bound_scenario;
     if (persona) { const summary = el('div', 'uc6-selected-persona'); summary.append(el('span', '', '선택한 Persona'), el('strong', '', persona.label), el('p', '', persona.scenario_summary)); node.append(summary); }
     const generation = state.personas?.generation_state;
-    node.append(process(generation === 'not_started' ? '데이터 준비 대기' : generation === 'generation_failed' ? '데이터 준비 실패' : 'Prepare Context', generation === 'not_started' ? '선택한 Persona가 확인되었습니다. 데이터 준비를 시작할 수 있습니다.' : generation === 'generation_failed' ? '상태를 새로고침하여 결과를 다시 확인하세요.' : '문서 생성에 필요한 공개 데이터 컨텍스트를 준비하고 있습니다.'));
+    if (generation === 'not_started') {
+      const readiness = el('div', 'uc6-stage-message is-neutral');
+      readiness.append(el('strong', '', '데이터 준비를 시작할 수 있습니다.'), el('p', '', "선택한 Persona에 맞는 문서 데이터를 준비합니다. 아래의 '데이터 준비 시작' 버튼을 눌러 시작하세요."));
+      node.append(readiness);
+    } else node.append(process(generation === 'generation_failed' ? '데이터 준비 실패' : 'Prepare Context', generation === 'generation_failed' ? '상태를 새로고침하여 결과를 다시 확인하세요.' : '문서 생성에 필요한 공개 데이터 컨텍스트를 준비하고 있습니다.'));
     if (status()) node.append(status());
     node.append(generation === 'not_started' ? actions(newWorkspaceButton(), button('uc6-startContextBtn', state.busy ? '요청 중…' : '데이터 준비 시작', true, state.busy || state.sourceSubmitted || state.sourceAmbiguous)) : actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)));
     return node;
