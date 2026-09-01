@@ -594,6 +594,22 @@ test('Analyze, normal Persona, Prepare, and every running Generate state expose 
   assert.match(generate, /: actions\(newWorkspaceButton\(\), button\('uc6-generateBtn'/);
 });
 
+test('Prepare readiness is static until source generation is submitted', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const prepare = sourceBlock(source, 'function renderPrepare', 'function renderGenerate');
+  const readiness = sourceBlock(prepare, "if (generation === 'not_started')", '} else node.append(process');
+  assert.equal(readiness.includes('process('), false);
+  assert.equal(readiness.includes('uc6-process-mark'), false);
+  assert.equal(readiness.includes('uc6-progress'), false);
+  assert.match(readiness, /uc6-stage-message is-neutral/);
+  assert.match(readiness, /데이터 준비를 시작할 수 있습니다\./);
+  assert.match(readiness, /선택한 Persona에 맞는 문서 데이터를 준비합니다\. 아래의 '데이터 준비 시작' 버튼을 눌러 시작하세요\./);
+  assert.match(prepare, /else node\.append\(process\(generation === 'generation_failed'/);
+  assert.match(prepare, /button\('uc6-startContextBtn', state\.busy \? '요청 중…' : '데이터 준비 시작'/);
+  assert.match(prepare, /actions\(newWorkspaceButton\(\), button\('uc6-startContextBtn'/);
+  for (const activeState of ['generation_queued', 'generation_running']) assert.match(source, new RegExp(`'${activeState}'`));
+});
+
 test('new workspace action remains guarded and delegates only to the existing reset implementation', async () => {
   const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
   const reset = sourceBlock(source, 'function reset()', 'function currentStage');
