@@ -6719,6 +6719,14 @@ body:has(#view-uc5.active) #main-content {
   line-height: 1.5;
 }
 
+#view-uc6 .uc6-stage-message strong {
+  display: block;
+}
+
+#view-uc6 .uc6-stage-message p {
+  margin: 4px 0 0;
+}
+
 #view-uc6 .uc6-stage-message.is-warning {
   border-color: var(--uc6-warning);
   background: var(--uc6-warning-soft);

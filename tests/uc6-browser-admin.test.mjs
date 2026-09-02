@@ -589,25 +589,117 @@ test('Analyze, normal Persona, Prepare, and every running Generate state expose 
   assert.equal((prepare.match(/actions\(newWorkspaceButton\(\), button\(/g) || []).length, 2);
 
   const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
-  assert.match(generate, /\['render_queued', 'render_running', 'render_unknown'\]\.includes\(state\.jobState\)/);
-  assert.match(generate, /running \? actions\(newWorkspaceButton\(\), button\('uc6-refreshJobBtn'/);
+  assert.match(generate, /\['render_queued', 'render_running'\]\.includes\(state\.jobState\)/);
+  assert.match(generate, /state\.jobState === 'render_unknown'/);
+  assert.match(generate, /active \? actions\(newWorkspaceButton\(\), button\('uc6-refreshJobBtn'/);
   assert.match(generate, /: actions\(newWorkspaceButton\(\), button\('uc6-generateBtn'/);
 });
 
-test('Prepare readiness is static until source generation is submitted', async () => {
+test('onboarding_blocked renders terminal blocked semantics without Analyze processing', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const analyze = sourceBlock(source, 'function renderAnalyze', 'function personaDetail');
+  const blocked = sourceBlock(analyze, 'if (blocked)', 'else node.append(process');
+  assert.match(analyze, /const blocked = state\.jobState === 'onboarding_blocked'/);
+  assert.match(analyze, /blocked \? '문서 분석이 중단되었습니다'/);
+  assert.match(analyze, /현재 작업은 차단된 상태이며 더 이상 처리되고 있지 않습니다\./);
+  assert.match(blocked, /staticState\('분석 차단됨'.*'error'\)/s);
+  assert.match(blocked, /상태를 다시 확인하거나 새 작업을 시작하세요\./);
+  assert.equal(blocked.includes('원인을 확인'), false);
+  assert.equal(blocked.includes('process('), false);
+});
+
+test('terminal Job failures cannot render active Analyze processing', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const analyze = sourceBlock(source, 'function renderAnalyze', 'function personaDetail');
+  const failed = sourceBlock(analyze, 'else if (failed)', 'else node.append(process');
+  assert.match(analyze, /const failed = \['synthetic_scenarios_failed', 'failed'\]\.includes\(state\.jobState\)/);
+  assert.match(analyze, /failed \? '문서 작업에 실패했습니다'/);
+  assert.match(failed, /staticState\('작업 실패'.*'error'\)/s);
+  assert.match(failed, /자동으로 다시 시도하지 않습니다\./);
+  assert.equal(failed.includes('process('), false);
+  assert.equal(failed.includes('retry'), false);
+});
+
+test('Prepare readiness is static and action-led until source generation is submitted', async () => {
   const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
   const prepare = sourceBlock(source, 'function renderPrepare', 'function renderGenerate');
-  const readiness = sourceBlock(prepare, "if (generation === 'not_started')", '} else node.append(process');
+  const readiness = sourceBlock(prepare, 'if (ready)', 'else if (failed)');
   assert.equal(readiness.includes('process('), false);
   assert.equal(readiness.includes('uc6-process-mark'), false);
   assert.equal(readiness.includes('uc6-progress'), false);
-  assert.match(readiness, /uc6-stage-message is-neutral/);
+  assert.match(prepare, /ready \? '문서 데이터를 준비할 수 있습니다'/);
+  assert.match(prepare, /데이터 준비는 아직 시작되지 않았습니다\. 아래에서 시작할 수 있습니다\./);
+  assert.match(readiness, /staticState\('데이터 준비를 시작할 수 있습니다\.'/);
   assert.match(readiness, /데이터 준비를 시작할 수 있습니다\./);
   assert.match(readiness, /선택한 Persona에 맞는 문서 데이터를 준비합니다\. 아래의 '데이터 준비 시작' 버튼을 눌러 시작하세요\./);
-  assert.match(prepare, /else node\.append\(process\(generation === 'generation_failed'/);
   assert.match(prepare, /button\('uc6-startContextBtn', state\.busy \? '요청 중…' : '데이터 준비 시작'/);
   assert.match(prepare, /actions\(newWorkspaceButton\(\), button\('uc6-startContextBtn'/);
-  for (const activeState of ['generation_queued', 'generation_running']) assert.match(source, new RegExp(`'${activeState}'`));
+});
+
+test('Prepare queued and running states retain legitimate indeterminate processing', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const prepare = sourceBlock(source, 'function renderPrepare', 'function renderGenerate');
+  assert.match(prepare, /const processing = \['generation_queued', 'generation_running'\]\.includes\(generation\)/);
+  assert.match(prepare, /else if \(processing\) node\.append\(process\('Prepare Context'/);
+  assert.match(prepare, /문서에 필요한 데이터를 준비하고 있습니다/);
+});
+
+test('generation_failed renders terminal failure semantics without active processing', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const prepare = sourceBlock(source, 'function renderPrepare', 'function renderGenerate');
+  const failed = sourceBlock(prepare, 'else if (failed)', 'else if (processing)');
+  assert.match(prepare, /const failed = generation === 'generation_failed'/);
+  assert.match(prepare, /failed \? '문서 데이터 준비에 실패했습니다'/);
+  assert.match(failed, /staticState\('데이터 준비 실패'.*'error'\)/s);
+  assert.match(failed, /자동으로 다시 시도하지 않습니다\./);
+  assert.equal(failed.includes('process('), false);
+});
+
+test('Final Generation running states stay active while render_unknown uses reconciliation copy', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
+  const reconciliation = sourceBlock(generate, 'else if (reconciling)', 'if (status())');
+  assert.match(generate, /const running = \['render_queued', 'render_running'\]\.includes\(state\.jobState\)/);
+  assert.match(generate, /if \(running\) node\.append\(process\('Generate'/);
+  assert.match(generate, /running \? '최종 문서를 생성하고 있습니다'/);
+  assert.match(generate, /reconciling \? '문서 생성 결과를 확인하고 있습니다'/);
+  assert.match(generate, /reconciling \? 'Checking status' : running \? 'Generating' : 'Ready'/);
+  assert.match(generate, /reconciling \? '결과 확인 중' : running \? '생성 중' : 'Final document'/);
+  assert.match(reconciliation, /staticState\('결과 확인 중', '요청 결과와 현재 상태를 확인하고 있습니다\./);
+  assert.match(reconciliation, /최종 문서 생성 여부가 확인되기 전에는 요청을 다시 보내지 않습니다\./);
+  assert.equal(reconciliation.includes('process('), false);
+  assert.equal(reconciliation.includes('최종 문서를 생성하고 있습니다'), false);
+});
+
+test('terminal Job failures cannot render Generate READY or active semantics', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
+  const failed = sourceBlock(generate, 'if (failed) node.append', 'else if (running)');
+  assert.match(generate, /const failed = \['synthetic_scenarios_failed', 'failed'\]\.includes\(state\.jobState\)/);
+  assert.match(generate, /failed \? '문서 생성에 실패했습니다'/);
+  assert.match(generate, /if \(!failed\) \{/);
+  assert.match(failed, /staticState\('문서 생성 실패'.*'error'\)/s);
+  assert.match(failed, /자동으로 다시 시도하지 않습니다\./);
+  assert.equal(failed.includes('process('), false);
+  assert.equal(failed.includes('Ready'), false);
+  assert.equal(failed.includes('retry'), false);
+  assert.match(generate, /failed \|\| active \? actions\(newWorkspaceButton\(\), button\('uc6-refreshJobBtn'/);
+});
+
+test('processing helper exposes indeterminate semantics without fake numeric progress', async () => {
+  const [source, css] = await Promise.all([
+    readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../public/style.css', import.meta.url), 'utf8')
+  ]);
+  const helper = sourceBlock(source, 'function process', 'function sourceRow');
+  assert.match(helper, /uc6-progress is-indeterminate/);
+  assert.match(helper, /setAttribute\('role', 'progressbar'\)/);
+  assert.match(helper, /setAttribute\('aria-label', '진행 중'\)/);
+  assert.equal(helper.includes("setAttribute('role', 'status')"), false);
+  assert.equal(helper.includes('aria-live'), false);
+  assert.equal(helper.includes('aria-valuenow'), false);
+  assert.equal(helper.includes('%'), false);
+  assert.match(css, /#view-uc6 \.uc6-progress\.is-indeterminate span \{\s*animation: uc6-progress/s);
 });
 
 test('new workspace action remains guarded and delegates only to the existing reset implementation', async () => {
