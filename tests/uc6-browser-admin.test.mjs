@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
   UC6_BROWSER_ADMIN_ENDPOINTS,
@@ -23,6 +24,7 @@ import {
   projectUc6FreshSyntheticScenarios,
   projectUc6ReusableAssetRuntimeBootstrap,
   projectUc6TemplateDisplayName,
+  projectUc6WorkflowMascot,
   projectUc6WorkflowRail,
   synchronizeUc6ReviewPdfViewer,
   validateUc6SyntheticScenarioBindingCommand,
@@ -717,6 +719,90 @@ test('six-step visual rail projects existing stages without inventing control-pl
   ], 'Published Template runtime begins at Persona with Source and Analyze complete');
   assert.equal(projectUc6WorkflowRail('publish').every((step) => step.state === 'completed'), true);
   for (const hidden of ['auth', 'workspace', 'library']) assert.deepEqual(projectUc6WorkflowRail(hidden), []);
+});
+
+test('workflow mascot maps only existing presentation state to fixed markers or connector midpoints', () => {
+  const hidden = { visible: false, anchorStep: null, placement: 'marker', motion: 'idle', tone: 'normal' };
+  const marker = (anchorStep, tone = 'normal') => ({ visible: true, anchorStep, placement: 'marker', motion: 'idle', tone });
+  const connector = (anchorStep) => ({ visible: true, anchorStep, placement: 'connector', motion: 'running', tone: 'normal' });
+  const cases = [
+    [{ stage: 'auth', jobId: JOB }, hidden],
+    [{ stage: 'workspace', jobId: JOB }, hidden],
+    [{ stage: 'library', jobId: JOB }, hidden],
+    [{ stage: 'source', jobId: '' }, hidden],
+    [{ stage: 'analyze', jobId: JOB, jobState: 'onboarding_running' }, connector('analyze')],
+    [{ stage: 'analyze', jobId: JOB, jobState: 'onboarding_blocked', busy: true }, marker('analyze', 'blocked')],
+    [{ stage: 'analyze', jobId: JOB, jobState: 'failed', busy: true }, marker('analyze', 'blocked')],
+    [{ stage: 'persona', jobId: JOB }, marker('persona')],
+    [{ stage: 'persona', jobId: JOB, busy: true }, connector('persona')],
+    [{ stage: 'persona', jobId: JOB, personaBindingAmbiguous: true }, connector('persona')],
+    [{ stage: 'prepare', jobId: JOB, generationState: 'not_started' }, marker('prepare')],
+    [{ stage: 'prepare', jobId: JOB, generationState: 'not_started', busy: true }, connector('prepare')],
+    [{ stage: 'prepare', jobId: JOB, generationState: 'not_started', sourceSubmitted: true }, connector('prepare')],
+    [{ stage: 'prepare', jobId: JOB, generationState: 'not_started', sourceAmbiguous: true }, connector('prepare')],
+    [{ stage: 'prepare', jobId: JOB, generationState: 'generation_queued' }, connector('prepare')],
+    [{ stage: 'prepare', jobId: JOB, generationState: 'generation_running' }, connector('prepare')],
+    [{ stage: 'prepare', jobId: JOB, generationState: 'generation_failed', busy: true }, marker('prepare', 'blocked')],
+    [{ stage: 'generate', jobId: JOB, generationState: 'generation_ready' }, marker('generate')],
+    [{ stage: 'generate', jobId: JOB, generationState: 'generation_ready', busy: true }, connector('generate')],
+    [{ stage: 'generate', jobId: JOB, generationState: 'generation_ready', renderSubmitted: true }, connector('generate')],
+    [{ stage: 'generate', jobId: JOB, generationState: 'generation_ready', renderAmbiguous: true }, connector('generate')],
+    [{ stage: 'generate', jobId: JOB, jobState: 'render_queued' }, connector('generate')],
+    [{ stage: 'generate', jobId: JOB, jobState: 'render_running' }, connector('generate')],
+    [{ stage: 'generate', jobId: JOB, jobState: 'render_unknown' }, connector('generate')],
+    [{ stage: 'generate', jobId: JOB, jobState: 'failed', busy: true }, marker('generate', 'blocked')],
+    [{ stage: 'review', jobId: JOB, jobState: 'render_completed', artifactStatus: 'loading' }, marker('review')],
+    [{ stage: 'publish', jobId: JOB, jobState: 'render_completed', busy: true }, marker('review')]
+  ];
+  for (const [input, expected] of cases) {
+    const snapshot = structuredClone(input);
+    assert.deepEqual(projectUc6WorkflowMascot(input), expected, JSON.stringify(input));
+    assert.deepEqual(input, snapshot, `input mutated: ${JSON.stringify(input)}`);
+  }
+});
+
+test('approved workflow mascot asset remains the exact transparent source PNG', async () => {
+  const asset = await readFile(new URL('../public/fetchdoc-workflow-mascot.png', import.meta.url));
+  assert.equal(createHash('sha256').update(asset).digest('hex'), 'e92eafca712f94c82c42d0395c4dbe6c055f6201d42d68f53fb3c5c20f127807');
+  assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(asset.subarray(12, 16).toString('ascii'), 'IHDR');
+  assert.equal(asset.readUInt32BE(16), 1448);
+  assert.equal(asset.readUInt32BE(20), 1086);
+  assert.equal(asset[25], 6, 'PNG must retain RGBA color type');
+});
+
+test('workflow rail keeps one decorative mascot scaffold with scoped fixed-position motion', async () => {
+  const [source, css] = await Promise.all([
+    readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../public/style.css', import.meta.url), 'utf8')
+  ]);
+  const scaffold = sourceBlock(source, 'function ensureRail', 'function renderRail');
+  const renderRail = sourceBlock(source, 'function renderRail', 'function renderWorkspace');
+  const runCycle = sourceBlock(css, '@keyframes uc6-mascot-run', '@keyframes uc6-mascot-contact');
+  const reducedMotion = sourceBlock(css, '@media (prefers-reduced-motion: reduce)', '@media (max-width: 1280px)');
+  const reviewHead = sourceBlock(source, 'function renderReviewViewerHead', 'function renderReviewRail');
+
+  assert.match(scaffold, /if \(railView\?\.track\.isConnected.*return railView/);
+  assert.match(scaffold, /mascotLayer\.setAttribute\('aria-hidden', 'true'\)/);
+  assert.match(scaffold, /mascotImage\.src = '\/fetchdoc-workflow-mascot\.png'; mascotImage\.alt = ''/);
+  assert.equal((source.match(/fetchdoc-workflow-mascot\.png/g) || []).length, 1);
+  assert.equal(renderRail.includes('replaceChildren'), false, 'normal rail renders must update the stable scaffold');
+  assert.match(renderRail, /style\.gridColumn = mascot\.placement === 'connector' \? `\$\{anchorIndex \+ 1\} \/ span 2` : String\(anchorIndex \+ 1\)/);
+
+  assert.match(css, /--uc6-mascot-height: 48px/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*--uc6-mascot-height: 44px/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*--uc6-mascot-height: 40px;[\s\S]*min-width: 620px/);
+  assert.match(css, /\.uc6-stepper li:not\(:last-child\)::after[\s\S]*left: calc\(50% \+ 19px\)/);
+  assert.match(css, /\.uc6-workflow-mascot\.is-running \.uc6-workflow-mascot-image[\s\S]*animation: uc6-mascot-run 480ms linear infinite/);
+  assert.match(runCycle, /18%[\s\S]*-4px[\s\S]*60%[\s\S]*-3px/);
+  assert.equal(runCycle.includes('translateX'), false, 'mascot sprite must not travel horizontally');
+  assert.match(reducedMotion, /uc6-workflow-mascot\.is-running[\s\S]*animation: none/);
+
+  assert.match(reviewHead, /state\.artifactStatus === 'loading'/);
+  assert.match(reviewHead, /classList\.add\('uc6-review-refresh'\)/);
+  assert.match(source, /target\.id === 'uc6-refreshArtifactsBtn'\) loadArtifacts\(\)\.then\(render\)/);
+  assert.match(css, /\.uc6-review-refresh \{[\s\S]*background: rgba\(255, 255, 255, \.08\)[\s\S]*color: #f8fafc/);
+  assert.match(css, /\.uc6-review-refresh:hover:not\(:disabled\)[\s\S]*background: rgba\(255, 255, 255, \.16\)/);
 });
 
 test('presentation-only message filtering suppresses stale acknowledgement without mutating state', () => {
