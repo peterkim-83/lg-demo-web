@@ -722,9 +722,9 @@ test('six-step visual rail projects existing stages without inventing control-pl
 });
 
 test('workflow mascot maps only existing presentation state to fixed markers or connector midpoints', () => {
-  const hidden = { visible: false, anchorStep: null, placement: 'marker', motion: 'idle', tone: 'normal' };
-  const marker = (anchorStep, tone = 'normal') => ({ visible: true, anchorStep, placement: 'marker', motion: 'idle', tone });
-  const connector = (anchorStep) => ({ visible: true, anchorStep, placement: 'connector', motion: 'running', tone: 'normal' });
+  const hidden = { visible: false, anchorStep: null, placement: 'marker', motion: 'idle', tone: 'normal', variant: 'idle' };
+  const marker = (anchorStep, tone = 'normal') => ({ visible: true, anchorStep, placement: 'marker', motion: 'idle', tone, variant: tone === 'blocked' ? 'blocked' : 'idle' });
+  const connector = (anchorStep) => ({ visible: true, anchorStep, placement: 'connector', motion: 'running', tone: 'normal', variant: 'running' });
   const cases = [
     [{ stage: 'auth', jobId: JOB }, hidden],
     [{ stage: 'workspace', jobId: JOB }, hidden],
@@ -761,14 +761,26 @@ test('workflow mascot maps only existing presentation state to fixed markers or 
   }
 });
 
-test('approved workflow mascot asset remains the exact transparent source PNG', async () => {
-  const asset = await readFile(new URL('../public/fetchdoc-workflow-mascot.png', import.meta.url));
-  assert.equal(createHash('sha256').update(asset).digest('hex'), 'e92eafca712f94c82c42d0395c4dbe6c055f6201d42d68f53fb3c5c20f127807');
-  assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
-  assert.equal(asset.subarray(12, 16).toString('ascii'), 'IHDR');
-  assert.equal(asset.readUInt32BE(16), 1448);
-  assert.equal(asset.readUInt32BE(20), 1086);
-  assert.equal(asset[25], 6, 'PNG must retain RGBA color type');
+test('all authoritative workflow mascot assets retain exact hashes, dimensions, signatures, and RGBA format', async () => {
+  const expected = [
+    ['fetchdoc-workflow-mascot-run-1.png', 1536, 1024, '0a347d97c38ec3497c876230b0947a6a2261fd8d711f919e703bc73f372cec7e'],
+    ['fetchdoc-workflow-mascot-run-2.png', 1536, 1024, '3bd6a9c48739925efee3737ce443ea64ce1a99fbe98847172be02597a1b65d63'],
+    ['fetchdoc-workflow-mascot-run-3.png', 1448, 1086, '763d841844d138c40643b20b396b39bfc51c50126b9dcc9e84128d7730a6517a'],
+    ['fetchdoc-workflow-mascot-run-4.png', 1448, 1086, '0132999d0ce3be37555adc3b2c01bc569fe88b0ff3245b52670e57502e7cf424'],
+    ['fetchdoc-workflow-mascot-run-5.png', 1448, 1086, '9886c6526778230fcdc72ead4e7890e959baed085f14e01206b65d4591341efc'],
+    ['fetchdoc-workflow-mascot-run-6.png', 1448, 1086, 'ac91862fc57cbddc70ffdff029583dcbf2e6d53dcf79ecb0e40d10d7178bf3a2'],
+    ['fetchdoc-workflow-mascot-idle.png', 1254, 1254, '414680159cf00f3786cfaff70391cbda580ae23acd98d5e4c48b9fddd2593809'],
+    ['fetchdoc-workflow-mascot-blocked.png', 1254, 1254, 'bf2bfd78dfca30490c6888324e791463f99982fbc5ec5dce83f3625bb6abf1d1']
+  ];
+  for (const [name, width, height, hash] of expected) {
+    const asset = await readFile(new URL(`../public/${name}`, import.meta.url));
+    assert.equal(createHash('sha256').update(asset).digest('hex'), hash, name);
+    assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', name);
+    assert.equal(asset.subarray(12, 16).toString('ascii'), 'IHDR', name);
+    assert.equal(asset.readUInt32BE(16), width, name);
+    assert.equal(asset.readUInt32BE(20), height, name);
+    assert.equal(asset[25], 6, `${name} must retain RGBA color type`);
+  }
 });
 
 test('workflow rail keeps one decorative mascot scaffold with scoped fixed-position motion', async () => {
@@ -778,25 +790,39 @@ test('workflow rail keeps one decorative mascot scaffold with scoped fixed-posit
   ]);
   const scaffold = sourceBlock(source, 'function ensureRail', 'function renderRail');
   const renderRail = sourceBlock(source, 'function renderRail', 'function renderWorkspace');
-  const runCycle = sourceBlock(css, '@keyframes uc6-mascot-run', '@keyframes uc6-mascot-contact');
+  const frameCycle = sourceBlock(css, '@keyframes uc6-mascot-frame', '@keyframes uc6-mascot-contact');
   const reducedMotion = sourceBlock(css, '@media (prefers-reduced-motion: reduce)', '@media (max-width: 1280px)');
   const reviewHead = sourceBlock(source, 'function renderReviewViewerHead', 'function renderReviewRail');
+  const frameSources = sourceBlock(source, 'const UC6_MASCOT_RUN_FRAMES', 'export function projectUc6WorkflowRail');
 
   assert.match(scaffold, /if \(railView\?\.track\.isConnected.*return railView/);
   assert.match(scaffold, /mascotLayer\.setAttribute\('aria-hidden', 'true'\)/);
-  assert.match(scaffold, /mascotImage\.src = '\/fetchdoc-workflow-mascot\.png'; mascotImage\.alt = ''/);
-  assert.equal((source.match(/fetchdoc-workflow-mascot\.png/g) || []).length, 1);
+  assert.match(scaffold, /UC6_MASCOT_RUN_FRAMES\.forEach\(\(frame, index\)/);
+  assert.match(scaffold, /image\.style\.setProperty\('--uc6-frame-scale', String\(frame\.scale\)\)/);
+  assert.match(scaffold, /createMascotImage\(UC6_MASCOT_IDLE, 'uc6-workflow-mascot-static is-idle'\)/);
+  assert.match(scaffold, /createMascotImage\(UC6_MASCOT_BLOCKED, 'uc6-workflow-mascot-static is-blocked'\)/);
+  const orderedFrameOffsets = Array.from({ length: 6 }, (_, index) => frameSources.indexOf(`/fetchdoc-workflow-mascot-run-${index + 1}.png`));
+  assert.equal(orderedFrameOffsets.every((offset) => offset >= 0), true);
+  assert.equal(orderedFrameOffsets.every((offset, index) => index === 0 || orderedFrameOffsets[index - 1] < offset), true);
   assert.equal(renderRail.includes('replaceChildren'), false, 'normal rail renders must update the stable scaffold');
   assert.match(renderRail, /style\.gridColumn = mascot\.placement === 'connector' \? `\$\{anchorIndex \+ 1\} \/ span 2` : String\(anchorIndex \+ 1\)/);
+  assert.match(renderRail, /is-variant-\$\{mascot\.variant\}/);
 
   assert.match(css, /--uc6-mascot-height: 48px/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*--uc6-mascot-height: 44px/);
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*--uc6-mascot-height: 40px;[\s\S]*min-width: 620px/);
   assert.match(css, /\.uc6-stepper li:not\(:last-child\)::after[\s\S]*left: calc\(50% \+ 19px\)/);
-  assert.match(css, /\.uc6-workflow-mascot\.is-running \.uc6-workflow-mascot-image[\s\S]*animation: uc6-mascot-run 480ms linear infinite/);
-  assert.match(runCycle, /18%[\s\S]*-4px[\s\S]*60%[\s\S]*-3px/);
-  assert.equal(runCycle.includes('translateX'), false, 'mascot sprite must not travel horizontally');
-  assert.match(reducedMotion, /uc6-workflow-mascot\.is-running[\s\S]*animation: none/);
+  assert.match(css, /\.uc6-workflow-mascot \{[\s\S]*width: calc\(var\(--uc6-mascot-height\) \* 1\.5\)[\s\S]*height: var\(--uc6-mascot-height\)/);
+  assert.match(css, /\.uc6-workflow-mascot-frame,[\s\S]*position: absolute;[\s\S]*inset: 0;[\s\S]*width: 100%;[\s\S]*height: 100%;[\s\S]*object-fit: contain/);
+  assert.match(css, /\.uc6-workflow-mascot\.is-variant-running \.uc6-workflow-mascot-frame \{[\s\S]*animation: uc6-mascot-frame 540ms steps\(1, end\) infinite/);
+  for (const delay of ['90ms', '180ms', '270ms', '360ms', '450ms']) assert.equal(css.includes(`animation-delay: ${delay}`), true, delay);
+  assert.match(frameCycle, /0%, 16\.666%[\s\S]*opacity: 1[\s\S]*16\.667%, 100%[\s\S]*opacity: 0/);
+  assert.equal(frameCycle.includes('transform'), false, 'running frames must not travel or resize during playback');
+  assert.match(reducedMotion, /uc6-workflow-mascot\.is-variant-running[\s\S]*animation: none/);
+  assert.match(reducedMotion, /uc6-workflow-mascot-frame:first-child[\s\S]*opacity: 1/);
+  assert.equal(reducedMotion.includes('is-variant-idle'), false, 'reduced motion must retain running artwork');
+  assert.equal(source.includes('setInterval('), false);
+  assert.equal(source.includes('requestAnimationFrame('), false);
 
   assert.match(reviewHead, /state\.artifactStatus === 'loading'/);
   assert.match(reviewHead, /classList\.add\('uc6-review-refresh'\)/);

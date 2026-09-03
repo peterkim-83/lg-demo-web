@@ -66,6 +66,16 @@ const UC6_WORKFLOW_RAIL = Object.freeze([
   ['source', 'Source'], ['analyze', 'Analyze'], ['persona', 'Persona'],
   ['prepare', 'Prepare'], ['generate', 'Generate'], ['review', 'Review']
 ]);
+const UC6_MASCOT_RUN_FRAMES = Object.freeze([
+  { src: '/fetchdoc-workflow-mascot-run-1.png', width: 1536, height: 1024, scale: 1 },
+  { src: '/fetchdoc-workflow-mascot-run-2.png', width: 1536, height: 1024, scale: .97 },
+  { src: '/fetchdoc-workflow-mascot-run-3.png', width: 1448, height: 1086, scale: 1.064 },
+  { src: '/fetchdoc-workflow-mascot-run-4.png', width: 1448, height: 1086, scale: .971 },
+  { src: '/fetchdoc-workflow-mascot-run-5.png', width: 1448, height: 1086, scale: 1.003 },
+  { src: '/fetchdoc-workflow-mascot-run-6.png', width: 1448, height: 1086, scale: 1.12 }
+]);
+const UC6_MASCOT_IDLE = Object.freeze({ src: '/fetchdoc-workflow-mascot-idle.png', width: 1254, height: 1254 });
+const UC6_MASCOT_BLOCKED = Object.freeze({ src: '/fetchdoc-workflow-mascot-blocked.png', width: 1254, height: 1254 });
 
 export function projectUc6WorkflowRail(stage = '') {
   if (['auth', 'workspace', 'library'].includes(stage)) return [];
@@ -81,12 +91,12 @@ export function projectUc6WorkflowRail(stage = '') {
 }
 
 export function projectUc6WorkflowMascot(input = {}) {
-  const hidden = { visible: false, anchorStep: null, placement: 'marker', motion: 'idle', tone: 'normal' };
+  const hidden = { visible: false, anchorStep: null, placement: 'marker', motion: 'idle', tone: 'normal', variant: 'idle' };
   const stage = String(input.stage || '').trim();
   if (!String(input.jobId || '').trim() || ['auth', 'workspace', 'library', 'source'].includes(stage)) return hidden;
 
-  const atMarker = (anchorStep, tone = 'normal') => ({ visible: true, anchorStep, placement: 'marker', motion: 'idle', tone });
-  const onConnector = (anchorStep) => ({ visible: true, anchorStep, placement: 'connector', motion: 'running', tone: 'normal' });
+  const atMarker = (anchorStep, tone = 'normal') => ({ visible: true, anchorStep, placement: 'marker', motion: 'idle', tone, variant: tone === 'blocked' ? 'blocked' : 'idle' });
+  const onConnector = (anchorStep) => ({ visible: true, anchorStep, placement: 'connector', motion: 'running', tone: 'normal', variant: 'running' });
   if (['review', 'publish'].includes(stage)) return atMarker('review');
   const terminal = ['onboarding_blocked', 'synthetic_scenarios_failed', 'failed'].includes(input.jobState)
     || input.generationState === 'generation_failed';
@@ -814,9 +824,22 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     });
     const mascotLayer = el('div', 'uc6-mascot-layer'); mascotLayer.setAttribute('aria-hidden', 'true');
     const mascot = el('span', 'uc6-workflow-mascot');
-    const mascotImage = el('img', 'uc6-workflow-mascot-image');
-    mascotImage.src = '/fetchdoc-workflow-mascot.png'; mascotImage.alt = ''; mascotImage.width = 1448; mascotImage.height = 1086; mascotImage.decoding = 'async'; mascotImage.draggable = false;
-    mascot.append(mascotImage); mascotLayer.append(mascot); track.append(list, mascotLayer); els.rail.replaceChildren(track);
+    const artwork = el('span', 'uc6-workflow-mascot-artwork');
+    const createMascotImage = ({ src, width, height }, className) => {
+      const image = el('img', className); image.src = src; image.alt = ''; image.width = width; image.height = height;
+      image.decoding = 'async'; image.loading = 'eager'; image.draggable = false; return image;
+    };
+    const runner = el('span', 'uc6-workflow-mascot-frames');
+    UC6_MASCOT_RUN_FRAMES.forEach((frame, index) => {
+      const image = createMascotImage(frame, 'uc6-workflow-mascot-frame'); image.dataset.frame = String(index + 1);
+      image.style.setProperty('--uc6-frame-scale', String(frame.scale)); runner.append(image);
+    });
+    artwork.append(
+      runner,
+      createMascotImage(UC6_MASCOT_IDLE, 'uc6-workflow-mascot-static is-idle'),
+      createMascotImage(UC6_MASCOT_BLOCKED, 'uc6-workflow-mascot-static is-blocked')
+    );
+    mascot.append(artwork); mascotLayer.append(mascot); track.append(list, mascotLayer); els.rail.replaceChildren(track);
     railView = { track, steps, mascotLayer, mascot };
     return railView;
   }
@@ -840,8 +863,8 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     view.mascotLayer.hidden = !mascot.visible;
     if (!mascot.visible) return;
     const anchorIndex = UC6_WORKFLOW_RAIL.findIndex(([key]) => key === mascot.anchorStep);
-    view.mascot.className = `uc6-workflow-mascot is-${mascot.motion} is-${mascot.tone}`;
-    view.mascot.dataset.placement = mascot.placement; view.mascot.dataset.anchorStep = mascot.anchorStep;
+    view.mascot.className = `uc6-workflow-mascot is-${mascot.motion} is-${mascot.tone} is-variant-${mascot.variant}`;
+    view.mascot.dataset.placement = mascot.placement; view.mascot.dataset.anchorStep = mascot.anchorStep; view.mascot.dataset.variant = mascot.variant;
     view.mascot.style.gridColumn = mascot.placement === 'connector' ? `${anchorIndex + 1} / span 2` : String(anchorIndex + 1);
   }
 
