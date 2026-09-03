@@ -61,6 +61,7 @@ const RENDER_SUBMISSION_TASK = 'fetchdoc_browser_admin_uc6_render_fresh_syntheti
 const RUNTIME_BOOTSTRAP_SCHEMA = 'uc6_fresh_published_asset_runtime_bootstrap_projection_v1';
 const UC6_TRANSIENT_ACKNOWLEDGEMENT = '요청이 접수되었습니다.';
 const UC6_TRANSIENT_PERSONA_BOUND = 'Persona 선택이 완료되었습니다.';
+const UC6_TRANSIENT_RUNTIME_READY = '게시된 템플릿 작업이 준비되었습니다.';
 const UC6_WORKFLOW_RAIL = Object.freeze([
   ['source', 'Source'], ['analyze', 'Analyze'], ['persona', 'Persona'],
   ['prepare', 'Prepare'], ['generate', 'Generate'], ['review', 'Review']
@@ -93,6 +94,7 @@ export function projectUc6PresentationMessage({ message = '', tone = 'neutral', 
   ]).has(generationState);
   if (normalized === UC6_TRANSIENT_ACKNOWLEDGEMENT && (authoritativeJobState || authoritativeGenerationState)) return null;
   if (normalized === UC6_TRANSIENT_PERSONA_BOUND && GENERATION_STATES.has(generationState)) return null;
+  if (normalized === UC6_TRANSIENT_RUNTIME_READY && authoritativeJobState) return null;
   return { message: normalized, tone: String(tone || 'neutral') };
 }
 
@@ -856,7 +858,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     if (persona) { const summary = el('div', 'uc6-selected-persona'); summary.append(el('span', '', '선택한 Persona'), el('strong', '', persona.label), el('p', '', persona.scenario_summary)); node.append(summary); }
     if (ready) node.append(staticState('데이터 준비를 시작할 수 있습니다.', "선택한 Persona에 맞는 문서 데이터를 준비합니다. 아래의 '데이터 준비 시작' 버튼을 눌러 시작하세요."));
     else if (failed) node.append(staticState('데이터 준비 실패', '자동으로 다시 시도하지 않습니다. 상태를 새로고침하거나 새 작업을 시작하세요.', 'error'));
-    else if (processing) node.append(process('Prepare Context', '문서 생성에 필요한 공개 데이터 컨텍스트를 준비하고 있습니다.'));
+    else if (processing) node.append(process('데이터 준비', '문서 생성에 필요한 공개 데이터 컨텍스트를 준비하고 있습니다.'));
     if (status()) node.append(status());
     node.append(ready ? actions(newWorkspaceButton(), button('uc6-startContextBtn', state.busy ? '요청 중…' : '데이터 준비 시작', true, state.busy || state.sourceSubmitted || state.sourceAmbiguous)) : actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)));
     return node;
@@ -886,7 +888,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
       composition.append(inputs, relation, output); node.append(composition);
     }
     if (failed) node.append(staticState('문서 생성 실패', '자동으로 다시 시도하지 않습니다. 상태를 다시 확인하거나 새 작업을 시작하세요.', 'error'));
-    else if (running) node.append(process('Generate', '최종 문서를 생성하고 결과를 관찰하고 있습니다.'));
+    else if (running) node.append(process('문서 생성', '최종 문서를 생성하고 결과를 관찰하고 있습니다.'));
     else if (reconciling) node.append(staticState('결과 확인 중', '요청 결과와 현재 상태를 확인하고 있습니다. 최종 문서 생성 여부가 확인되기 전에는 요청을 다시 보내지 않습니다.'));
     if (status()) node.append(status());
     node.append(failed || active ? actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)) : actions(newWorkspaceButton(), button('uc6-generateBtn', state.busy ? '요청 중…' : '문서 생성', true, state.busy || state.renderSubmitted || state.renderAmbiguous)));

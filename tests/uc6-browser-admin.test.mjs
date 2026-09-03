@@ -735,6 +735,7 @@ test('presentation-only message filtering suppresses stale acknowledgement witho
   });
   assert.equal(projectUc6PresentationMessage({ message: input.message, jobState: 'onboarding_blocked' }), null);
   assert.equal(projectUc6PresentationMessage({ message: 'Persona 선택이 완료되었습니다.', generationState: 'not_started' }), null);
+  assert.equal(projectUc6PresentationMessage({ message: '게시된 템플릿 작업이 준비되었습니다.', jobState: 'persona_selection_ready' }), null);
 });
 
 test('Generate template title uses safe frontend filename or a neutral localized fallback', () => {
@@ -833,7 +834,7 @@ test('Prepare queued and running states retain legitimate indeterminate processi
   const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
   const prepare = sourceBlock(source, 'function renderPrepare', 'function renderGenerate');
   assert.match(prepare, /const processing = \['generation_queued', 'generation_running'\]\.includes\(generation\)/);
-  assert.match(prepare, /else if \(processing\) node\.append\(process\('Prepare Context'/);
+  assert.match(prepare, /else if \(processing\) node\.append\(process\('데이터 준비'/);
   assert.match(prepare, /문서에 필요한 데이터를 준비하고 있습니다/);
 });
 
@@ -853,7 +854,7 @@ test('Final Generation running states stay active while render_unknown uses reco
   const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
   const reconciliation = sourceBlock(generate, 'else if (reconciling)', 'if (status())');
   assert.match(generate, /const running = \['render_queued', 'render_running'\]\.includes\(state\.jobState\)/);
-  assert.match(generate, /if \(running\) node\.append\(process\('Generate'/);
+  assert.match(generate, /if \(running\) node\.append\(process\('문서 생성'/);
   assert.match(generate, /running \? '최종 문서를 생성하고 있습니다'/);
   assert.match(generate, /reconciling \? '문서 생성 결과를 확인하고 있습니다'/);
   assert.match(generate, /reconciling \? '상태 확인 중' : running \? '생성 중' : '준비 완료'/);
