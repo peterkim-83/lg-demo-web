@@ -6104,6 +6104,10 @@ body:has(#view-uc5.active) #main-content {
   font-size: 13px;
 }
 
+#view-uc6 .uc6-auth-actions .btn {
+  white-space: nowrap;
+}
+
 #view-uc6 .uc6-admin-chip {
   flex: 0 0 auto;
   padding: 5px 9px;
@@ -6524,7 +6528,7 @@ body:has(#view-uc5.active) #main-content {
 
 #view-uc6 .uc6-generation-composition {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(72px, .22fr) minmax(240px, .78fr);
+  grid-template-columns: minmax(0, 1fr) minmax(104px, .28fr) minmax(240px, .78fr);
   align-items: center;
   gap: 16px;
   max-width: 920px;
@@ -6600,6 +6604,7 @@ body:has(#view-uc5.active) #main-content {
 #view-uc6 .uc6-generation-relation-copy {
   display: grid;
   gap: 4px;
+  white-space: nowrap;
 }
 
 #view-uc6 .uc6-review-layout {
@@ -6951,6 +6956,22 @@ body:has(#view-uc5.active) #main-content {
     min-height: 0;
     border-top: 1px solid var(--uc6-border);
     border-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  #view-uc6 .uc6-auth-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #view-uc6 .uc6-auth-copy {
+    min-width: 0;
+  }
+
+  #view-uc6 .uc6-auth-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 }
 
