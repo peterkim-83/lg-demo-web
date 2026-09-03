@@ -6146,41 +6146,53 @@ body:has(#view-uc5.active) #main-content {
   background: var(--uc6-surface);
 }
 
+#view-uc6 .uc6-rail-track {
+  --uc6-mascot-height: 48px;
+  position: relative;
+  min-width: 0;
+}
+
 #view-uc6 .uc6-stepper ol {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 4px;
   margin: 0;
-  padding: 0;
+  padding: calc(var(--uc6-mascot-height) + 12px) 0 0;
   list-style: none;
 }
 
 #view-uc6 .uc6-stepper li {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  grid-template-rows: 30px auto;
+  justify-items: center;
+  gap: 6px;
   color: #777b82;
   min-width: 0;
   font-size: 13px;
+  text-align: center;
 }
 
 #view-uc6 .uc6-stepper li:not(:last-child)::after {
   content: "";
   position: absolute;
-  right: 8px;
-  width: calc(100% - 76px);
-  height: 1px;
+  z-index: 0;
+  top: 14px;
+  right: calc(-50% + 19px);
+  left: calc(50% + 19px);
+  height: 2px;
   background: var(--uc6-border);
-  transform: translateX(100%);
 }
 
-#view-uc6 .uc6-stepper li span {
+#view-uc6 .uc6-stepper li[data-state="completed"]::after {
+  background: var(--uc6-primary);
+}
+
+#view-uc6 .uc6-step-marker {
   position: relative;
   z-index: 1;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   place-items: center;
   border: 1px solid var(--uc6-border-strong);
   border-radius: 50%;
@@ -6188,11 +6200,18 @@ body:has(#view-uc5.active) #main-content {
   font-size: 12px;
 }
 
+#view-uc6 .uc6-step-label {
+  position: relative;
+  z-index: 1;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 #view-uc6 .uc6-stepper li[data-state="current"] {
   color: var(--uc6-primary);
 }
 
-#view-uc6 .uc6-stepper li[data-state="current"] span {
+#view-uc6 .uc6-stepper li[data-state="current"] .uc6-step-marker {
   border-color: var(--uc6-primary);
   background: var(--uc6-primary);
   color: #fff;
@@ -6202,10 +6221,67 @@ body:has(#view-uc5.active) #main-content {
   color: var(--uc6-text-muted);
 }
 
-#view-uc6 .uc6-stepper li[data-state="completed"] span {
+#view-uc6 .uc6-stepper li[data-state="completed"] .uc6-step-marker {
   border-color: var(--uc6-primary);
   background: var(--uc6-primary-soft);
   color: var(--uc6-primary);
+}
+
+#view-uc6 .uc6-mascot-layer {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  height: calc(var(--uc6-mascot-height) + 23px);
+  pointer-events: none;
+}
+
+#view-uc6 .uc6-mascot-layer[hidden] {
+  display: none;
+}
+
+#view-uc6 .uc6-workflow-mascot {
+  position: relative;
+  display: grid;
+  align-self: end;
+  justify-self: center;
+  width: max-content;
+  transform-origin: 50% 85%;
+}
+
+#view-uc6 .uc6-workflow-mascot::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  bottom: -3px;
+  left: 50%;
+  width: 62%;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(25, 28, 29, .16);
+  filter: blur(2px);
+  transform: translateX(-50%);
+}
+
+#view-uc6 .uc6-workflow-mascot-image {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: auto;
+  height: var(--uc6-mascot-height);
+  object-fit: contain;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-running .uc6-workflow-mascot-image {
+  animation: uc6-mascot-run 480ms linear infinite;
+  will-change: transform;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-running::after {
+  animation: uc6-mascot-contact 480ms linear infinite;
 }
 
 #view-uc6 .uc6-stage-layout,
@@ -6633,6 +6709,41 @@ body:has(#view-uc5.active) #main-content {
   color: #f7f7f7;
 }
 
+#view-uc6 .uc6-review-refresh {
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .08);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+#view-uc6 .uc6-review-refresh:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, .96);
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+}
+
+#view-uc6 .uc6-review-refresh:active:not(:disabled) {
+  background: rgba(255, 255, 255, .22);
+}
+
+#view-uc6 .uc6-review-refresh:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+#view-uc6 .uc6-review-refresh:disabled,
+#view-uc6 .uc6-review-refresh:disabled:hover {
+  border-color: rgba(255, 255, 255, .32);
+  background: rgba(255, 255, 255, .04);
+  color: rgba(248, 250, 252, .62);
+  opacity: 1;
+}
+
 #view-uc6 .uc6-pdf-shell {
   height: clamp(560px, calc(100vh - 300px), 760px);
   overflow: hidden;
@@ -6932,6 +7043,26 @@ body:has(#view-uc5.active) #main-content {
   100% { transform: translateX(280%); }
 }
 
+@keyframes uc6-mascot-run {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-1.2deg); }
+  18% { transform: translate3d(0, -4px, 0) rotate(1.3deg); }
+  38% { transform: translate3d(0, -1px, 0) rotate(-.7deg); }
+  60% { transform: translate3d(0, -3px, 0) rotate(.9deg); }
+  80% { transform: translate3d(0, -1px, 0) rotate(-.4deg); }
+}
+
+@keyframes uc6-mascot-contact {
+  0%, 38%, 80%, 100% { opacity: .16; transform: translateX(-50%) scaleX(1); }
+  18%, 60% { opacity: .08; transform: translateX(-50%) scaleX(.78); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-uc6 .uc6-workflow-mascot.is-running .uc6-workflow-mascot-image,
+  #view-uc6 .uc6-workflow-mascot.is-running::after {
+    animation: none;
+  }
+}
+
 @media (max-width: 1280px) {
   #view-uc6 .uc6-compact-header {
     flex-direction: column;
@@ -6960,6 +7091,10 @@ body:has(#view-uc5.active) #main-content {
 }
 
 @media (max-width: 900px) {
+  #view-uc6 .uc6-rail-track {
+    --uc6-mascot-height: 44px;
+  }
+
   #view-uc6 .uc6-auth-strip {
     align-items: stretch;
     flex-direction: column;
@@ -6992,7 +7127,8 @@ body:has(#view-uc5.active) #main-content {
     overflow-x: auto;
   }
 
-  #view-uc6 .uc6-stepper ol {
+  #view-uc6 .uc6-rail-track {
+    --uc6-mascot-height: 40px;
     min-width: 620px;
   }
 

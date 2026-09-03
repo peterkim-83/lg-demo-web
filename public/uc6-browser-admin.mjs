@@ -80,6 +80,34 @@ export function projectUc6WorkflowRail(stage = '') {
   }));
 }
 
+export function projectUc6WorkflowMascot(input = {}) {
+  const hidden = { visible: false, anchorStep: null, placement: 'marker', motion: 'idle', tone: 'normal' };
+  const stage = String(input.stage || '').trim();
+  if (!String(input.jobId || '').trim() || ['auth', 'workspace', 'library', 'source'].includes(stage)) return hidden;
+
+  const atMarker = (anchorStep, tone = 'normal') => ({ visible: true, anchorStep, placement: 'marker', motion: 'idle', tone });
+  const onConnector = (anchorStep) => ({ visible: true, anchorStep, placement: 'connector', motion: 'running', tone: 'normal' });
+  if (['review', 'publish'].includes(stage)) return atMarker('review');
+  const terminal = ['onboarding_blocked', 'synthetic_scenarios_failed', 'failed'].includes(input.jobState)
+    || input.generationState === 'generation_failed';
+  const railStage = stage === 'publish' ? 'review' : stage;
+  if (terminal && UC6_WORKFLOW_RAIL.some(([key]) => key === railStage)) return atMarker(railStage, 'blocked');
+
+  if (stage === 'analyze') return onConnector('analyze');
+  if (stage === 'persona') return input.busy === true || input.personaBindingAmbiguous === true ? onConnector('persona') : atMarker('persona');
+  if (stage === 'prepare') {
+    const active = input.busy === true || input.sourceSubmitted === true || input.sourceAmbiguous === true
+      || ['generation_queued', 'generation_running'].includes(input.generationState);
+    return active ? onConnector('prepare') : atMarker('prepare');
+  }
+  if (stage === 'generate') {
+    const active = input.busy === true || input.renderSubmitted === true || input.renderAmbiguous === true
+      || ['render_queued', 'render_running', 'render_unknown'].includes(input.jobState);
+    return active ? onConnector('generate') : atMarker('generate');
+  }
+  return UC6_WORKFLOW_RAIL.some(([key]) => key === stage) ? atMarker(stage) : hidden;
+}
+
 export function projectUc6PresentationMessage({ message = '', tone = 'neutral', jobState = '', generationState = '' } = {}) {
   const normalized = String(message || '').trim();
   if (!normalized) return null;
@@ -614,6 +642,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     note: '', reviewed: false, showPublish: false, busy: false, reconciling: false, message: '', tone: 'neutral',
     eventController: null, eventEpoch: 0, eventSequence: -1, reconnectAttempt: 0, timer: null
   };
+  let railView = null;
 
   function el(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -772,16 +801,48 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     row.append(el('span', 'uc6-document-glyph', 'PPTX'), copy); return row;
   }
 
+  function ensureRail() {
+    if (railView?.track.isConnected && railView.track.parentElement === els.rail) return railView;
+    const track = el('div', 'uc6-rail-track');
+    const list = el('ol');
+    const steps = UC6_WORKFLOW_RAIL.map(([key, label]) => {
+      const item = el('li'); item.dataset.step = key;
+      const marker = el('span', 'uc6-step-marker');
+      const copy = el('strong', 'uc6-step-label', label);
+      item.append(marker, copy); list.append(item);
+      return { item, marker, copy };
+    });
+    const mascotLayer = el('div', 'uc6-mascot-layer'); mascotLayer.setAttribute('aria-hidden', 'true');
+    const mascot = el('span', 'uc6-workflow-mascot');
+    const mascotImage = el('img', 'uc6-workflow-mascot-image');
+    mascotImage.src = '/fetchdoc-workflow-mascot.png'; mascotImage.alt = ''; mascotImage.width = 1448; mascotImage.height = 1086; mascotImage.decoding = 'async'; mascotImage.draggable = false;
+    mascot.append(mascotImage); mascotLayer.append(mascot); track.append(list, mascotLayer); els.rail.replaceChildren(track);
+    railView = { track, steps, mascotLayer, mascot };
+    return railView;
+  }
+
   function renderRail() {
     const stage = currentStage();
     const visible = !!state.jobId && !['auth', 'workspace', 'library'].includes(stage);
-    els.rail.hidden = !visible; if (!visible) return els.rail.replaceChildren();
-    const list = el('ol');
-    projectUc6WorkflowRail(stage).forEach((step) => {
-      const item = el('li'); item.dataset.state = step.state;
-      item.append(el('span', '', step.marker), el('strong', '', step.label)); list.append(item);
+    els.rail.hidden = !visible;
+    if (!visible) { if (railView) railView.mascotLayer.hidden = true; return; }
+    const view = ensureRail();
+    projectUc6WorkflowRail(stage).forEach((step, index) => {
+      const projected = view.steps[index]; projected.item.dataset.state = step.state;
+      projected.marker.textContent = step.marker; projected.copy.textContent = step.label;
     });
-    els.rail.replaceChildren(list);
+    const mascot = projectUc6WorkflowMascot({
+      stage, jobId: state.jobId, jobState: state.jobState, generationState: state.personas?.generation_state,
+      busy: state.busy, personaBindingAmbiguous: state.personaBindingAmbiguous,
+      sourceSubmitted: state.sourceSubmitted, sourceAmbiguous: state.sourceAmbiguous,
+      renderSubmitted: state.renderSubmitted, renderAmbiguous: state.renderAmbiguous
+    });
+    view.mascotLayer.hidden = !mascot.visible;
+    if (!mascot.visible) return;
+    const anchorIndex = UC6_WORKFLOW_RAIL.findIndex(([key]) => key === mascot.anchorStep);
+    view.mascot.className = `uc6-workflow-mascot is-${mascot.motion} is-${mascot.tone}`;
+    view.mascot.dataset.placement = mascot.placement; view.mascot.dataset.anchorStep = mascot.anchorStep;
+    view.mascot.style.gridColumn = mascot.placement === 'connector' ? `${anchorIndex + 1} / span 2` : String(anchorIndex + 1);
   }
 
   function renderWorkspace() {
@@ -945,7 +1006,8 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
 
   function renderReviewViewerHead() {
     const viewerHead = el('div', 'uc6-viewer-head');
-    viewerHead.append(el('strong', '', 'Generated PDF'), button('uc6-refreshArtifactsBtn', '새로고침', false, state.artifactStatus === 'loading'));
+    const refresh = button('uc6-refreshArtifactsBtn', '새로고침', false, state.artifactStatus === 'loading'); refresh.classList.add('uc6-review-refresh');
+    viewerHead.append(el('strong', '', 'Generated PDF'), refresh);
     return viewerHead;
   }
 
