@@ -714,6 +714,25 @@ test('new workspace action remains guarded and delegates only to the existing re
   assert.match(source, /target\.id === 'uc6-newWorkspaceBtn' && !state\.busy && !state\.reconciling\) reset\(\)/);
 });
 
+test('published template library entry fully detaches prior Job-local runtime state', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const reset = sourceBlock(source, 'function reset()', 'function currentStage');
+  const handlers = sourceBlock(source, "section.addEventListener('click'", "section.addEventListener('change'");
+  assert.match(handlers, /target\.id === 'uc6-openLibraryBtn'\) \{ reset\(\); state\.mode = 'published_template_runtime'; loadCatalog\(\); \}/);
+  assert.equal(handlers.includes("Object.assign(state, { mode: 'published_template_runtime', jobId: '', jobState: ''"), false);
+  for (const expected of [
+    'sourceSubmitted: false',
+    'sourceAmbiguous: false',
+    'renderSubmitted: false',
+    'renderAmbiguous: false',
+    "selectedAssetId: ''",
+    'personas: null',
+    'eventSequence: -1',
+    'reconnectAttempt: 0'
+  ]) assert.match(reset, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(reset, /localStorage\.removeItem\(STORAGE_KEY\); localStorage\.removeItem\(PREVIOUS_STORAGE_KEY\)/);
+});
+
 test('bound-job reconciliation failures retain identity and present neutral refresh-or-detach recovery', async () => {
   const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
   const reconcile = sourceBlock(source, 'async function reconcile', 'function observationRequired');
