@@ -826,8 +826,27 @@ test('Prepare readiness is static and action-led until source generation is subm
   assert.match(readiness, /staticState\('데이터 준비를 시작할 수 있습니다\.'/);
   assert.match(readiness, /데이터 준비를 시작할 수 있습니다\./);
   assert.match(readiness, /선택한 Persona에 맞는 문서 데이터를 준비합니다\. 아래의 '데이터 준비 시작' 버튼을 눌러 시작하세요\./);
-  assert.match(prepare, /button\('uc6-startContextBtn', state\.busy \? '요청 중…' : '데이터 준비 시작'/);
+  assert.match(prepare, /button\('uc6-startContextBtn', state\.busy \? '요청 중…' : state\.sourceSubmitted \? '요청 접수됨' : state\.sourceAmbiguous \? '결과 확인 중…' : '데이터 준비 시작'/);
   assert.match(prepare, /actions\(newWorkspaceButton\(\), button\('uc6-startContextBtn'/);
+});
+
+test('local Prepare and Generate submission transitions are explicit before authoritative states advance', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+
+  const prepare = sourceBlock(source, 'function renderPrepare', 'function renderGenerate');
+  assert.match(prepare, /const submitting = ready && state\.busy && !state\.sourceSubmitted && !state\.sourceAmbiguous/);
+  assert.match(prepare, /const acceptedPending = ready && state\.sourceSubmitted && !state\.sourceAmbiguous/);
+  assert.match(prepare, /const submissionReconciling = ready && state\.sourceAmbiguous/);
+  assert.match(prepare, /if \(submitting\) node\.append\(process\('요청 전송 중'/);
+  assert.match(prepare, /else if \(acceptedPending\) node\.append\(process\('요청 접수됨'/);
+  assert.match(prepare, /else if \(submissionReconciling\) node\.append\(staticState\('요청 결과 확인 중'/);
+
+  const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
+  assert.match(generate, /const submitting = state\.busy && !state\.renderSubmitted && !state\.renderAmbiguous/);
+  assert.match(generate, /const acceptedPending = state\.renderSubmitted && !failed && !running && !reconciling/);
+  assert.match(generate, /if \(!failed && !submitting && !acceptedPending\) \{/);
+  assert.match(generate, /else if \(submitting\) node\.append\(process\('요청 전송 중'/);
+  assert.match(generate, /else if \(acceptedPending\) node\.append\(process\('요청 접수됨'/);
 });
 
 test('Prepare queued and running states retain legitimate indeterminate processing', async () => {
@@ -868,10 +887,10 @@ test('Final Generation running states stay active while render_unknown uses reco
 test('terminal Job failures cannot render Generate READY or active semantics', async () => {
   const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
   const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
-  const failed = sourceBlock(generate, 'if (failed) node.append', 'else if (running)');
+  const failed = sourceBlock(generate, 'if (failed) node.append', 'else if (submitting)');
   assert.match(generate, /const failed = \['synthetic_scenarios_failed', 'failed'\]\.includes\(state\.jobState\)/);
   assert.match(generate, /failed \? '문서 생성에 실패했습니다'/);
-  assert.match(generate, /if \(!failed\) \{/);
+  assert.match(generate, /if \(!failed && !submitting && !acceptedPending\) \{/);
   assert.match(failed, /staticState\('문서 생성 실패'.*'error'\)/s);
   assert.match(failed, /자동으로 다시 시도하지 않습니다\./);
   assert.equal(failed.includes('process('), false);

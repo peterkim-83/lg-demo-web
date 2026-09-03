@@ -853,14 +853,34 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const ready = generation === 'not_started';
     const failed = generation === 'generation_failed';
     const processing = ['generation_queued', 'generation_running'].includes(generation);
-    const node = surface(ready ? '문서 데이터를 준비할 수 있습니다' : failed ? '문서 데이터 준비에 실패했습니다' : '문서에 필요한 데이터를 준비하고 있습니다', ready ? '데이터 준비는 아직 시작되지 않았습니다. 아래에서 시작할 수 있습니다.' : failed ? '데이터 준비 작업이 종료되었습니다. 상태를 확인한 뒤 다음 조치를 선택하세요.' : '선택한 Persona에 맞는 하나의 데이터 준비 작업을 진행합니다.', 'uc6-prepare-stage');
+    const submitting = ready && state.busy && !state.sourceSubmitted && !state.sourceAmbiguous;
+    const acceptedPending = ready && state.sourceSubmitted && !state.sourceAmbiguous;
+    const submissionReconciling = ready && state.sourceAmbiguous;
+    const node = surface(
+      submitting ? '데이터 준비 요청을 전송하고 있습니다'
+        : acceptedPending ? '데이터 준비 요청이 접수되었습니다'
+          : submissionReconciling ? '데이터 준비 요청 결과를 확인하고 있습니다'
+            : ready ? '문서 데이터를 준비할 수 있습니다'
+              : failed ? '문서 데이터 준비에 실패했습니다'
+                : '문서에 필요한 데이터를 준비하고 있습니다',
+      submitting ? '데이터 준비 요청을 보내고 응답을 기다리고 있습니다.'
+        : acceptedPending ? '요청이 접수되어 현재 작업 상태를 확인하고 있습니다.'
+          : submissionReconciling ? '요청 결과가 확정되지 않아 현재 상태를 확인하고 있습니다.'
+            : ready ? '데이터 준비는 아직 시작되지 않았습니다. 아래에서 시작할 수 있습니다.'
+              : failed ? '데이터 준비 작업이 종료되었습니다. 상태를 확인한 뒤 다음 조치를 선택하세요.'
+                : '선택한 Persona에 맞는 하나의 데이터 준비 작업을 진행합니다.',
+      'uc6-prepare-stage'
+    );
     const persona = state.personas?.bound_scenario;
     if (persona) { const summary = el('div', 'uc6-selected-persona'); summary.append(el('span', '', '선택한 Persona'), el('strong', '', persona.label), el('p', '', persona.scenario_summary)); node.append(summary); }
-    if (ready) node.append(staticState('데이터 준비를 시작할 수 있습니다.', "선택한 Persona에 맞는 문서 데이터를 준비합니다. 아래의 '데이터 준비 시작' 버튼을 눌러 시작하세요."));
+    if (submitting) node.append(process('요청 전송 중', '데이터 준비 요청을 보내고 응답을 기다리고 있습니다. 중복 요청을 보내지 않습니다.'));
+    else if (acceptedPending) node.append(process('요청 접수됨', '데이터 준비 작업이 시작되었는지 현재 상태를 확인하고 있습니다.'));
+    else if (submissionReconciling) node.append(staticState('요청 결과 확인 중', '데이터 준비 요청 결과를 확인하고 있습니다. 결과가 확인되기 전에는 요청을 다시 보내지 않습니다.'));
+    else if (ready) node.append(staticState('데이터 준비를 시작할 수 있습니다.', "선택한 Persona에 맞는 문서 데이터를 준비합니다. 아래의 '데이터 준비 시작' 버튼을 눌러 시작하세요."));
     else if (failed) node.append(staticState('데이터 준비 실패', '자동으로 다시 시도하지 않습니다. 상태를 새로고침하거나 새 작업을 시작하세요.', 'error'));
     else if (processing) node.append(process('데이터 준비', '문서 생성에 필요한 공개 데이터 컨텍스트를 준비하고 있습니다.'));
     if (status()) node.append(status());
-    node.append(ready ? actions(newWorkspaceButton(), button('uc6-startContextBtn', state.busy ? '요청 중…' : '데이터 준비 시작', true, state.busy || state.sourceSubmitted || state.sourceAmbiguous)) : actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)));
+    node.append(ready ? actions(newWorkspaceButton(), button('uc6-startContextBtn', state.busy ? '요청 중…' : state.sourceSubmitted ? '요청 접수됨' : state.sourceAmbiguous ? '결과 확인 중…' : '데이터 준비 시작', true, state.busy || state.sourceSubmitted || state.sourceAmbiguous)) : actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)));
     return node;
   }
 
@@ -869,8 +889,23 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const running = ['render_queued', 'render_running'].includes(state.jobState);
     const reconciling = state.jobState === 'render_unknown';
     const active = running || reconciling;
-    const node = surface(failed ? '문서 생성에 실패했습니다' : reconciling ? '문서 생성 결과를 확인하고 있습니다' : running ? '최종 문서를 생성하고 있습니다' : '최종 문서를 생성할 준비가 되었습니다', failed ? '현재 작업은 실패한 상태이며 더 이상 처리되고 있지 않습니다.' : reconciling ? '요청 결과가 확정되지 않아 현재 상태를 다시 확인하고 있습니다.' : '템플릿과 준비된 데이터를 결합하여 최종 문서를 생성합니다.', 'uc6-generate-stage');
-    if (!failed) {
+    const submitting = state.busy && !state.renderSubmitted && !state.renderAmbiguous && !failed && !running && !reconciling;
+    const acceptedPending = state.renderSubmitted && !failed && !running && !reconciling;
+    const node = surface(
+      failed ? '문서 생성에 실패했습니다'
+        : reconciling ? '문서 생성 결과를 확인하고 있습니다'
+          : running ? '최종 문서를 생성하고 있습니다'
+            : submitting ? '문서 생성 요청을 전송하고 있습니다'
+              : acceptedPending ? '문서 생성 요청이 접수되었습니다'
+                : '최종 문서를 생성할 준비가 되었습니다',
+      failed ? '현재 작업은 실패한 상태이며 더 이상 처리되고 있지 않습니다.'
+        : reconciling ? '요청 결과가 확정되지 않아 현재 상태를 다시 확인하고 있습니다.'
+          : submitting ? '문서 생성 요청을 보내고 응답을 기다리고 있습니다.'
+            : acceptedPending ? '요청이 접수되어 현재 작업 상태를 확인하고 있습니다.'
+              : '템플릿과 준비된 데이터를 결합하여 최종 문서를 생성합니다.',
+      'uc6-generate-stage'
+    );
+    if (!failed && !submitting && !acceptedPending) {
       const composition = el('div', 'uc6-generation-composition');
       const inputs = el('div', 'uc6-generation-inputs');
       const template = el('section', 'uc6-generation-object is-template');
@@ -888,10 +923,12 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
       composition.append(inputs, relation, output); node.append(composition);
     }
     if (failed) node.append(staticState('문서 생성 실패', '자동으로 다시 시도하지 않습니다. 상태를 다시 확인하거나 새 작업을 시작하세요.', 'error'));
+    else if (submitting) node.append(process('요청 전송 중', '문서 생성 요청을 보내고 응답을 기다리고 있습니다. 중복 요청을 보내지 않습니다.'));
+    else if (acceptedPending) node.append(process('요청 접수됨', '문서 생성 작업이 시작되었는지 현재 상태를 확인하고 있습니다.'));
     else if (running) node.append(process('문서 생성', '최종 문서를 생성하고 결과를 관찰하고 있습니다.'));
     else if (reconciling) node.append(staticState('결과 확인 중', '요청 결과와 현재 상태를 확인하고 있습니다. 최종 문서 생성 여부가 확인되기 전에는 요청을 다시 보내지 않습니다.'));
     if (status()) node.append(status());
-    node.append(failed || active ? actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)) : actions(newWorkspaceButton(), button('uc6-generateBtn', state.busy ? '요청 중…' : '문서 생성', true, state.busy || state.renderSubmitted || state.renderAmbiguous)));
+    node.append(failed || active ? actions(newWorkspaceButton(), button('uc6-refreshJobBtn', '상태 새로고침', false, state.reconciling)) : actions(newWorkspaceButton(), button('uc6-generateBtn', state.busy ? '요청 중…' : state.renderSubmitted ? '요청 접수됨' : '문서 생성', true, state.busy || state.renderSubmitted || state.renderAmbiguous)));
     return node;
   }
 
