@@ -10,6 +10,7 @@ import {
   projectUc6BootstrapMutationControl,
   projectUc6CanonicalJob,
   projectUc6FinalDeliveryCapabilities,
+  projectUc6ReviewDocumentIdentity,
   projectUc6FreshSyntheticScenarioBinding,
   projectUc6FreshSyntheticGenerationSubmission,
   projectUc6FreshSyntheticRenderSubmission,
@@ -20,6 +21,7 @@ import {
   projectUc6PublicationMutationControl,
   projectUc6FreshSyntheticScenarios,
   projectUc6ReusableAssetRuntimeBootstrap,
+  synchronizeUc6ReviewPdfViewer,
   validateUc6SyntheticScenarioBindingCommand,
   validateUc6ReusableAssetBootstrapCommand,
   validateUc6ReusableAssetPublicationCommand
@@ -74,6 +76,62 @@ function sourceBlock(source, start, end) {
   const endIndex = source.indexOf(end, startIndex + start.length);
   assert.ok(startIndex >= 0 && endIndex > startIndex, `missing source block: ${start}`);
   return source.slice(startIndex, endIndex);
+}
+
+class ReviewDomElement {
+  constructor(tagName, ownerDocument) {
+    this.tagName = String(tagName).toUpperCase();
+    this.ownerDocument = ownerDocument;
+    this.dataset = {};
+    this.children = [];
+    this.parentNode = null;
+    this.className = '';
+    this.title = '';
+    this.textContent = '';
+    this.srcAssignments = 0;
+    this.replaceChildrenCalls = 0;
+    this.connectedRoot = false;
+  }
+
+  get isConnected() {
+    return this.parentNode ? this.parentNode.isConnected : this.connectedRoot;
+  }
+
+  get src() { return this.currentSrc || ''; }
+
+  set src(value) {
+    this.srcAssignments += 1;
+    this.currentSrc = String(value);
+  }
+
+  querySelector(selector) {
+    if (selector !== 'iframe.uc6-pdf-frame') return null;
+    const pending = [...this.children];
+    while (pending.length) {
+      const child = pending.shift();
+      if (child.tagName === 'IFRAME' && child.className.split(/\s+/).includes('uc6-pdf-frame')) return child;
+      pending.push(...child.children);
+    }
+    return null;
+  }
+
+  replaceChildren(...children) {
+    this.replaceChildrenCalls += 1;
+    for (const child of this.children) child.parentNode = null;
+    this.children = children;
+    for (const child of children) child.parentNode = this;
+  }
+}
+
+class ReviewDomDocument {
+  createElement(tagName) { return new ReviewDomElement(tagName, this); }
+}
+
+function connectedReviewShell() {
+  const ownerDocument = new ReviewDomDocument();
+  const shell = ownerDocument.createElement('div');
+  shell.connectedRoot = true;
+  return shell;
 }
 
 test('API base accepts production HTTPS and explicit loopback HTTP only', () => {
@@ -378,6 +436,78 @@ test('artifact capabilities fail closed on malformed aliases, filenames, and uns
   const pptxViewer = clone(payload); pptxViewer.artifacts[1].capabilities.view = { available: true, href: '/artifacts/document.pptx' };
   for (const invalid of [wrongAlias, unsafeUrl, unsafeFilename, pptxViewer, { ...payload, artifacts: [payload.artifacts[0]] }]) {
     assert.throws(() => projectUc6FinalDeliveryCapabilities(invalid, options));
+  }
+});
+
+test('Review document identity is Job, canonical PDF alias, and resolved view href', () => {
+  const href = `${API}artifacts/document.pdf`;
+  const identity = projectUc6ReviewDocumentIdentity({ jobId: JOB, alias: 'final_render_output_pdf', viewHref: href });
+  assert.equal(identity, JSON.stringify([JOB, 'final_render_output_pdf', href]));
+  assert.notEqual(identity, projectUc6ReviewDocumentIdentity({ jobId: 'fd_uc6_admin_test_job_002', alias: 'final_render_output_pdf', viewHref: href }));
+  assert.notEqual(identity, projectUc6ReviewDocumentIdentity({ jobId: JOB, alias: 'final_render_output_pdf', viewHref: `${href}?revision=2` }));
+  assert.equal(projectUc6ReviewDocumentIdentity({ jobId: JOB, alias: 'final_render_output_pptx', viewHref: href }), '');
+  assert.equal(projectUc6ReviewDocumentIdentity({ jobId: JOB, alias: 'final_render_output_pdf', viewHref: '' }), '');
+});
+
+test('same Review document preserves the connected iframe without assigning src again', async (t) => {
+  const href = `${API}artifacts/document.pdf`;
+  const documentIdentity = projectUc6ReviewDocumentIdentity({ jobId: JOB, alias: 'final_render_output_pdf', viewHref: href });
+  for (const trigger of ['checkbox-only state change', 'same artifact refresh', 'PDF or PPTX download rerender', 'same completed reconciliation', 'transient artifact readback error']) {
+    await t.test(trigger, () => {
+      const shell = connectedReviewShell();
+      const initial = synchronizeUc6ReviewPdfViewer(shell, { documentIdentity, viewHref: href });
+      const frame = initial.frame; const replacements = shell.replaceChildrenCalls; const srcAssignments = frame.srcAssignments;
+      const synchronized = synchronizeUc6ReviewPdfViewer(shell, { documentIdentity, viewHref: href, emptyText: 'PDF 상태를 확인할 수 없습니다.' });
+      assert.equal(synchronized.frame, frame);
+      assert.equal(synchronized.preserved, true);
+      assert.equal(synchronized.replaced, false);
+      assert.equal(frame.isConnected, true);
+      assert.equal(shell.replaceChildrenCalls, replacements);
+      assert.equal(frame.srcAssignments, srcAssignments);
+    });
+  }
+});
+
+test('Review viewer creates or replaces only across observable document identity boundaries', () => {
+  const href = `${API}artifacts/document.pdf`;
+  const initialIdentity = projectUc6ReviewDocumentIdentity({ jobId: JOB, alias: 'final_render_output_pdf', viewHref: href });
+  const shell = connectedReviewShell();
+  const unavailable = synchronizeUc6ReviewPdfViewer(shell, { emptyText: 'PDF를 준비하고 있습니다.' });
+  assert.equal(unavailable.frame, null);
+
+  const ready = synchronizeUc6ReviewPdfViewer(shell, { documentIdentity: initialIdentity, viewHref: href });
+  const firstFrame = ready.frame;
+  assert.equal(firstFrame.isConnected, true);
+  assert.equal(firstFrame.srcAssignments, 1);
+
+  const changedHref = `${href}?revision=2`;
+  const changedHrefIdentity = projectUc6ReviewDocumentIdentity({ jobId: JOB, alias: 'final_render_output_pdf', viewHref: changedHref });
+  const hrefReplacement = synchronizeUc6ReviewPdfViewer(shell, { documentIdentity: changedHrefIdentity, viewHref: changedHref });
+  assert.notEqual(hrefReplacement.frame, firstFrame);
+  assert.equal(firstFrame.isConnected, false);
+  assert.equal(hrefReplacement.frame.srcAssignments, 1);
+
+  const otherJob = 'fd_uc6_admin_test_job_002';
+  const otherJobIdentity = projectUc6ReviewDocumentIdentity({ jobId: otherJob, alias: 'final_render_output_pdf', viewHref: changedHref });
+  const jobReplacement = synchronizeUc6ReviewPdfViewer(shell, { documentIdentity: otherJobIdentity, viewHref: changedHref });
+  assert.notEqual(jobReplacement.frame, hrefReplacement.frame);
+  assert.equal(hrefReplacement.frame.isConnected, false);
+  assert.equal(jobReplacement.frame.isConnected, true);
+});
+
+test('Review renderer synchronizes metadata but retains normal stage teardown and actions', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const review = sourceBlock(source, 'function reviewArtifacts', 'function renderPublish');
+  const render = sourceBlock(source, 'function render()', 'function authFailure');
+  const reset = sourceBlock(source, 'function reset()', 'function currentStage');
+  assert.match(render, /stage === 'review' && synchronizeReview\(els\.root\.firstElementChild\)\) return/);
+  assert.match(render, /els\.root\.replaceChildren\(renderers\[stage\]\(\)\)/);
+  assert.match(reset, /stopObservation\(\).*render\(\)/s);
+  assert.match(review, /head\.replaceWith\(nextHead\)/);
+  assert.match(review, /rail\.replaceWith\(renderReviewRail\(pdf, pptx\)\)/);
+  assert.match(review, /synchronizeReviewStatus\(node\)/);
+  for (const action of ['uc6-refreshArtifactsBtn', 'uc6-reviewConfirmed', 'uc6-publicationNote', 'final_render_output_pdf', 'final_render_output_pptx', 'uc6-openPublishBtn', 'newWorkspaceButton(true)']) {
+    assert.equal(review.includes(action), true, action);
   }
 });
 
