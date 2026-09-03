@@ -636,7 +636,8 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
       onboardingAmbiguous: false, personas: null, selectedPersonaKey: '', personaBindingAmbiguous: false, personaBindingKey: '',
       sourceSubmitted: false, sourceAmbiguous: false, renderSubmitted: false, renderAmbiguous: false,
       artifacts: null, artifactStatus: 'idle', publication: null, publicationStatus: 'idle',
-      publicationIdentity: '', publicationAmbiguous: false, note: '', reviewed: false, showPublish: false, busy: false, message: '', tone: 'neutral'
+      publicationIdentity: '', publicationAmbiguous: false, note: '', reviewed: false, showPublish: false, busy: false, message: '', tone: 'neutral',
+      eventSequence: -1, reconnectAttempt: 0
     });
     try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(PREVIOUS_STORAGE_KEY); } catch (_) {}
     render();
@@ -1072,7 +1073,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
   section.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target.closest('button') : null; if (!target) return;
     if (target.id === 'uc6-startFreshBtn') { reset(); state.mode = 'fresh_template'; render(); }
-    else if (target.id === 'uc6-openLibraryBtn') { stopObservation(); Object.assign(state, { mode: 'published_template_runtime', jobId: '', jobState: '', publication: null, showPublish: false }); loadCatalog(); }
+    else if (target.id === 'uc6-openLibraryBtn') { reset(); state.mode = 'published_template_runtime'; loadCatalog(); }
     else if (target.id === 'uc6-backWorkspaceBtn') reset();
     else if (target.id === 'uc6-newWorkspaceBtn' && !state.busy && !state.reconciling) reset();
     else if (target.id === 'uc6-analyzeBtn') upload(); else if (target.id === 'uc6-bindPersonaBtn') bindPersona();
