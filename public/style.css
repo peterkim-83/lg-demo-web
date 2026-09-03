@@ -6248,8 +6248,8 @@ body:has(#view-uc5.active) #main-content {
   display: grid;
   align-self: end;
   justify-self: center;
-  width: max-content;
-  transform-origin: 50% 85%;
+  width: calc(var(--uc6-mascot-height) * 1.5);
+  height: var(--uc6-mascot-height);
 }
 
 #view-uc6 .uc6-workflow-mascot::after {
@@ -6266,22 +6266,68 @@ body:has(#view-uc5.active) #main-content {
   transform: translateX(-50%);
 }
 
-#view-uc6 .uc6-workflow-mascot-image {
+#view-uc6 .uc6-workflow-mascot-artwork,
+#view-uc6 .uc6-workflow-mascot-frames {
   position: relative;
   z-index: 1;
   display: block;
-  width: auto;
-  height: var(--uc6-mascot-height);
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
 }
 
-#view-uc6 .uc6-workflow-mascot.is-running .uc6-workflow-mascot-image {
-  animation: uc6-mascot-run 480ms linear infinite;
-  will-change: transform;
+#view-uc6 .uc6-workflow-mascot-frames {
+  position: absolute;
+  inset: 0;
+}
+
+#view-uc6 .uc6-workflow-mascot-frame,
+#view-uc6 .uc6-workflow-mascot-static {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  object-fit: contain;
+  object-position: center center;
+}
+
+#view-uc6 .uc6-workflow-mascot-frame {
+  transform: scale(var(--uc6-frame-scale, 1));
+  transform-origin: center center;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-variant-idle .uc6-workflow-mascot-static.is-idle,
+#view-uc6 .uc6-workflow-mascot.is-variant-blocked .uc6-workflow-mascot-static.is-blocked {
+  opacity: 1;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame {
+  animation: uc6-mascot-frame 540ms steps(1, end) infinite;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame:nth-child(2) {
+  animation-delay: 90ms;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame:nth-child(3) {
+  animation-delay: 180ms;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame:nth-child(4) {
+  animation-delay: 270ms;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame:nth-child(5) {
+  animation-delay: 360ms;
+}
+
+#view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame:nth-child(6) {
+  animation-delay: 450ms;
 }
 
 #view-uc6 .uc6-workflow-mascot.is-running::after {
-  animation: uc6-mascot-contact 480ms linear infinite;
+  animation: uc6-mascot-contact 540ms linear infinite;
 }
 
 #view-uc6 .uc6-stage-layout,
@@ -7043,23 +7089,28 @@ body:has(#view-uc5.active) #main-content {
   100% { transform: translateX(280%); }
 }
 
-@keyframes uc6-mascot-run {
-  0%, 100% { transform: translate3d(0, 0, 0) rotate(-1.2deg); }
-  18% { transform: translate3d(0, -4px, 0) rotate(1.3deg); }
-  38% { transform: translate3d(0, -1px, 0) rotate(-.7deg); }
-  60% { transform: translate3d(0, -3px, 0) rotate(.9deg); }
-  80% { transform: translate3d(0, -1px, 0) rotate(-.4deg); }
+@keyframes uc6-mascot-frame {
+  0%, 16.666% { opacity: 1; }
+  16.667%, 100% { opacity: 0; }
 }
 
 @keyframes uc6-mascot-contact {
-  0%, 38%, 80%, 100% { opacity: .16; transform: translateX(-50%) scaleX(1); }
-  18%, 60% { opacity: .08; transform: translateX(-50%) scaleX(.78); }
+  0%, 33.333%, 66.666%, 100% { opacity: .16; transform: translateX(-50%) scaleX(1); }
+  16.666%, 50%, 83.333% { opacity: .08; transform: translateX(-50%) scaleX(.8); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #view-uc6 .uc6-workflow-mascot.is-running .uc6-workflow-mascot-image,
+  #view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame,
   #view-uc6 .uc6-workflow-mascot.is-running::after {
     animation: none;
+  }
+
+  #view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame {
+    opacity: 0;
+  }
+
+  #view-uc6 .uc6-workflow-mascot.is-variant-running .uc6-workflow-mascot-frame:first-child {
+    opacity: 1;
   }
 }
 
