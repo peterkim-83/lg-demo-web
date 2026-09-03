@@ -59,6 +59,48 @@ const SOURCE_GENERATION_TASK = 'fetchdoc_browser_admin_uc6_fresh_synthetic_scena
 const RENDER_SUBMISSION_SCHEMA = 'uc6_postprod_q4_r3e_3g_browser_admin_fresh_selected_persona_render_submission_v1';
 const RENDER_SUBMISSION_TASK = 'fetchdoc_browser_admin_uc6_render_fresh_synthetic_scenario';
 const RUNTIME_BOOTSTRAP_SCHEMA = 'uc6_fresh_published_asset_runtime_bootstrap_projection_v1';
+const UC6_TRANSIENT_ACKNOWLEDGEMENT = '요청이 접수되었습니다.';
+const UC6_TRANSIENT_PERSONA_BOUND = 'Persona 선택이 완료되었습니다.';
+const UC6_WORKFLOW_RAIL = Object.freeze([
+  ['source', 'Source'], ['analyze', 'Analyze'], ['persona', 'Persona'],
+  ['prepare', 'Prepare'], ['generate', 'Generate'], ['review', 'Review']
+]);
+
+export function projectUc6WorkflowRail(stage = '') {
+  if (['auth', 'workspace', 'library'].includes(stage)) return [];
+  const currentIndex = stage === 'publish'
+    ? UC6_WORKFLOW_RAIL.length
+    : UC6_WORKFLOW_RAIL.findIndex(([key]) => key === stage);
+  return UC6_WORKFLOW_RAIL.map(([key, label], position) => ({
+    key,
+    label,
+    state: position < currentIndex ? 'completed' : position === currentIndex ? 'current' : 'future',
+    marker: position < currentIndex ? '✓' : String(position + 1)
+  }));
+}
+
+export function projectUc6PresentationMessage({ message = '', tone = 'neutral', jobState = '', generationState = '' } = {}) {
+  const normalized = String(message || '').trim();
+  if (!normalized) return null;
+  const authoritativeJobState = new Set([
+    'onboarding_queued', 'onboarding_running', 'onboarding_ready', 'onboarding_blocked', 'persona_selection_ready',
+    'synthetic_scenarios_queued', 'synthetic_scenarios_running', 'synthetic_scenarios_ready',
+    'synthetic_scenario_bound', 'synthetic_scenarios_failed', 'render_queued', 'render_running',
+    'render_completed', 'failed'
+  ]).has(jobState);
+  const authoritativeGenerationState = new Set([
+    'generation_queued', 'generation_running', 'generation_ready', 'generation_failed'
+  ]).has(generationState);
+  if (normalized === UC6_TRANSIENT_ACKNOWLEDGEMENT && (authoritativeJobState || authoritativeGenerationState)) return null;
+  if (normalized === UC6_TRANSIENT_PERSONA_BOUND && GENERATION_STATES.has(generationState)) return null;
+  return { message: normalized, tone: String(tone || 'neutral') };
+}
+
+export function projectUc6TemplateDisplayName({ filename = '', mode = '' } = {}) {
+  const normalized = String(filename || '').trim();
+  if (normalized && !normalized.toLowerCase().includes('reusable_template_asset_')) return normalized;
+  return mode === 'published_template_runtime' ? '게시된 템플릿' : '소스 템플릿';
+}
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -560,7 +602,6 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     access_denied: ['접근 거부', 'FetchDoc 관리자 권한이 확인되지 않았습니다.'],
     temporarily_unavailable: ['연결 확인 필요', '관리자 세션을 확인할 수 없습니다. 잠시 후 다시 시도하세요.']
   };
-  const RAIL = [['source', 'Source'], ['analyze', 'Analyze'], ['persona', 'Persona'], ['generate', 'Generate'], ['review', 'Review']];
   const state = {
     auth: 'initializing', firebase: null, user: null, api: null, mode: '', jobId: '', jobState: '',
     source: null, selectedFile: null, selectedAssetId: '', catalog: null, catalogStatus: 'idle',
@@ -585,8 +626,10 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     return node;
   }
 
-  function newWorkspaceButton(primary = false) {
-    return button('uc6-newWorkspaceBtn', '새 작업 시작', primary, state.busy || state.reconciling);
+  function newWorkspaceButton() {
+    const node = button('uc6-newWorkspaceBtn', '새 작업 시작', false, state.busy || state.reconciling);
+    node.classList.add('uc6-escape-action');
+    return node;
   }
 
   function setMessage(message = '', tone = 'neutral') {
@@ -693,7 +736,13 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
   }
 
   function status() {
-    return state.message ? el('p', `uc6-stage-message is-${state.tone}`, state.message) : null;
+    const projected = projectUc6PresentationMessage({
+      message: state.message,
+      tone: state.tone,
+      jobState: state.jobState,
+      generationState: state.personas?.generation_state
+    });
+    return projected ? el('p', `uc6-transient-message is-${projected.tone}`, projected.message) : null;
   }
 
   function actions(...nodes) {
@@ -701,7 +750,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
   }
 
   function staticState(title, copy, tone = 'neutral') {
-    const panel = el('div', `uc6-stage-message is-${tone}`);
+    const panel = el('div', `uc6-state-panel is-${tone}`);
     panel.append(el('strong', '', title), el('p', '', copy));
     return panel;
   }
@@ -723,13 +772,12 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
 
   function renderRail() {
     const stage = currentStage();
-    const active = stage === 'source' ? 'source' : stage === 'analyze' ? 'analyze' : stage === 'persona' ? 'persona' : ['prepare', 'generate'].includes(stage) ? 'generate' : ['review', 'publish'].includes(stage) ? 'review' : '';
     const visible = !!state.jobId && !['auth', 'workspace', 'library'].includes(stage);
     els.rail.hidden = !visible; if (!visible) return els.rail.replaceChildren();
-    const index = RAIL.findIndex(([key]) => key === active); const list = el('ol');
-    RAIL.forEach(([key, label], position) => {
-      const item = el('li'); item.dataset.state = position < index ? 'completed' : position === index ? 'current' : 'future';
-      item.append(el('span', '', position < index ? '✓' : position + 1), el('strong', '', label)); list.append(item);
+    const list = el('ol');
+    projectUc6WorkflowRail(stage).forEach((step) => {
+      const item = el('li'); item.dataset.state = step.state;
+      item.append(el('span', '', step.marker), el('strong', '', step.label)); list.append(item);
     });
     els.rail.replaceChildren(list);
   }
@@ -780,13 +828,17 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const bindingControl = projectUc6PersonaBindingMutationControl({ ambiguous: state.personaBindingAmbiguous, attemptedPersonaKey: state.personaBindingKey, requestedPersonaKey: state.selectedPersonaKey, selectionState: state.personas?.selection_state, boundScenario: state.personas?.bound_scenario });
     const grid = el('div', 'uc6-persona-grid');
     for (const persona of state.personas?.scenario_options || []) {
-      const card = el('button', `uc6-persona-card ${persona.scenario_key === state.selectedPersonaKey ? 'is-selected' : ''}`); card.type = 'button'; card.dataset.uc6Persona = persona.scenario_key;
+      const selected = persona.scenario_key === state.selectedPersonaKey;
+      const card = el('button', `uc6-persona-card ${selected ? 'is-selected' : ''}`); card.type = 'button'; card.dataset.uc6Persona = persona.scenario_key;
+      card.setAttribute('aria-pressed', selected ? 'true' : 'false');
       card.disabled = state.busy || bindingControl.ambiguityLocked;
-      card.append(el('span', 'uc6-persona-label', 'Persona'), el('h3', '', persona.label), el('p', '', persona.scenario_summary));
+      const head = el('span', 'uc6-persona-card-head'); head.append(el('span', 'uc6-persona-label', 'Persona'));
+      if (selected) head.append(el('span', 'uc6-persona-selection', '선택됨'));
+      card.append(head, el('h3', '', persona.label), el('p', '', persona.scenario_summary));
       const detail = personaDetail(persona.differentiation_basis); if (detail) card.append(el('small', '', detail)); grid.append(card);
     }
     node.append(grid);
-    if (bindingControl.ambiguityLocked) node.append(el('p', 'uc6-stage-message is-neutral', '선택 요청 결과를 확인하고 있습니다. 결과가 확인되기 전에는 다른 Persona를 선택할 수 없습니다.'));
+    if (bindingControl.ambiguityLocked) node.append(el('p', 'uc6-state-panel is-neutral', '선택 요청 결과를 확인하고 있습니다. 결과가 확인되기 전에는 다른 Persona를 선택할 수 없습니다.'));
     else if (status()) node.append(status());
     node.append(bindingControl.ambiguityLocked
       ? actions(newWorkspaceButton())
@@ -817,11 +869,21 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const active = running || reconciling;
     const node = surface(failed ? '문서 생성에 실패했습니다' : reconciling ? '문서 생성 결과를 확인하고 있습니다' : running ? '최종 문서를 생성하고 있습니다' : '최종 문서를 생성할 준비가 되었습니다', failed ? '현재 작업은 실패한 상태이며 더 이상 처리되고 있지 않습니다.' : reconciling ? '요청 결과가 확정되지 않아 현재 상태를 다시 확인하고 있습니다.' : '템플릿과 준비된 데이터를 결합하여 최종 문서를 생성합니다.', 'uc6-generate-stage');
     if (!failed) {
-      const transform = el('div', 'uc6-transformation');
-      const source = el('div', 'uc6-transform-document'); source.append(el('span', 'uc6-document-glyph', 'PPTX'), el('strong', '', state.source?.filename || 'Source template'));
-      const center = el('div', 'uc6-transform-process'); center.append(el('span', 'uc6-transform-line'), el('strong', '', reconciling ? 'Checking status' : running ? 'Generating' : 'Ready'));
-      const output = el('div', 'uc6-transform-document is-output'); output.append(el('span', 'uc6-document-glyph', 'PDF'), el('strong', '', reconciling ? '결과 확인 중' : running ? '생성 중' : 'Final document'));
-      transform.append(source, center, output); node.append(transform);
+      const composition = el('div', 'uc6-generation-composition');
+      const inputs = el('div', 'uc6-generation-inputs');
+      const template = el('section', 'uc6-generation-object is-template');
+      const templateName = projectUc6TemplateDisplayName({ filename: state.source?.filename, mode: state.mode });
+      const templateTitle = el('strong', '', templateName); templateTitle.title = templateName;
+      template.append(el('span', 'uc6-generation-label', '템플릿'), templateTitle, el('span', 'uc6-generation-meta', '문서 구조와 레이아웃'));
+      const prepared = el('section', 'uc6-generation-object is-data');
+      prepared.append(el('span', 'uc6-generation-label', '준비된 데이터'), el('strong', '', state.personas?.bound_scenario?.label || '선택한 Persona 기반 데이터'), el('span', 'uc6-generation-meta', '문서 생성 컨텍스트'));
+      inputs.append(template, prepared);
+      const relation = el('div', 'uc6-generation-relation');
+      const relationCopy = el('span', 'uc6-generation-relation-copy'); relationCopy.append(el('span', '', '결합'), el('strong', '', reconciling ? '상태 확인 중' : running ? '생성 중' : '준비 완료'));
+      relation.append(relationCopy);
+      const output = el('section', 'uc6-generation-object is-output');
+      output.append(el('span', 'uc6-generation-label', '생성 문서'), el('strong', '', reconciling ? '결과 확인 중' : running ? '최종 문서 생성 중' : '최종 문서'), el('span', 'uc6-generation-meta', 'PDF · PPTX'));
+      composition.append(inputs, relation, output); node.append(composition);
     }
     if (failed) node.append(staticState('문서 생성 실패', '자동으로 다시 시도하지 않습니다. 상태를 다시 확인하거나 새 작업을 시작하세요.', 'error'));
     else if (running) node.append(process('Generate', '최종 문서를 생성하고 결과를 관찰하고 있습니다.'));
@@ -857,12 +919,12 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const note = el('textarea'); note.id = 'uc6-publicationNote'; note.rows = 4; note.maxLength = 1000; note.value = state.note; note.placeholder = '검토 노트를 입력하세요 (선택)'; noteLabel.append(note); rail.append(noteLabel);
     const downloads = el('div', 'uc6-review-downloads'); const pdfButton = button('', 'PDF 다운로드', false, !pdf?.ready); pdfButton.dataset.uc6Download = 'final_render_output_pdf';
     const pptxButton = button('', 'PPTX 다운로드', false, !pptx?.ready); pptxButton.dataset.uc6Download = 'final_render_output_pptx'; downloads.append(pdfButton, pptxButton); rail.append(downloads);
-    rail.append(state.mode === 'fresh_template' ? button('uc6-openPublishBtn', '템플릿 게시', true, !state.reviewed) : newWorkspaceButton(true));
+    rail.append(state.mode === 'fresh_template' ? button('uc6-openPublishBtn', '템플릿 게시', true, !state.reviewed) : newWorkspaceButton());
     return rail;
   }
 
   function synchronizeReviewStatus(node) {
-    const current = node.querySelector(':scope > .uc6-stage-message'); const next = status();
+    const current = node.querySelector(':scope > .uc6-transient-message'); const next = status();
     if (current && next) current.replaceWith(next);
     else if (current) current.remove();
     else if (next) node.append(next);
@@ -900,7 +962,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     } else {
       const confirm = el('div', 'uc6-publish-confirmation'); confirm.append(el('span', '', '관리자 확인'), el('strong', '', state.reviewed ? '검토 완료' : '검토 필요')); if (state.note) confirm.append(el('p', '', state.note)); card.append(confirm);
       if (state.publicationStatus === 'loading') card.append(process('게시 상태 확인', '현재 게시 가능 상태를 확인하고 있습니다.'));
-      if (state.publicationAmbiguous) card.append(el('p', 'uc6-stage-message is-neutral', '게시 요청 결과를 확인하고 있습니다. 결과가 확인되기 전에는 요청을 다시 보내지 않습니다.'));
+      if (state.publicationAmbiguous) card.append(el('p', 'uc6-state-panel is-neutral', '게시 요청 결과를 확인하고 있습니다. 결과가 확인되기 전에는 요청을 다시 보내지 않습니다.'));
       else if (status()) card.append(status());
       const publicationControl = projectUc6PublicationMutationControl({ ambiguous: state.publicationAmbiguous, decisionIdentity: state.publicationIdentity, publicationState: state.publication?.state, reviewed: state.reviewed, busy: state.busy });
       card.append(actions(button('uc6-backReviewBtn', '검토로 돌아가기'), button('uc6-publishBtn', state.busy ? '게시 중…' : '템플릿 게시', true, !publicationControl.canSubmit)));
@@ -919,16 +981,18 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     else if (!state.catalog?.assets?.length) node.append(el('div', 'uc6-empty-library', state.catalogStatus === 'error' ? '템플릿 목록을 불러오지 못했습니다.' : '사용할 수 있는 게시된 템플릿이 없습니다.'));
     else {
       const grid = el('div', 'uc6-template-grid');
-      for (const asset of state.catalog.assets) {
-        const card = el('article', 'uc6-template-card'); card.append(el('span', 'uc6-template-kicker', 'Published Template'), el('h3', '', shortId(asset.asset_id)));
+      for (const [position, asset] of state.catalog.assets.entries()) {
+        const templateLabel = `게시된 템플릿 ${position + 1}`;
+        const card = el('article', 'uc6-template-card'); card.append(el('span', 'uc6-template-kicker', 'Published Template'), el('h3', '', templateLabel));
+        const templateId = el('p', 'uc6-template-id', `ID ${shortId(asset.asset_id)}`); templateId.title = asset.asset_id; card.append(templateId);
         const facts = el('dl', 'uc6-template-facts');
         [['슬라이드', asset.slide_count], ['슬롯', asset.slot_count], ['생성 단위', asset.generation_unit_count], ['승인일', new Date(asset.approved_at).toLocaleDateString('ko-KR')]].forEach(([label, value]) => facts.append(el('dt', '', label), el('dd', '', value)));
-        card.append(facts); const use = button('', '이 템플릿 사용하기', true, state.busy || bootstrapControl.ambiguityLocked); use.dataset.uc6Asset = asset.asset_id; card.append(use); grid.append(card);
+        card.append(facts); const use = button('', '이 템플릿 사용하기', true, state.busy || bootstrapControl.ambiguityLocked); use.dataset.uc6Asset = asset.asset_id; use.setAttribute('aria-label', `${templateLabel} 사용하기`); card.append(use); grid.append(card);
       }
       node.append(grid);
     }
     if (bootstrapControl.ambiguityLocked) {
-      node.append(el('p', 'uc6-stage-message is-neutral', '요청 결과를 확인하고 있습니다. 안전하게 중복할 수 없어 다른 템플릿을 시작할 수 없습니다.'));
+      node.append(el('p', 'uc6-state-panel is-neutral', '요청 결과를 확인하고 있습니다. 안전하게 중복할 수 없어 다른 템플릿을 시작할 수 없습니다.'));
     } else if (status()) node.append(status());
     node.append(bootstrapControl.ambiguityLocked
       ? actions(newWorkspaceButton())
