@@ -17,10 +17,13 @@ import {
   projectUc6OnboardingObservationControl,
   projectUc6MutationObservationControl,
   projectUc6PersonaBindingMutationControl,
+  projectUc6PresentationMessage,
   projectUc6PersistedState,
   projectUc6PublicationMutationControl,
   projectUc6FreshSyntheticScenarios,
   projectUc6ReusableAssetRuntimeBootstrap,
+  projectUc6TemplateDisplayName,
+  projectUc6WorkflowRail,
   synchronizeUc6ReviewPdfViewer,
   validateUc6SyntheticScenarioBindingCommand,
   validateUc6ReusableAssetBootstrapCommand,
@@ -506,7 +509,7 @@ test('Review renderer synchronizes metadata but retains normal stage teardown an
   assert.match(review, /head\.replaceWith\(nextHead\)/);
   assert.match(review, /rail\.replaceWith\(renderReviewRail\(pdf, pptx\)\)/);
   assert.match(review, /synchronizeReviewStatus\(node\)/);
-  for (const action of ['uc6-refreshArtifactsBtn', 'uc6-reviewConfirmed', 'uc6-publicationNote', 'final_render_output_pdf', 'final_render_output_pptx', 'uc6-openPublishBtn', 'newWorkspaceButton(true)']) {
+  for (const action of ['uc6-refreshArtifactsBtn', 'uc6-reviewConfirmed', 'uc6-publicationNote', 'final_render_output_pdf', 'final_render_output_pptx', 'uc6-openPublishBtn', 'newWorkspaceButton()']) {
     assert.equal(review.includes(action), true, action);
   }
 });
@@ -703,10 +706,70 @@ test('production sources contain only canonical lanes and live historical transp
   ]) assert.equal(production.includes(liveContract), true, liveContract);
 });
 
+test('six-step visual rail projects existing stages without inventing control-plane states', () => {
+  const expected = ['Source', 'Analyze', 'Persona', 'Prepare', 'Generate', 'Review'];
+  assert.deepEqual(projectUc6WorkflowRail('source').map((step) => step.label), expected);
+  assert.deepEqual(projectUc6WorkflowRail('prepare').map((step) => step.state), [
+    'completed', 'completed', 'completed', 'current', 'future', 'future'
+  ]);
+  assert.deepEqual(projectUc6WorkflowRail('persona').map((step) => step.state), [
+    'completed', 'completed', 'current', 'future', 'future', 'future'
+  ], 'Published Template runtime begins at Persona with Source and Analyze complete');
+  assert.equal(projectUc6WorkflowRail('publish').every((step) => step.state === 'completed'), true);
+  for (const hidden of ['auth', 'workspace', 'library']) assert.deepEqual(projectUc6WorkflowRail(hidden), []);
+});
+
+test('presentation-only message filtering suppresses stale acknowledgement without mutating state', () => {
+  const input = {
+    message: '요청이 접수되었습니다.', tone: 'neutral',
+    jobState: 'render_running', generationState: 'generation_ready'
+  };
+  const snapshot = structuredClone(input);
+  assert.equal(projectUc6PresentationMessage(input), null);
+  assert.deepEqual(input, snapshot);
+  assert.deepEqual(projectUc6PresentationMessage({ ...input, message: '상태를 확인하고 있습니다.' }), {
+    message: '상태를 확인하고 있습니다.', tone: 'neutral'
+  });
+  assert.deepEqual(projectUc6PresentationMessage({ message: input.message, jobState: 'source_ready' }), {
+    message: input.message, tone: 'neutral'
+  });
+  assert.equal(projectUc6PresentationMessage({ message: input.message, jobState: 'onboarding_blocked' }), null);
+  assert.equal(projectUc6PresentationMessage({ message: 'Persona 선택이 완료되었습니다.', generationState: 'not_started' }), null);
+});
+
+test('Generate template title uses safe frontend filename or a neutral localized fallback', () => {
+  assert.equal(projectUc6TemplateDisplayName({ filename: 'NovaGrid_Energy_Proposal_v2.pptx', mode: 'fresh_template' }), 'NovaGrid_Energy_Proposal_v2.pptx');
+  assert.equal(projectUc6TemplateDisplayName({ filename: ASSET, mode: 'published_template_runtime' }), '게시된 템플릿');
+  assert.equal(projectUc6TemplateDisplayName({ mode: 'published_template_runtime' }), '게시된 템플릿');
+  assert.equal(projectUc6TemplateDisplayName({ mode: 'fresh_template' }), '소스 템플릿');
+});
+
+test('Focused Workbench presentation binds semantics to real controls and names all Generate concepts', async () => {
+  const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
+  const persona = sourceBlock(source, 'function renderPersona', 'function renderPrepare');
+  assert.match(persona, /const card = el\('button', `uc6-persona-card/);
+  assert.match(persona, /card\.setAttribute\('aria-pressed', selected \? 'true' : 'false'\)/);
+  assert.match(persona, /uc6-persona-selection', '선택됨'/);
+
+  const generate = sourceBlock(source, 'function renderGenerate', 'function artifact');
+  for (const concept of ['템플릿', '준비된 데이터', '생성 문서']) assert.equal(generate.includes(`'${concept}'`), true, concept);
+  assert.match(generate, /projectUc6TemplateDisplayName\(\{ filename: state\.source\?\.filename, mode: state\.mode \}\)/);
+  assert.equal(generate.includes('reusable_template_asset_'), false);
+
+  const library = sourceBlock(source, 'function renderLibrary', 'function render()');
+  assert.match(library, /const templateLabel = `게시된 템플릿 \$\{position \+ 1\}`/);
+  assert.equal(library.includes("el('h3', '', shortId(asset.asset_id))"), false);
+  assert.match(library, /uc6-template-id/);
+  assert.match(library, /templateId\.title = asset\.asset_id/);
+
+  const escape = sourceBlock(source, 'function newWorkspaceButton', 'function setMessage');
+  assert.match(escape, /classList\.add\('uc6-escape-action'\)/);
+});
+
 test('Analyze, normal Persona, Prepare, and every running Generate state expose safe local detach', async () => {
   const source = await readFile(new URL('../public/uc6-browser-admin.mjs', import.meta.url), 'utf8');
   const helper = sourceBlock(source, 'function newWorkspaceButton', 'function setMessage');
-  assert.match(helper, /button\('uc6-newWorkspaceBtn', '새 작업 시작', primary, state\.busy \|\| state\.reconciling\)/);
+  assert.match(helper, /button\('uc6-newWorkspaceBtn', '새 작업 시작', false, state\.busy \|\| state\.reconciling\)/);
 
   const analyze = sourceBlock(source, 'function renderAnalyze', 'function personaDetail');
   assert.match(analyze, /actions\(newWorkspaceButton\(\), button\('uc6-refreshJobBtn'/);
@@ -793,8 +856,8 @@ test('Final Generation running states stay active while render_unknown uses reco
   assert.match(generate, /if \(running\) node\.append\(process\('Generate'/);
   assert.match(generate, /running \? '최종 문서를 생성하고 있습니다'/);
   assert.match(generate, /reconciling \? '문서 생성 결과를 확인하고 있습니다'/);
-  assert.match(generate, /reconciling \? 'Checking status' : running \? 'Generating' : 'Ready'/);
-  assert.match(generate, /reconciling \? '결과 확인 중' : running \? '생성 중' : 'Final document'/);
+  assert.match(generate, /reconciling \? '상태 확인 중' : running \? '생성 중' : '준비 완료'/);
+  assert.match(generate, /reconciling \? '결과 확인 중' : running \? '최종 문서 생성 중' : '최종 문서'/);
   assert.match(reconciliation, /staticState\('결과 확인 중', '요청 결과와 현재 상태를 확인하고 있습니다\./);
   assert.match(reconciliation, /최종 문서 생성 여부가 확인되기 전에는 요청을 다시 보내지 않습니다\./);
   assert.equal(reconciliation.includes('process('), false);
@@ -951,7 +1014,12 @@ test('UC6 presentation is scoped and contains document-dominant Review layout', 
     assert.equal(selector.trim().startsWith('#view-uc6') || selector.trim().startsWith('to {') || /^\d/.test(selector.trim()), true, selector);
   }
   assert.match(uc6Css, /\.uc6-review-layout/);
-  assert.match(uc6Css, /grid-template-columns: minmax\(0, 1\.85fr\) minmax\(300px, 1fr\)/);
+  assert.match(uc6Css, /grid-template-columns: minmax\(0, 1fr\) clamp\(340px, 28%, 380px\)/);
+  assert.match(uc6Css, /grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(uc6Css, /\.uc6-generation-composition/);
+  assert.match(uc6Css, /\.uc6-state-panel/);
+  assert.match(uc6Css, /\.uc6-transient-message/);
+  assert.match(uc6Css, /\.uc6-action-row \.uc6-escape-action/);
   assert.match(source, /Generated PDF review/);
   assert.match(source, /게시된 템플릿으로 문서 생성/);
   assert.match(source, /요청 결과를 확인하고 있습니다\./);
