@@ -100,6 +100,35 @@ export function normalizeUc6JobId(value) {
   return value.trim();
 }
 
+export function projectUc6ReviewDocumentIdentity({ jobId, alias, viewHref } = {}) {
+  let normalizedJobId = '';
+  try { normalizedJobId = normalizeUc6JobId(jobId); } catch (_) { return ''; }
+  if (alias !== 'final_render_output_pdf' || typeof viewHref !== 'string' || !viewHref) return '';
+  return JSON.stringify([normalizedJobId, alias, viewHref]);
+}
+
+export function synchronizeUc6ReviewPdfViewer(shell, { documentIdentity = '', viewHref = '', emptyText = '' } = {}) {
+  if (!shell || typeof shell.querySelector !== 'function' || typeof shell.replaceChildren !== 'function' || !shell.ownerDocument?.createElement) throw new TypeError('uc6_review_pdf_shell_invalid');
+  const existing = shell.querySelector('iframe.uc6-pdf-frame');
+  if (documentIdentity && viewHref && existing?.isConnected === true
+    && shell.dataset.uc6DocumentIdentity === documentIdentity
+    && existing.dataset.uc6DocumentIdentity === documentIdentity) {
+    return { frame: existing, preserved: true, replaced: false };
+  }
+  let content;
+  let frame = null;
+  if (documentIdentity && viewHref) {
+    frame = shell.ownerDocument.createElement('iframe');
+    frame.className = 'uc6-pdf-frame'; frame.title = 'Generated PDF review';
+    frame.dataset.uc6DocumentIdentity = documentIdentity; frame.src = viewHref; content = frame;
+  } else {
+    content = shell.ownerDocument.createElement('div'); content.className = 'uc6-viewer-empty'; content.textContent = String(emptyText || 'PDF를 준비하고 있습니다.');
+  }
+  shell.dataset.uc6DocumentIdentity = documentIdentity;
+  shell.replaceChildren(content);
+  return { frame, preserved: false, replaced: true };
+}
+
 export function normalizeUc6ReusableAssetId(value) {
   if (typeof value !== 'string' || !ASSET_ID_PATTERN.test(value.trim())) throw new TypeError('invalid_reusable_asset_id');
   return value.trim();
@@ -806,14 +835,20 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     return state.artifacts?.artifacts?.find((item) => item.alias === alias) || null;
   }
 
-  function renderReview() {
-    const node = surface('생성된 문서를 검토하세요', '최종 산출물을 확인하고 필요한 파일을 다운로드합니다.', 'uc6-review-stage');
-    const layout = el('div', 'uc6-review-layout'); const viewer = el('section', 'uc6-viewer-column');
-    const viewerHead = el('div', 'uc6-viewer-head'); viewerHead.append(el('strong', '', 'Generated PDF'), button('uc6-refreshArtifactsBtn', '새로고침', false, state.artifactStatus === 'loading')); viewer.append(viewerHead);
-    const pdf = artifact('final_render_output_pdf'); const shell = el('div', 'uc6-pdf-shell'); const viewHref = pdf?.ready && pdf.actions.view.available ? pdf.actions.view.href : '';
-    if (viewHref) { const frame = el('iframe', 'uc6-pdf-frame'); frame.title = 'Generated PDF review'; frame.src = viewHref; shell.append(frame); }
-    else shell.append(el('div', 'uc6-viewer-empty', state.artifactStatus === 'error' ? 'PDF 상태를 확인할 수 없습니다.' : 'PDF를 준비하고 있습니다.'));
-    viewer.append(shell);
+  function reviewArtifacts() {
+    const pdf = artifact('final_render_output_pdf'); const pptx = artifact('final_render_output_pptx');
+    const viewHref = pdf?.ready && pdf.actions.view.available ? pdf.actions.view.href : '';
+    const documentIdentity = projectUc6ReviewDocumentIdentity({ jobId: state.jobId, alias: pdf?.alias, viewHref });
+    return { pdf, pptx, viewHref, documentIdentity };
+  }
+
+  function renderReviewViewerHead() {
+    const viewerHead = el('div', 'uc6-viewer-head');
+    viewerHead.append(el('strong', '', 'Generated PDF'), button('uc6-refreshArtifactsBtn', '새로고침', false, state.artifactStatus === 'loading'));
+    return viewerHead;
+  }
+
+  function renderReviewRail(pdf, pptx) {
     const rail = el('aside', 'uc6-review-rail'); rail.append(el('h3', '', 'Review'));
     const fact = (label, copy, ready = false) => { const item = el('section', 'uc6-review-section'); item.append(el('span', 'uc6-review-label', label), el(ready ? 'strong' : 'p', ready ? 'uc6-review-state is-ready' : '', copy)); return item; };
     rail.append(fact('생성 상태', '완료되었습니다.', true), fact('검토 이슈', '별도 검토 이슈 정보가 제공되지 않았습니다.'));
@@ -821,9 +856,38 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     const noteLabel = el('label', 'uc6-note-field'); noteLabel.append(el('span', 'uc6-review-label', '관리자 노트'));
     const note = el('textarea'); note.id = 'uc6-publicationNote'; note.rows = 4; note.maxLength = 1000; note.value = state.note; note.placeholder = '검토 노트를 입력하세요 (선택)'; noteLabel.append(note); rail.append(noteLabel);
     const downloads = el('div', 'uc6-review-downloads'); const pdfButton = button('', 'PDF 다운로드', false, !pdf?.ready); pdfButton.dataset.uc6Download = 'final_render_output_pdf';
-    const pptx = artifact('final_render_output_pptx'); const pptxButton = button('', 'PPTX 다운로드', false, !pptx?.ready); pptxButton.dataset.uc6Download = 'final_render_output_pptx'; downloads.append(pdfButton, pptxButton); rail.append(downloads);
+    const pptxButton = button('', 'PPTX 다운로드', false, !pptx?.ready); pptxButton.dataset.uc6Download = 'final_render_output_pptx'; downloads.append(pdfButton, pptxButton); rail.append(downloads);
     rail.append(state.mode === 'fresh_template' ? button('uc6-openPublishBtn', '템플릿 게시', true, !state.reviewed) : newWorkspaceButton(true));
-    layout.append(viewer, rail); node.append(layout); if (status()) node.append(status()); return node;
+    return rail;
+  }
+
+  function synchronizeReviewStatus(node) {
+    const current = node.querySelector(':scope > .uc6-stage-message'); const next = status();
+    if (current && next) current.replaceWith(next);
+    else if (current) current.remove();
+    else if (next) node.append(next);
+  }
+
+  function synchronizeReview(node) {
+    if (node?.dataset.uc6ReviewJobId !== state.jobId) return false;
+    const { pdf, pptx, viewHref, documentIdentity } = reviewArtifacts();
+    const viewer = node.querySelector('.uc6-viewer-column'); const shell = viewer?.querySelector('.uc6-pdf-shell'); const rail = node.querySelector('.uc6-review-rail');
+    if (!viewer || !shell || !rail) return false;
+    const head = viewer.querySelector('.uc6-viewer-head'); const nextHead = renderReviewViewerHead();
+    if (head) head.replaceWith(nextHead); else viewer.prepend(nextHead);
+    synchronizeUc6ReviewPdfViewer(shell, { documentIdentity, viewHref, emptyText: state.artifactStatus === 'error' ? 'PDF 상태를 확인할 수 없습니다.' : 'PDF를 준비하고 있습니다.' });
+    rail.replaceWith(renderReviewRail(pdf, pptx)); synchronizeReviewStatus(node); return true;
+  }
+
+  function renderReview() {
+    const node = surface('생성된 문서를 검토하세요', '최종 산출물을 확인하고 필요한 파일을 다운로드합니다.', 'uc6-review-stage');
+    node.dataset.uc6ReviewJobId = state.jobId;
+    const layout = el('div', 'uc6-review-layout'); const viewer = el('section', 'uc6-viewer-column');
+    viewer.append(renderReviewViewerHead());
+    const { pdf, pptx, viewHref, documentIdentity } = reviewArtifacts(); const shell = el('div', 'uc6-pdf-shell');
+    synchronizeUc6ReviewPdfViewer(shell, { documentIdentity, viewHref, emptyText: state.artifactStatus === 'error' ? 'PDF 상태를 확인할 수 없습니다.' : 'PDF를 준비하고 있습니다.' });
+    viewer.append(shell);
+    layout.append(viewer, renderReviewRail(pdf, pptx)); node.append(layout); if (status()) node.append(status()); return node;
   }
 
   function renderPublish() {
@@ -880,6 +944,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
     els.signOut.disabled = !state.user; els.refreshSession.disabled = !state.user; renderRail();
     const stage = currentStage();
     const renderers = { auth: () => { const node = surface('FetchDoc 문서 스튜디오', '관리자 로그인 후 템플릿을 만들거나 게시된 템플릿으로 문서를 생성할 수 있습니다.', 'uc6-auth-gate'); if (status()) node.append(status()); return node; }, workspace: renderWorkspace, source: renderSource, analyze: renderAnalyze, persona: renderPersona, prepare: renderPrepare, generate: renderGenerate, review: renderReview, publish: renderPublish, library: renderLibrary };
+    if (stage === 'review' && synchronizeReview(els.root.firstElementChild)) return;
     els.root.replaceChildren(renderers[stage]());
   }
 
