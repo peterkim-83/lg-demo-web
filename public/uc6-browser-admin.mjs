@@ -1,3 +1,5 @@
+import { getFirebaseBrowserAuthClient, signInWithGoogle } from './firebase-auth-client.mjs';
+
 export const UC6_PRODUCTION_API_BASE = 'https://api.peter-n8n.duckdns.org/';
 
 export const UC6_BROWSER_ADMIN_ENDPOINTS = Object.freeze({
@@ -630,7 +632,6 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
   };
   const STORAGE_KEY = 'fetchdoc.uc6.canonical_workspace.v2';
   const PREVIOUS_STORAGE_KEY = 'fetchdoc.uc6.browser_admin_control_plane.v1';
-  const FIREBASE_VERSION = '10.14.1';
   const RECONNECT_MS = [1000, 2000, 5000];
   const ACTIVE_STATES = new Set(['onboarding_queued', 'onboarding_running', 'synthetic_scenarios_queued', 'synthetic_scenarios_running', 'render_queued', 'render_running', 'render_unknown']);
   const AUTH_COPY = {
@@ -1143,12 +1144,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
 
   async function loadFirebase() {
     if (state.firebase) return state.firebase;
-    const response = await fetch('/__/firebase/init.json', { cache: 'no-store' }); if (!response.ok) throw new Error('firebase_init_unavailable');
-    const config = await response.json();
-    const [appMod, authMod] = await Promise.all([import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`), import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`)]);
-    const app = appMod.getApps().length ? appMod.getApps()[0] : appMod.initializeApp(config); const auth = authMod.getAuth(app);
-    await authMod.setPersistence(auth, authMod.browserSessionPersistence); try { await authMod.getRedirectResult(auth); } catch (_) {}
-    state.firebase = { auth, authMod };
+    state.firebase = await getFirebaseBrowserAuthClient();
     state.api = createUc6BrowserAdminApi({ apiBaseUrl, fetchImpl: fetch, getIdToken: async (refresh = false) => { if (!state.user) throw new Error('firebase_user_missing'); return state.user.getIdToken(refresh === true); } });
     return state.firebase;
   }
@@ -1318,7 +1314,7 @@ export function initUc6Studio({ section, apiBaseUrl = UC6_PRODUCTION_API_BASE } 
   }
 
   els.signIn.addEventListener('click', async () => {
-    try { state.auth = 'authenticating'; render(); const { auth, authMod } = await loadFirebase(); const provider = new authMod.GoogleAuthProvider(); try { await authMod.signInWithPopup(auth, provider); } catch (error) { if (['auth/popup-blocked', 'auth/popup-closed-by-user', 'auth/operation-not-supported-in-this-environment'].includes(String(error?.code || ''))) return authMod.signInWithRedirect(auth, provider); throw error; } }
+    try { state.auth = 'authenticating'; render(); await signInWithGoogle(await loadFirebase()); }
     catch (_) { state.auth = 'signed_out'; setMessage('로그인을 완료하지 못했습니다. 다시 시도하세요.', 'error'); render(); }
   });
   els.signOut.addEventListener('click', async () => { try { const client = state.firebase || await loadFirebase(); stopObservation(); await client.authMod.signOut(client.auth); } catch (_) { state.auth = 'signed_out'; render(); } });

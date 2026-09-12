@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0e14" />
+  <meta name="description" content="Persistent Codex agent runtime test console" />
+  <title>Agent Runtime Playground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="./styles.css" rel="stylesheet" />
+</head>
+
+<body>
+  <div class="apg-shell">
+    <header class="apg-header">
+      <div class="apg-header__brand">
+        <a class="apg-back-link" href="/" aria-label="Back to LGE Demo workspace">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </a>
+        <div class="apg-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M8 3.5h8A4.5 4.5 0 0 1 20.5 8v8a4.5 4.5 0 0 1-4.5 4.5H8A4.5 4.5 0 0 1 3.5 16V8A4.5 4.5 0 0 1 8 3.5Z" />
+            <path d="m8.3 12 2.25 2.25L15.8 9" />
+          </svg>
+        </div>
+        <div>
+          <div class="apg-eyebrow">LGE DEMO / RUNTIME LAB</div>
+          <h1>Agent Runtime Playground</h1>
+        </div>
+      </div>
+
+      <div class="apg-header__status" aria-label="Runtime status">
+        <div class="apg-runtime-chip">
+          <span class="apg-status-dot" id="headerStatusDot" aria-hidden="true"></span>
+          <span id="headerStatusText">Initializing</span>
+        </div>
+        <div class="apg-runtime-chip apg-runtime-chip--muted">
+          <span class="apg-chip-label">Runtime</span>
+          <strong>Codex</strong>
+        </div>
+      </div>
+    </header>
+
+    <main class="apg-main">
+      <section class="apg-workspace" aria-labelledby="conversationTitle">
+        <div class="apg-workspace__head">
+          <div>
+            <div class="apg-section-label">Execution console</div>
+            <h2 id="conversationTitle">Conversation</h2>
+          </div>
+          <div class="apg-turn-summary"><span id="conversationTurnCount">0</span> <span id="conversationTurnLabel">turns</span></div>
+        </div>
+
+        <div class="apg-alert" id="statusAlert" role="status" aria-live="polite" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8v4m0 4h.01M10.3 3.6 2.7 17a2 2 0 0 0 1.74 3h15.12a2 2 0 0 0 1.74-3L13.7 3.6a2 2 0 0 0-3.4 0Z" />
+          </svg>
+          <div>
+            <strong id="statusAlertTitle"></strong>
+            <span id="statusAlertMessage"></span>
+          </div>
+        </div>
+
+        <div class="apg-conversation" id="conversation" aria-live="polite" aria-label="Agent conversation">
+          <div class="apg-empty" id="emptyState">
+            <div class="apg-empty__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 2.75 14.55 9 21 11.55 14.55 14 12 20.25 9.45 14 3 11.55 9.45 9 12 2.75Z" />
+              </svg>
+            </div>
+            <div class="apg-section-label">Persistent runtime ready</div>
+            <h3>Start a new agent session</h3>
+            <p>Submit a task to create a persistent Codex thread. Follow-up prompts will continue in the same runtime session.</p>
+            <div class="apg-empty__steps" aria-label="Runtime flow">
+              <span>Authenticate</span><i></i><span>Submit</span><i></i><span>Continue</span>
+            </div>
+          </div>
+        </div>
+
+        <form class="apg-composer" id="promptForm">
+          <label for="promptInput">Agent instruction</label>
+          <div class="apg-composer__field">
+            <textarea id="promptInput" name="prompt" rows="4" maxlength="20000"
+              placeholder="Describe the task for the Codex runtime…" aria-describedby="composerHint"></textarea>
+            <div class="apg-composer__footer">
+              <span id="composerHint"><kbd>Ctrl</kbd> <span>+</span> <kbd>Enter</kbd> to run · Enter for a new line</span>
+              <button class="apg-run-button" id="runButton" type="submit" disabled>
+                <span class="apg-run-button__idle">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg>
+                  Run Agent
+                </span>
+                <span class="apg-run-button__busy">
+                  <span class="apg-spinner" aria-hidden="true"></span>
+                  Running
+                </span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <aside class="apg-sidebar" aria-label="Runtime details">
+        <section class="apg-panel apg-session-panel">
+          <div class="apg-panel__head">
+            <div>
+              <div class="apg-section-label">Live context</div>
+              <h2>Session</h2>
+            </div>
+            <span class="apg-panel-state" id="panelStatus">Initializing</span>
+          </div>
+
+          <dl class="apg-metadata">
+            <div class="apg-metadata__wide">
+              <dt>Session ID</dt>
+              <dd class="apg-mono" id="sessionId" title="No active session">Not established</dd>
+            </div>
+            <div>
+              <dt>Runtime</dt>
+              <dd>Codex</dd>
+            </div>
+            <div>
+              <dt>Turn count</dt>
+              <dd class="apg-mono" id="turnCount">0</dd>
+            </div>
+            <div class="apg-metadata__wide">
+              <dt>Last execution</dt>
+              <dd class="apg-mono" id="lastLatency">—</dd>
+            </div>
+          </dl>
+
+          <button class="apg-secondary-button" id="newSessionButton" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Session
+          </button>
+        </section>
+
+        <section class="apg-panel">
+          <div class="apg-panel__head apg-panel__head--compact">
+            <div>
+              <div class="apg-section-label">Runtime profile</div>
+              <h2>Capabilities</h2>
+            </div>
+          </div>
+          <ul class="apg-capabilities">
+            <li class="is-available">
+              <span class="apg-capability-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg>
+              </span>
+              <span><strong>Stateful multi-turn</strong><small>Context continues across turns</small></span>
+              <em>Active</em>
+            </li>
+            <li class="is-available">
+              <span class="apg-capability-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg>
+              </span>
+              <span><strong>Persistent thread</strong><small>Session survives browser reload</small></span>
+              <em>Active</em>
+            </li>
+            <li class="is-planned"><span class="apg-capability-icon">—</span><span><strong>Tools</strong><small>External tool execution</small></span><em>Soon</em></li>
+            <li class="is-planned"><span class="apg-capability-icon">—</span><span><strong>Files</strong><small>Runtime file exchange</small></span><em>Soon</em></li>
+            <li class="is-planned"><span class="apg-capability-icon">—</span><span><strong>Streaming</strong><small>Incremental output events</small></span><em>Soon</em></li>
+          </ul>
+        </section>
+
+        <section class="apg-panel apg-auth-panel">
+          <div class="apg-auth-panel__identity">
+            <span class="apg-avatar" id="authAvatar" aria-hidden="true">?</span>
+            <div>
+              <span class="apg-auth-label">Firebase identity</span>
+              <strong id="authIdentity">Checking session…</strong>
+            </div>
+          </div>
+          <button class="apg-auth-button" id="authButton" type="button" disabled>Sign in</button>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+
+</html>
