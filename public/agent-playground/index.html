@@ -5,12 +5,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0b0e14" />
-  <meta name="description" content="Persistent Codex agent runtime test console" />
-  <title>Agent Runtime Playground</title>
+  <meta name="description" content="Agent Runtime contract and observable execution workbench" />
+  <title>Agent Runtime Workbench</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link href="./styles.css" rel="stylesheet" />
+  <link href="./workbench.css" rel="stylesheet" />
 </head>
 
 <body>
@@ -18,9 +19,7 @@
     <header class="apg-header">
       <div class="apg-header__brand">
         <a class="apg-back-link" href="/" aria-label="Back to LGE Demo workspace">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
         </a>
         <div class="apg-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24">
@@ -29,8 +28,8 @@
           </svg>
         </div>
         <div>
-          <div class="apg-eyebrow">LGE DEMO / RUNTIME LAB</div>
-          <h1>Agent Runtime Playground</h1>
+          <div class="apg-eyebrow">LGE DEMO / RUNTIME LAB / V1-D2</div>
+          <h1>Agent Runtime Workbench</h1>
         </div>
       </div>
 
@@ -46,140 +45,191 @@
       </div>
     </header>
 
-    <main class="apg-main">
-      <section class="apg-workspace" aria-labelledby="conversationTitle">
-        <div class="apg-workspace__head">
+    <main class="apg-workbench-main">
+      <section class="apg-session-strip" aria-label="Current runtime context">
+        <div class="apg-strip-identity">
+          <span class="apg-avatar" id="authAvatar" aria-hidden="true">?</span>
           <div>
-            <div class="apg-section-label">Execution console</div>
-            <h2 id="conversationTitle">Conversation</h2>
+            <span>Firebase identity</span>
+            <strong id="authIdentity">Checking session…</strong>
+          </div>
+          <button class="apg-auth-button" id="authButton" type="button" disabled>Sign in</button>
+        </div>
+        <dl class="apg-strip-metadata">
+          <div><dt>session_id</dt><dd id="sessionId">Not established</dd></div>
+          <div><dt>run_id</dt><dd id="runId">—</dd></div>
+          <div><dt>turns</dt><dd id="turnCount">0</dd></div>
+          <div><dt>last latency</dt><dd id="lastLatency">—</dd></div>
+        </dl>
+        <button class="apg-secondary-button apg-new-session" id="newSessionButton" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New Session
+        </button>
+      </section>
+
+      <div class="apg-alert" id="statusAlert" role="status" aria-live="polite" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 8v4m0 4h.01M10.3 3.6 2.7 17a2 2 0 0 0 1.74 3h15.12a2 2 0 0 0 1.74-3L13.7 3.6a2 2 0 0 0-3.4 0Z" />
+        </svg>
+        <div><strong id="statusAlertTitle"></strong><span id="statusAlertMessage"></span></div>
+      </div>
+
+      <section class="apg-panel apg-mission" aria-labelledby="missionTitle">
+        <div class="apg-workbench-heading">
+          <div>
+            <div class="apg-section-label">Mission / conversation</div>
+            <h2 id="missionTitle">Persistent agent thread</h2>
           </div>
           <div class="apg-turn-summary"><span id="conversationTurnCount">0</span> <span id="conversationTurnLabel">turns</span></div>
         </div>
 
-        <div class="apg-alert" id="statusAlert" role="status" aria-live="polite" hidden>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 8v4m0 4h.01M10.3 3.6 2.7 17a2 2 0 0 0 1.74 3h15.12a2 2 0 0 0 1.74-3L13.7 3.6a2 2 0 0 0-3.4 0Z" />
-          </svg>
-          <div>
-            <strong id="statusAlertTitle"></strong>
-            <span id="statusAlertMessage"></span>
-          </div>
-        </div>
-
-        <div class="apg-conversation" id="conversation" aria-live="polite" aria-label="Agent conversation">
+        <div class="apg-conversation apg-workbench-conversation" id="conversation" aria-live="polite" aria-label="Agent conversation">
           <div class="apg-empty" id="emptyState">
             <div class="apg-empty__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="M12 2.75 14.55 9 21 11.55 14.55 14 12 20.25 9.45 14 3 11.55 9.45 9 12 2.75Z" />
-              </svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2.75 14.55 9 21 11.55 14.55 14 12 20.25 9.45 14 3 11.55 9.45 9 12 2.75Z" /></svg>
             </div>
-            <div class="apg-section-label">Persistent runtime ready</div>
-            <h3>Start a new agent session</h3>
-            <p>Submit a task to create a persistent Codex thread. Follow-up prompts will continue in the same runtime session.</p>
-            <div class="apg-empty__steps" aria-label="Runtime flow">
-              <span>Authenticate</span><i></i><span>Submit</span><i></i><span>Continue</span>
-            </div>
+            <div class="apg-section-label">Workbench ready</div>
+            <h3>Define the next agent mission</h3>
+            <p>Choose an approved runtime contract below, then execute a quick turn or an observable run in this persistent session.</p>
           </div>
         </div>
 
-        <form class="apg-composer" id="promptForm">
-          <label for="promptInput">Agent instruction</label>
+        <form class="apg-composer apg-workbench-composer" id="promptForm">
+          <label for="promptInput">Mission</label>
           <div class="apg-composer__field">
-            <textarea id="promptInput" name="prompt" rows="4" maxlength="20000"
-              placeholder="Describe the task for the Codex runtime…" aria-describedby="composerHint"></textarea>
-            <div class="apg-composer__footer">
+            <textarea id="promptInput" name="prompt" rows="4" maxlength="100000"
+              placeholder="Describe the task, expected evidence, and completion criteria…" aria-describedby="composerHint"></textarea>
+            <div class="apg-composer__footer apg-workbench-composer__footer">
+              <div class="apg-execution-mode" role="radiogroup" aria-label="Execution endpoint">
+                <label><input type="radio" name="executionMode" value="observable" checked /><span>Observable run</span></label>
+                <label><input type="radio" name="executionMode" value="quick" /><span>Quick turn</span></label>
+              </div>
               <span id="composerHint"><kbd>Ctrl</kbd> <span>+</span> <kbd>Enter</kbd> to run · Enter for a new line</span>
               <button class="apg-run-button" id="runButton" type="submit" disabled>
                 <span class="apg-run-button__idle">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg>
-                  Run Agent
+                  <span id="runButtonLabel">Start Observable Run</span>
                 </span>
-                <span class="apg-run-button__busy">
-                  <span class="apg-spinner" aria-hidden="true"></span>
-                  Running
-                </span>
+                <span class="apg-run-button__busy"><span class="apg-spinner" aria-hidden="true"></span>Running</span>
               </button>
             </div>
           </div>
         </form>
       </section>
 
-      <aside class="apg-sidebar" aria-label="Runtime details">
-        <section class="apg-panel apg-session-panel">
-          <div class="apg-panel__head">
+      <div class="apg-workbench-grid">
+        <section class="apg-panel apg-contract-panel" aria-labelledby="contractTitle">
+          <div class="apg-workbench-heading">
             <div>
-              <div class="apg-section-label">Live context</div>
-              <h2>Session</h2>
+              <div class="apg-section-label">Runtime contract</div>
+              <h2 id="contractTitle">Approved assets</h2>
             </div>
-            <span class="apg-panel-state" id="panelStatus">Initializing</span>
+            <div class="apg-heading-actions">
+              <span class="apg-panel-state" id="registryStatus">Waiting for auth</span>
+              <button class="apg-icon-button" id="refreshRegistryButton" type="button" title="Refresh runtime registry" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M18.4 9A7 7 0 0 0 6.2 6.2L4 8m16 8-2.2 1.8A7 7 0 0 1 5.6 15" /></svg>
+              </button>
+            </div>
           </div>
 
-          <dl class="apg-metadata">
-            <div class="apg-metadata__wide">
-              <dt>Session ID</dt>
-              <dd class="apg-mono" id="sessionId" title="No active session">Not established</dd>
-            </div>
-            <div>
-              <dt>Runtime</dt>
-              <dd>Codex</dd>
-            </div>
-            <div>
-              <dt>Turn count</dt>
-              <dd class="apg-mono" id="turnCount">0</dd>
-            </div>
-            <div class="apg-metadata__wide">
-              <dt>Last execution</dt>
-              <dd class="apg-mono" id="lastLatency">—</dd>
-            </div>
-          </dl>
+          <div class="apg-contract-selectors">
+            <label class="apg-select-field">
+              <span>Tool Profile</span>
+              <select id="toolProfileSelect" disabled><option value="">No tools</option></select>
+              <small id="toolProfileDescription">No controlled tool profile will be attached.</small>
+            </label>
+            <label class="apg-select-field">
+              <span>Output Schema</span>
+              <select id="outputSchemaSelect" disabled><option value="">Free text</option></select>
+              <small id="outputSchemaDescription">The runtime will return its standard text response.</small>
+            </label>
+          </div>
 
-          <button class="apg-secondary-button" id="newSessionButton" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            New Session
-          </button>
+          <div class="apg-capability-summary" id="capabilitySummary" aria-label="Discovered runtime capabilities">
+            <div class="apg-contract-empty">Capabilities load after Firebase authentication.</div>
+          </div>
+
+          <div class="apg-contract-inspector">
+            <div class="apg-tabs" role="tablist" aria-label="Runtime contract detail">
+              <button class="is-active" type="button" role="tab" data-contract-tab="capabilities" aria-selected="true">Capabilities</button>
+              <button type="button" role="tab" data-contract-tab="tool" aria-selected="false">Tool Profile</button>
+              <button type="button" role="tab" data-contract-tab="schema" aria-selected="false">Output Schema</button>
+            </div>
+            <pre class="apg-contract-json" id="contractDetail" tabindex="0">Authenticate to discover the public runtime contract.</pre>
+          </div>
         </section>
 
-        <section class="apg-panel">
-          <div class="apg-panel__head apg-panel__head--compact">
+        <section class="apg-panel apg-activity-panel" aria-labelledby="activityTitle">
+          <div class="apg-workbench-heading">
             <div>
-              <div class="apg-section-label">Runtime profile</div>
-              <h2>Capabilities</h2>
+              <div class="apg-section-label">Observable run inspector</div>
+              <h2 id="activityTitle">Live agent activity</h2>
+            </div>
+            <div class="apg-heading-actions">
+              <span class="apg-panel-state" id="streamStatus">Idle</span>
+              <button class="apg-cancel-button" id="cancelRunButton" type="button" hidden>Cancel run</button>
+              <button class="apg-icon-button" id="reconnectButton" type="button" title="Reconnect event stream" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M18.4 9A7 7 0 0 0 6.2 6.2L4 8m16 8-2.2 1.8A7 7 0 0 1 5.6 15" /></svg>
+              </button>
             </div>
           </div>
-          <ul class="apg-capabilities">
-            <li class="is-available">
-              <span class="apg-capability-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg>
-              </span>
-              <span><strong>Stateful multi-turn</strong><small>Context continues across turns</small></span>
-              <em>Active</em>
-            </li>
-            <li class="is-available">
-              <span class="apg-capability-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg>
-              </span>
-              <span><strong>Persistent thread</strong><small>Session survives browser reload</small></span>
-              <em>Active</em>
-            </li>
-            <li class="is-planned"><span class="apg-capability-icon">—</span><span><strong>Tools</strong><small>External tool execution</small></span><em>Soon</em></li>
-            <li class="is-planned"><span class="apg-capability-icon">—</span><span><strong>Files</strong><small>Runtime file exchange</small></span><em>Soon</em></li>
-            <li class="is-planned"><span class="apg-capability-icon">—</span><span><strong>Streaming</strong><small>Incremental output events</small></span><em>Soon</em></li>
-          </ul>
+          <div class="apg-activity" id="activityTimeline" aria-live="polite">
+            <div class="apg-contract-empty" id="activityEmpty">Start an observable run to inspect durable lifecycle and public tool activity.</div>
+          </div>
         </section>
+      </div>
 
-        <section class="apg-panel apg-auth-panel">
-          <div class="apg-auth-panel__identity">
-            <span class="apg-avatar" id="authAvatar" aria-hidden="true">?</span>
+      <section class="apg-panel apg-result-panel" aria-labelledby="resultTitle">
+        <div class="apg-workbench-heading">
+          <div>
+            <div class="apg-section-label">Final response contract</div>
+            <h2 id="resultTitle">Structured result</h2>
+          </div>
+          <div class="apg-heading-actions">
+            <span class="apg-panel-state" id="resultStatus">No result</span>
+            <button class="apg-copy-button" id="copyResultButton" type="button" disabled>Copy JSON</button>
+          </div>
+        </div>
+        <dl class="apg-result-metadata">
+          <div><dt>schema_id</dt><dd id="resultSchemaId">Not requested</dd></div>
+          <div><dt>validation</dt><dd id="resultValidation">Not requested</dd></div>
+          <div><dt>run status</dt><dd id="resultRunStatus">Idle</dd></div>
+          <div><dt>duration</dt><dd id="resultDuration">—</dd></div>
+        </dl>
+        <div class="apg-tabs" role="tablist" aria-label="Structured result view">
+          <button class="is-active" type="button" role="tab" data-result-tab="tree" aria-selected="true">Tree</button>
+          <button type="button" role="tab" data-result-tab="json" aria-selected="false">JSON</button>
+        </div>
+        <div class="apg-result-view" id="resultTree">
+          <div class="apg-contract-empty">A completed structured run will appear here as an inspectable tree.</div>
+        </div>
+        <pre class="apg-result-json" id="resultJson" tabindex="0" hidden>No structured result.</pre>
+      </section>
+
+      <section class="apg-panel apg-lab-panel" aria-labelledby="labTitle">
+        <div class="apg-workbench-heading">
+          <div>
+            <div class="apg-section-label">Contract Lab foundation</div>
+            <h2 id="labTitle">Draft output schema</h2>
+          </div>
+          <button class="apg-draft-button" id="toggleDraftButton" type="button">+ Add Draft Schema</button>
+        </div>
+        <div class="apg-lab-intro">
+          <span class="apg-draft-badge">DRAFT / NOT REGISTERED</span>
+          <p>Drafts remain local to this browser. They are not added to the production registry and cannot be selected for runtime execution.</p>
+        </div>
+        <div class="apg-draft-editor" id="draftEditorRegion" hidden>
+          <label for="draftSchemaInput">JSON Schema draft</label>
+          <textarea id="draftSchemaInput" rows="12" spellcheck="false" placeholder="Paste a JSON Schema object here…"></textarea>
+          <div class="apg-draft-footer">
+            <span id="draftValidationStatus" role="status" aria-live="polite">Not validated</span>
             <div>
-              <span class="apg-auth-label">Firebase identity</span>
-              <strong id="authIdentity">Checking session…</strong>
+              <button class="apg-copy-button" id="clearDraftButton" type="button">Clear</button>
+              <button class="apg-secondary-button apg-validate-button" id="validateDraftButton" type="button">Validate JSON</button>
             </div>
           </div>
-          <button class="apg-auth-button" id="authButton" type="button" disabled>Sign in</button>
-        </section>
-      </aside>
+        </div>
+      </section>
     </main>
   </div>
 
