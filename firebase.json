@@ -7,6 +7,35 @@
         "firebase.json",
         "**/.*",
         "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "/agent-playground",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store"
+            }
+          ]
+        },
+        {
+          "source": "/agent-playground/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store"
+            }
+          ]
+        },
+        {
+          "source": "/firebase-auth-client.mjs",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store"
+            }
+          ]
+        }
       ]
     },
     {
