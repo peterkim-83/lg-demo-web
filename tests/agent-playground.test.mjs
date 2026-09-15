@@ -4,12 +4,19 @@ import { readFile } from 'node:fs/promises';
 import {
   AGENT_RUNTIME_ENDPOINTS,
   AgentRuntimeError,
+  createAgentDefinitionPatchRequest,
+  createAgentDefinitionRequest,
   createAgentRequest,
   createAgentRuntimeClient,
+  createAgentTestRunRequest,
+  isAgentTestContextCurrent,
   isTerminalRunStatus,
+  normalizeAgentDefinition,
+  normalizeAgentDefinitionList,
   parseAgentRunEventFrame,
   projectPublicAgentRunEvent,
-  resolveModelRegistrySelection
+  resolveModelRegistrySelection,
+  validateAgentDefinitionRegistries
 } from '../public/agent-playground/runtime-client.mjs';
 
 const API = 'https://api.example.test';
@@ -54,6 +61,64 @@ const completedStructured = Object.freeze({
   output_schema_id: 'schema_discovered_at_runtime', output: { summary: 'Done', score: 0.98 }, duration_ms: 4100
 });
 
+const agentDefinition = Object.freeze({
+  agent_id: 'agent_runtime_uuid',
+  name: 'Research Agent',
+  status: 'draft',
+  revision: 3,
+  model: 'model_dynamic',
+  reasoning: { effort: 'effort_dynamic' },
+  instructions: 'Use approved evidence.',
+  tool_profile_id: 'tools_dynamic',
+  output_schema_id: 'schema_dynamic',
+  created_at: '2026-09-14T00:00:00Z',
+  updated_at: '2026-09-15T00:00:00Z'
+});
+
+test('Agent Definition create and changed-fields PATCH payloads match the E2 contract', () => {
+  const form = {
+    name: ' Research Agent ', model: 'model_dynamic', reasoningEffort: 'effort_dynamic',
+    instructions: 'Use approved evidence.', toolProfileId: '', outputSchemaId: 'schema_dynamic'
+  };
+  assert.deepEqual(createAgentDefinitionRequest(form), {
+    name: 'Research Agent', model: 'model_dynamic', reasoning: { effort: 'effort_dynamic' },
+    instructions: 'Use approved evidence.', tool_profile_id: null, output_schema_id: 'schema_dynamic'
+  });
+  assert.deepEqual(createAgentDefinitionPatchRequest(agentDefinition, {
+    ...form, name: 'Updated Agent', toolProfileId: null
+  }), {
+    expected_revision: 3, name: 'Updated Agent', tool_profile_id: null
+  });
+  assert.throws(() => createAgentDefinitionRequest({ ...form, name: '' }), (error) => error.code === 'name_required');
+});
+
+test('Agent Definition responses and lists are normalized strictly', () => {
+  assert.deepEqual(normalizeAgentDefinition(agentDefinition), agentDefinition);
+  assert.deepEqual(normalizeAgentDefinitionList({ items: [agentDefinition] }), { items: [agentDefinition] });
+  assert.throws(() => normalizeAgentDefinition({ ...agentDefinition, revision: 0 }), (error) => error.code === 'invalid_response');
+  assert.throws(() => normalizeAgentDefinitionList({ items: [agentDefinition, agentDefinition] }), (error) => error.code === 'invalid_response');
+});
+
+test('Agent registry validation never substitutes unavailable server values', () => {
+  const catalog = { items: [{
+    id: 'model_dynamic', supported_reasoning_efforts: [{ id: 'effort_dynamic' }]
+  }] };
+  const valid = validateAgentDefinitionRegistries(agentDefinition, catalog,
+    [{ id: 'tools_dynamic' }], [{ id: 'schema_dynamic' }]);
+  assert.equal(valid.valid, true);
+  const invalid = validateAgentDefinitionRegistries({ ...agentDefinition, reasoning: { effort: 'effort_removed' } }, catalog,
+    [{ id: 'tools_dynamic' }], [{ id: 'schema_dynamic' }]);
+  assert.equal(invalid.valid, false);
+  assert.deepEqual(invalid.errors, ['reasoning_effort_unavailable']);
+});
+
+test('Agent test sessions restore only for the exact Agent revision', () => {
+  assert.equal(isAgentTestContextCurrent({ agentId: 'agent_runtime_uuid', revision: 3 }, agentDefinition), true);
+  assert.equal(isAgentTestContextCurrent({ agentId: 'agent_runtime_uuid', revision: 2 }, agentDefinition), false);
+  assert.equal(isAgentTestContextCurrent({ agentId: 'another_agent', revision: 3 }, agentDefinition), false);
+  assert.equal(isAgentTestContextCurrent(null, agentDefinition), false);
+});
+
 test('request payload maps optional session, schema, and tool IDs exactly to the HTTP contract', () => {
   assert.deepEqual(createAgentRequest('  first task  '), { input: 'first task' });
   assert.deepEqual(createAgentRequest('follow up', ' session_123 ', {
@@ -78,6 +143,88 @@ test('quick run sends Firebase bearer auth, accepts structured output, and never
   assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-id-token');
   assert.equal(Object.hasOwn(calls[0].init.headers, 'X-Agent-Key'), false);
   assert.deepEqual(JSON.parse(calls[0].init.body), { input: 'Analyze this.', output_schema_id: 'schema_discovered_at_runtime' });
+});
+
+test('Agent list, get, create, patch, and test-run routes use authenticated no-store contracts', async () => {
+  const calls = [];
+  const client = createAgentRuntimeClient({
+    baseUrl: API,
+    getIdToken: async () => 'firebase-agent-token',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      const path = new URL(url).pathname;
+      if (path === '/v1/agent/agents' && init.method === 'GET') return response({ items: [agentDefinition] });
+      if (path === '/v1/agent/agents/agent_runtime_uuid/test-runs') return response({ run_id: 'run_agent_test', status: 'queued' }, 202);
+      if (path === '/v1/agent/agents/agent_runtime_uuid' && init.method === 'PATCH') return response({ ...agentDefinition, revision: 4, name: 'Updated Agent' });
+      return response(agentDefinition, init.method === 'POST' ? 201 : 200);
+    }
+  });
+  const form = {
+    name: agentDefinition.name, model: agentDefinition.model, reasoningEffort: agentDefinition.reasoning.effort,
+    instructions: agentDefinition.instructions, toolProfileId: agentDefinition.tool_profile_id, outputSchemaId: agentDefinition.output_schema_id
+  };
+  const listed = await client.listAgents();
+  await client.getAgent(agentDefinition.agent_id);
+  await client.createAgent(form);
+  await client.patchAgent(agentDefinition.agent_id, { expected_revision: 3, name: 'Updated Agent' });
+  const createdRun = await client.createAgentTestRun(agentDefinition.agent_id, ' Test this Agent. ', ' session_exact ');
+
+  assert.equal(listed.items[0].revision, 3);
+  assert.deepEqual(createdRun, { run_id: 'run_agent_test', status: 'queued' });
+  assert.deepEqual(calls.map((call) => [new URL(call.url).pathname, call.init.method]), [
+    ['/v1/agent/agents', 'GET'],
+    ['/v1/agent/agents/agent_runtime_uuid', 'GET'],
+    ['/v1/agent/agents', 'POST'],
+    ['/v1/agent/agents/agent_runtime_uuid', 'PATCH'],
+    ['/v1/agent/agents/agent_runtime_uuid/test-runs', 'POST']
+  ]);
+  assert.deepEqual(JSON.parse(calls[2].init.body), {
+    name: 'Research Agent', model: 'model_dynamic', reasoning: { effort: 'effort_dynamic' },
+    instructions: 'Use approved evidence.', tool_profile_id: 'tools_dynamic', output_schema_id: 'schema_dynamic'
+  });
+  assert.deepEqual(JSON.parse(calls[3].init.body), { expected_revision: 3, name: 'Updated Agent' });
+  assert.deepEqual(JSON.parse(calls[4].init.body), { input: 'Test this Agent.', session_id: 'session_exact' });
+  assert.equal(calls[4].init.body.includes('model'), false);
+  assert.equal(calls.every((call) => call.init.cache === 'no-store' && call.init.credentials === 'omit'), true);
+  assert.equal(calls.every((call) => call.init.headers.Authorization === 'Bearer firebase-agent-token'), true);
+});
+
+test('Agent test-run request excludes every Agent Definition field', () => {
+  assert.deepEqual(createAgentTestRunRequest('Mission'), { input: 'Mission' });
+  assert.deepEqual(createAgentTestRunRequest('Mission', 'session_runtime'), { input: 'Mission', session_id: 'session_runtime' });
+  assert.throws(() => createAgentTestRunRequest(' '), (error) => error.code === 'input_required');
+});
+
+test('PATCH rejects a response that does not advance the optimistic revision', async () => {
+  const client = createAgentRuntimeClient({
+    baseUrl: API,
+    getIdToken: async () => 'token',
+    fetchImpl: async () => response(agentDefinition)
+  });
+  await assert.rejects(
+    client.patchAgent(agentDefinition.agent_id, { expected_revision: 3, name: 'Updated Agent' }),
+    (error) => error.code === 'invalid_response'
+  );
+});
+
+test('documented Agent conflicts are allowlisted without exposing arbitrary backend messages', async () => {
+  for (const [code, body] of [
+    ['AGENT_DEFINITION_CONFLICT', { detail: { code: 'AGENT_DEFINITION_CONFLICT', message: 'private backend detail' } }],
+    ['AGENT_SESSION_DEFINITION_MISMATCH', { code: 'AGENT_SESSION_DEFINITION_MISMATCH', message: 'private backend detail' }]
+  ]) {
+    const client = createAgentRuntimeClient({
+      baseUrl: API,
+      getIdToken: async () => 'token',
+      fetchImpl: async () => response(body, 409)
+    });
+    await assert.rejects(client.listAgents(), (error) => error.code === code && !error.message.includes('private backend detail'));
+  }
+  const unknown = createAgentRuntimeClient({
+    baseUrl: API,
+    getIdToken: async () => 'token',
+    fetchImpl: async () => response({ detail: { code: 'UNKNOWN_PRIVATE_CODE', message: 'private backend detail' } }, 409)
+  });
+  await assert.rejects(unknown.listAgents(), (error) => error.code === 'conflict' && !error.message.includes('private backend detail'));
 });
 
 test('registry discovery and detail inspection use only IDs returned by API callers', async () => {
@@ -349,5 +496,13 @@ test('production Workbench source has no fixed registry IDs, EventSource, or bro
   assert.match(source, /\/v1\/agent\/models/);
   assert.match(source, /id="modelselect"/);
   assert.match(source, /id="reasoningeffortselect"/);
+  assert.match(source, /id="agentnameinput"/);
+  assert.match(source, /\/v1\/agent\/agents/);
+  assert.equal(source.includes('name="executionmode"'), false);
+  const appSource = sources[0];
+  assert.doesNotMatch(appSource, /selectedModelId:\s*state\./);
+  assert.doesNotMatch(appSource, /selectedReasoningEffort:\s*state\./);
+  assert.doesNotMatch(appSource, /selectedToolProfileId:\s*state\./);
+  assert.doesNotMatch(appSource, /selectedOutputSchemaId:\s*state\./);
   assert.match(source, /authorization: `bearer \$\{token\}`/);
 });

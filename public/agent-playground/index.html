@@ -28,7 +28,7 @@
           </svg>
         </div>
         <div>
-          <div class="apg-eyebrow">LGE DEMO / RUNTIME LAB / V1-D2</div>
+          <div class="apg-eyebrow">LGE DEMO / RUNTIME LAB / V1-E2B</div>
           <h1>Agent Runtime Workbench</h1>
         </div>
       </div>
@@ -74,11 +74,76 @@
         <div><strong id="statusAlertTitle"></strong><span id="statusAlertMessage"></span></div>
       </div>
 
+      <section class="apg-panel apg-agent-definition" aria-labelledby="agentDefinitionTitle">
+        <div class="apg-workbench-heading">
+          <div>
+            <div class="apg-section-label">Server-backed definition</div>
+            <h2 id="agentDefinitionTitle">Draft Agent</h2>
+          </div>
+          <div class="apg-agent-actions">
+            <span class="apg-panel-state" id="agentStatus">Waiting for auth</span>
+            <button class="apg-secondary-button" id="newAgentButton" type="button" disabled>New Draft</button>
+            <button class="apg-secondary-button" id="reloadAgentButton" type="button" hidden>Reload Latest</button>
+            <button class="apg-run-button apg-save-agent" id="saveAgentButton" type="button" disabled>Save Draft</button>
+          </div>
+        </div>
+
+        <div class="apg-agent-picker-row">
+          <label class="apg-select-field">
+            <span>Saved Agent</span>
+            <select id="agentSelect" disabled><option value="">Authenticate to load Agents</option></select>
+            <small>Choose an existing server draft or start a new one.</small>
+          </label>
+          <dl class="apg-agent-metadata">
+            <div><dt>status</dt><dd id="agentResourceStatus">—</dd></div>
+            <div><dt>revision</dt><dd id="agentRevision">—</dd></div>
+            <div><dt>agent_id</dt><dd id="agentId">Unsaved</dd></div>
+          </dl>
+        </div>
+
+        <form id="agentForm" class="apg-agent-form">
+          <label class="apg-select-field apg-agent-name">
+            <span>Name</span>
+            <input id="agentNameInput" type="text" maxlength="120" autocomplete="off" placeholder="Name this Agent" disabled />
+            <small>Required · stored in the canonical server draft.</small>
+          </label>
+          <label class="apg-select-field">
+            <span>Model</span>
+            <select id="modelSelect" disabled><option value="">Authenticate to load models</option></select>
+            <small id="modelDescription">Models load from the live runtime registry.</small>
+          </label>
+          <label class="apg-select-field">
+            <span>Reasoning Effort</span>
+            <select id="reasoningEffortSelect" disabled><option value="">Select a model first</option></select>
+            <small id="reasoningEffortDescription">Reasoning efforts load from the selected model.</small>
+          </label>
+          <label class="apg-select-field">
+            <span>Tool Profile</span>
+            <select id="toolProfileSelect" disabled><option value="">No tools</option></select>
+            <small id="toolProfileDescription">No controlled tool profile will be attached.</small>
+          </label>
+          <label class="apg-select-field">
+            <span>Output Schema</span>
+            <select id="outputSchemaSelect" disabled><option value="">Free text</option></select>
+            <small id="outputSchemaDescription">The runtime will return its standard text response.</small>
+          </label>
+          <label class="apg-select-field apg-agent-instructions">
+            <span>Instructions</span>
+            <textarea id="agentInstructionsInput" rows="7" maxlength="20000" placeholder="Define the Agent's stable behavior and constraints…" disabled></textarea>
+            <small>Saved with the Agent Definition · maximum 20,000 characters.</small>
+          </label>
+        </form>
+        <div class="apg-model-guidance apg-agent-guidance">
+          <p id="modelSelectionNotice" role="status" aria-live="polite" hidden></p>
+          <p id="agentFormNotice" role="status" aria-live="polite">Choose or create a Draft Agent to begin.</p>
+        </div>
+      </section>
+
       <section class="apg-panel apg-mission" aria-labelledby="missionTitle">
         <div class="apg-workbench-heading">
           <div>
             <div class="apg-section-label">Mission / conversation</div>
-            <h2 id="missionTitle">Persistent agent thread</h2>
+            <h2 id="missionTitle">Test saved Agent</h2>
           </div>
           <div class="apg-turn-summary"><span id="conversationTurnCount">0</span> <span id="conversationTurnLabel">turns</span></div>
         </div>
@@ -89,8 +154,8 @@
               <svg viewBox="0 0 24 24"><path d="M12 2.75 14.55 9 21 11.55 14.55 14 12 20.25 9.45 14 3 11.55 9.45 9 12 2.75Z" /></svg>
             </div>
             <div class="apg-section-label">Workbench ready</div>
-            <h3>Define the next agent mission</h3>
-            <p>Choose an approved runtime contract below, then execute a quick turn or an observable run in this persistent session.</p>
+            <h3>Save a Draft Agent, then test it</h3>
+            <p>Tests use the exact saved Agent revision and expose the existing observable run lifecycle.</p>
           </div>
         </div>
 
@@ -100,15 +165,11 @@
             <textarea id="promptInput" name="prompt" rows="4" maxlength="100000"
               placeholder="Describe the task, expected evidence, and completion criteria…" aria-describedby="composerHint"></textarea>
             <div class="apg-composer__footer apg-workbench-composer__footer">
-              <div class="apg-execution-mode" role="radiogroup" aria-label="Execution endpoint">
-                <label><input type="radio" name="executionMode" value="observable" checked /><span>Observable run</span></label>
-                <label><input type="radio" name="executionMode" value="quick" /><span>Quick turn</span></label>
-              </div>
               <span id="composerHint"><kbd>Ctrl</kbd> <span>+</span> <kbd>Enter</kbd> to run · Enter for a new line</span>
               <button class="apg-run-button" id="runButton" type="submit" disabled>
                 <span class="apg-run-button__idle">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg>
-                  <span id="runButtonLabel">Start Observable Run</span>
+                  <span id="runButtonLabel">Test Agent</span>
                 </span>
                 <span class="apg-run-button__busy"><span class="apg-spinner" aria-hidden="true"></span>Running</span>
               </button>
@@ -126,37 +187,10 @@
             </div>
             <div class="apg-heading-actions">
               <span class="apg-panel-state" id="registryStatus">Waiting for auth</span>
-              <button class="apg-icon-button" id="refreshRegistryButton" type="button" title="Refresh runtime registry" disabled>
+              <button class="apg-icon-button" id="refreshRegistryButton" type="button" title="Refresh Agents and runtime registries" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M18.4 9A7 7 0 0 0 6.2 6.2L4 8m16 8-2.2 1.8A7 7 0 0 1 5.6 15" /></svg>
               </button>
             </div>
-          </div>
-
-          <div class="apg-contract-selectors">
-            <label class="apg-select-field">
-              <span>Model</span>
-              <select id="modelSelect" disabled><option value="">Authenticate to load models</option></select>
-              <small id="modelDescription">Models load from the live runtime registry.</small>
-            </label>
-            <label class="apg-select-field">
-              <span>Reasoning Effort</span>
-              <select id="reasoningEffortSelect" disabled><option value="">Select a model first</option></select>
-              <small id="reasoningEffortDescription">Reasoning efforts load from the selected model.</small>
-            </label>
-            <div class="apg-model-guidance">
-              <p id="modelSelectionNotice" role="status" aria-live="polite" hidden></p>
-              <p>Model configuration is saved for discovery preview and is not applied to runs in E1-B.</p>
-            </div>
-            <label class="apg-select-field">
-              <span>Tool Profile</span>
-              <select id="toolProfileSelect" disabled><option value="">No tools</option></select>
-              <small id="toolProfileDescription">No controlled tool profile will be attached.</small>
-            </label>
-            <label class="apg-select-field">
-              <span>Output Schema</span>
-              <select id="outputSchemaSelect" disabled><option value="">Free text</option></select>
-              <small id="outputSchemaDescription">The runtime will return its standard text response.</small>
-            </label>
           </div>
 
           <div class="apg-capability-summary" id="capabilitySummary" aria-label="Discovered runtime capabilities">
@@ -188,7 +222,7 @@
             </div>
           </div>
           <div class="apg-activity" id="activityTimeline" aria-live="polite">
-            <div class="apg-contract-empty" id="activityEmpty">Start an observable run to inspect durable lifecycle and public tool activity.</div>
+            <div class="apg-contract-empty" id="activityEmpty">Test a saved Agent to inspect its durable lifecycle and public tool activity.</div>
           </div>
         </section>
       </div>
