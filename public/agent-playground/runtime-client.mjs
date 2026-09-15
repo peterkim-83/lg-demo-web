@@ -8,6 +8,9 @@ export const AGENT_RUNTIME_ENDPOINTS = Object.freeze({
   outputSchema: (schemaId) => `/v1/agent/output-schemas/${encodeURIComponent(normalizeRegistryId(schemaId))}`,
   toolProfiles: '/v1/agent/tool-profiles',
   toolProfile: (profileId) => `/v1/agent/tool-profiles/${encodeURIComponent(normalizeRegistryId(profileId))}`,
+  agents: '/v1/agent/agents',
+  agent: (agentId) => `/v1/agent/agents/${encodeURIComponent(normalizeAgentId(agentId))}`,
+  agentTestRuns: (agentId) => `/v1/agent/agents/${encodeURIComponent(normalizeAgentId(agentId))}/test-runs`,
   run: '/v1/agent/run',
   runs: '/v1/agent/runs',
   observableRun: (runId) => `/v1/agent/runs/${encodeURIComponent(normalizeRunId(runId))}`,
@@ -33,6 +36,10 @@ export const PUBLIC_AGENT_EVENT_TYPES = Object.freeze([
 
 const PUBLIC_EVENT_TYPE_SET = new Set(PUBLIC_AGENT_EVENT_TYPES);
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const PUBLIC_BACKEND_ERROR_MESSAGES = Object.freeze({
+  AGENT_DEFINITION_CONFLICT: 'This draft changed on the server. Reload the latest revision before saving again.',
+  AGENT_SESSION_DEFINITION_MISMATCH: 'This session belongs to a different Agent revision. Start a new test session.'
+});
 const PUBLIC_ERROR_MESSAGES = Object.freeze({
   400: 'The runtime rejected this request. Review the selected contract and mission.',
   401: 'Your Firebase session is no longer authorized. Sign in again and retry.',
@@ -71,6 +78,10 @@ function normalizeRunId(value) {
   return normalizeIdentifier(value, 'run_id_invalid');
 }
 
+function normalizeAgentId(value) {
+  return normalizeIdentifier(value, 'agent_id_invalid');
+}
+
 function optionalIdentifier(value, code) {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
@@ -93,6 +104,62 @@ export function createAgentRequest(input, sessionId = '', options = {}) {
   return payload;
 }
 
+function normalizeDefinitionString(value, field, { required = false, maxLength } = {}) {
+  const normalized = String(value ?? '');
+  const checked = field === 'instructions' ? normalized : normalized.trim();
+  if (required && !checked) throw new AgentRuntimeError(`${field}_required`, `${field === 'name' ? 'Name' : field} is required.`);
+  if (checked.length > maxLength) throw new AgentRuntimeError(`${field}_too_large`, `${field === 'name' ? 'Name' : field} exceeds the runtime limit.`);
+  return checked;
+}
+
+function normalizeNullableRegistryId(value, code) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = String(value).trim();
+  if (!normalized || normalized.length > 128) throw new AgentRuntimeError(code, 'The selected runtime asset identifier is invalid.');
+  return normalized;
+}
+
+function definitionFormProjection(value) {
+  const effort = value?.reasoningEffort ?? value?.reasoning?.effort;
+  return {
+    name: normalizeDefinitionString(value?.name, 'name', { required: true, maxLength: 120 }),
+    model: normalizeDefinitionString(value?.model, 'model', { required: true, maxLength: 128 }),
+    reasoning: {
+      effort: normalizeDefinitionString(effort, 'reasoning_effort', { required: true, maxLength: 32 })
+    },
+    instructions: normalizeDefinitionString(value?.instructions, 'instructions', { maxLength: 20_000 }),
+    tool_profile_id: normalizeNullableRegistryId(value?.toolProfileId ?? value?.tool_profile_id, 'tool_profile_id_invalid'),
+    output_schema_id: normalizeNullableRegistryId(value?.outputSchemaId ?? value?.output_schema_id, 'output_schema_id_invalid')
+  };
+}
+
+export function createAgentDefinitionRequest(value) {
+  return definitionFormProjection(value);
+}
+
+export function createAgentDefinitionPatchRequest(agent, value) {
+  const canonical = normalizeAgentDefinition(agent);
+  const desired = definitionFormProjection(value);
+  const patch = { expected_revision: canonical.revision };
+  if (desired.name !== canonical.name) patch.name = desired.name;
+  if (desired.model !== canonical.model) patch.model = desired.model;
+  if (desired.reasoning.effort !== canonical.reasoning.effort) patch.reasoning = desired.reasoning;
+  if (desired.instructions !== canonical.instructions) patch.instructions = desired.instructions;
+  if (desired.tool_profile_id !== canonical.tool_profile_id) patch.tool_profile_id = desired.tool_profile_id;
+  if (desired.output_schema_id !== canonical.output_schema_id) patch.output_schema_id = desired.output_schema_id;
+  return patch;
+}
+
+export function createAgentTestRunRequest(input, sessionId = '') {
+  const normalizedInput = String(input || '').trim();
+  if (!normalizedInput) throw new AgentRuntimeError('input_required', 'Enter a mission before testing the Agent.');
+  if (normalizedInput.length > 100_000) throw new AgentRuntimeError('input_too_large', 'The mission exceeds the runtime input limit.');
+  const payload = { input: normalizedInput };
+  const normalizedSessionId = optionalIdentifier(sessionId, 'session_id_invalid');
+  if (normalizedSessionId) payload.session_id = normalizedSessionId;
+  return payload;
+}
+
 function messageForStatus(status) {
   if (PUBLIC_ERROR_MESSAGES[status]) return PUBLIC_ERROR_MESSAGES[status];
   if (status >= 500) return 'The Agent Runtime reported a server failure. Try again in a moment.';
@@ -107,6 +174,18 @@ function errorCodeForStatus(status) {
   if (status === 409) return 'conflict';
   if (status === 422) return 'invalid_contract';
   return 'runtime_failure';
+}
+
+async function publicErrorForResponse(response) {
+  let advertisedCode = '';
+  try {
+    const payload = await response.json();
+    advertisedCode = String(payload?.detail?.code || payload?.code || '').trim();
+  } catch (_) {}
+  if (PUBLIC_BACKEND_ERROR_MESSAGES[advertisedCode]) {
+    return new AgentRuntimeError(advertisedCode, PUBLIC_BACKEND_ERROR_MESSAGES[advertisedCode], response.status);
+  }
+  return new AgentRuntimeError(errorCodeForStatus(response.status), messageForStatus(response.status), response.status);
 }
 
 function normalizeCompletedResponse(value) {
@@ -199,6 +278,84 @@ function normalizeModelCatalog(value) {
     source: value.source.trim(),
     refreshed_at: value.refreshed_at.trim()
   };
+}
+
+export function normalizeAgentDefinition(value) {
+  if (!isPlainObject(value) || !isPlainObject(value.reasoning)
+    || typeof value.instructions !== 'string'
+    || !Object.hasOwn(value, 'tool_profile_id') || !Object.hasOwn(value, 'output_schema_id')) {
+    throw new AgentRuntimeError('invalid_response', 'The Agent Definition returned an unreadable response.');
+  }
+  const agentId = String(value.agent_id || '').trim();
+  const name = String(value.name || '').trim();
+  const status = String(value.status || '').trim().toLowerCase();
+  const revision = Number(value.revision);
+  const model = String(value.model || '').trim();
+  const effort = String(value.reasoning.effort || '').trim();
+  const instructions = value.instructions;
+  const createdAt = String(value.created_at || '').trim();
+  const updatedAt = String(value.updated_at || '').trim();
+  if (!agentId || agentId.length > 256 || !name || name.length > 120 || status !== 'draft'
+    || !Number.isInteger(revision) || revision < 1 || !model || model.length > 128
+    || !effort || effort.length > 32 || instructions.length > 20_000 || !createdAt || !updatedAt) {
+    throw new AgentRuntimeError('invalid_response', 'The Agent Definition contains invalid fields.');
+  }
+  return Object.freeze({
+    agent_id: agentId,
+    name,
+    status,
+    revision,
+    model,
+    reasoning: Object.freeze({ effort }),
+    instructions,
+    tool_profile_id: normalizeNullableRegistryId(value.tool_profile_id, 'invalid_response'),
+    output_schema_id: normalizeNullableRegistryId(value.output_schema_id, 'invalid_response'),
+    created_at: createdAt,
+    updated_at: updatedAt
+  });
+}
+
+export function normalizeAgentDefinitionList(value) {
+  if (!isPlainObject(value) || !Array.isArray(value.items)) {
+    throw new AgentRuntimeError('invalid_response', 'The Agent Definition list returned an unreadable response.');
+  }
+  const ids = new Set();
+  const items = value.items.map((item) => {
+    const normalized = normalizeAgentDefinition(item);
+    if (ids.has(normalized.agent_id)) throw new AgentRuntimeError('invalid_response', 'The Agent Definition list contains duplicate IDs.');
+    ids.add(normalized.agent_id);
+    return normalized;
+  });
+  return Object.freeze({ items: Object.freeze(items) });
+}
+
+export function validateAgentDefinitionRegistries(value, catalog, toolProfiles, outputSchemas) {
+  const model = String(value?.model || '').trim();
+  const effort = String(value?.reasoningEffort ?? value?.reasoning?.effort ?? '').trim();
+  const toolProfileId = String(value?.toolProfileId ?? value?.tool_profile_id ?? '').trim();
+  const outputSchemaId = String(value?.outputSchemaId ?? value?.output_schema_id ?? '').trim();
+  const errors = [];
+  const models = Array.isArray(catalog?.items) ? catalog.items : null;
+  const selectedModel = models?.find((item) => item.id === model) || null;
+  if (!models) errors.push('model_catalog_unavailable');
+  else if (!selectedModel) errors.push('model_unavailable');
+  else if (!selectedModel.supported_reasoning_efforts.some((item) => item.id === effort)) errors.push('reasoning_effort_unavailable');
+
+  if (toolProfileId) {
+    if (!Array.isArray(toolProfiles)) errors.push('tool_profile_registry_unavailable');
+    else if (!toolProfiles.some((item) => item.id === toolProfileId)) errors.push('tool_profile_unavailable');
+  }
+  if (outputSchemaId) {
+    if (!Array.isArray(outputSchemas)) errors.push('output_schema_registry_unavailable');
+    else if (!outputSchemas.some((item) => item.id === outputSchemaId)) errors.push('output_schema_unavailable');
+  }
+  return Object.freeze({ valid: errors.length === 0, errors: Object.freeze(errors), selectedModel });
+}
+
+export function isAgentTestContextCurrent(context, agent) {
+  return Boolean(agent && context
+    && String(context.agentId || '').trim() === String(agent.agent_id || '').trim()
+    && Number(context.revision) === Number(agent.revision));
 }
 
 export function resolveModelRegistrySelection(catalog, persistedModelId = '', persistedReasoningEffort = '') {
@@ -401,7 +558,7 @@ export function createAgentRuntimeClient({
     try {
       let response = await authenticatedFetch(path, { ...options, signal }, false);
       if (response.status === 401) response = await authenticatedFetch(path, { ...options, signal }, true);
-      if (!response.ok) throw new AgentRuntimeError(errorCodeForStatus(response.status), messageForStatus(response.status), response.status);
+      if (!response.ok) throw await publicErrorForResponse(response);
       if (options.response === 'raw') return response;
       try { return await response.json(); } catch (_) {
         throw new AgentRuntimeError('invalid_response', 'The runtime returned an unreadable response.', response.status);
@@ -477,6 +634,41 @@ export function createAgentRuntimeClient({
         throw new AgentRuntimeError('invalid_response', 'The tool profile contract is unreadable.');
       }
       return value;
+    },
+    async listAgents() {
+      return normalizeAgentDefinitionList(await request(AGENT_RUNTIME_ENDPOINTS.agents));
+    },
+    async getAgent(agentId) {
+      return normalizeAgentDefinition(await request(AGENT_RUNTIME_ENDPOINTS.agent(agentId)));
+    },
+    async createAgent(definition) {
+      return normalizeAgentDefinition(await request(AGENT_RUNTIME_ENDPOINTS.agents, {
+        method: 'POST',
+        bodyJson: createAgentDefinitionRequest(definition)
+      }));
+    },
+    async patchAgent(agentId, patch) {
+      if (!isPlainObject(patch) || !Number.isInteger(patch.expected_revision) || patch.expected_revision < 1) {
+        throw new AgentRuntimeError('expected_revision_invalid', 'A current Agent revision is required before saving.');
+      }
+      const updated = normalizeAgentDefinition(await request(AGENT_RUNTIME_ENDPOINTS.agent(agentId), {
+        method: 'PATCH',
+        bodyJson: patch
+      }));
+      if (updated.revision <= patch.expected_revision) {
+        throw new AgentRuntimeError('invalid_response', 'The saved Agent response did not advance its revision.');
+      }
+      return updated;
+    },
+    async createAgentTestRun(agentId, input, sessionId = '') {
+      const value = await request(AGENT_RUNTIME_ENDPOINTS.agentTestRuns(agentId), {
+        method: 'POST',
+        bodyJson: createAgentTestRunRequest(input, sessionId)
+      });
+      if (!isPlainObject(value) || !String(value.run_id || '').trim()) {
+        throw new AgentRuntimeError('invalid_response', 'The Agent test-run response is missing its run ID.');
+      }
+      return { run_id: String(value.run_id).trim(), status: String(value.status || 'queued').trim().toLowerCase() };
     },
     async run({ input, sessionId = '', outputSchemaId = '', toolProfileId = '' }) {
       const value = await request(AGENT_RUNTIME_ENDPOINTS.run, {

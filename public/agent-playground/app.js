@@ -2,9 +2,12 @@ import { getFirebaseBrowserAuthClient, getFirebaseAuthErrorCode, signInWithGoogl
 import {
   AgentRuntimeError,
   PUBLIC_AGENT_EVENT_TYPES,
+  createAgentDefinitionPatchRequest,
   createAgentRuntimeClient,
   isTerminalRunStatus,
-  resolveModelRegistrySelection
+  isAgentTestContextCurrent,
+  resolveModelRegistrySelection,
+  validateAgentDefinitionRegistries
 } from './runtime-client.mjs';
 
 const STORAGE_KEYS = Object.freeze({
@@ -31,6 +34,18 @@ const elements = {
   turnCount: document.getElementById('turnCount'),
   lastLatency: document.getElementById('lastLatency'),
   newSessionButton: document.getElementById('newSessionButton'),
+  agentSelect: document.getElementById('agentSelect'),
+  newAgentButton: document.getElementById('newAgentButton'),
+  reloadAgentButton: document.getElementById('reloadAgentButton'),
+  saveAgentButton: document.getElementById('saveAgentButton'),
+  agentStatus: document.getElementById('agentStatus'),
+  agentResourceStatus: document.getElementById('agentResourceStatus'),
+  agentRevision: document.getElementById('agentRevision'),
+  agentId: document.getElementById('agentId'),
+  agentForm: document.getElementById('agentForm'),
+  agentNameInput: document.getElementById('agentNameInput'),
+  agentInstructionsInput: document.getElementById('agentInstructionsInput'),
+  agentFormNotice: document.getElementById('agentFormNotice'),
   conversation: document.getElementById('conversation'),
   emptyState: document.getElementById('emptyState'),
   conversationTurnCount: document.getElementById('conversationTurnCount'),
@@ -39,7 +54,6 @@ const elements = {
   promptInput: document.getElementById('promptInput'),
   runButton: document.getElementById('runButton'),
   runButtonLabel: document.getElementById('runButtonLabel'),
-  executionModes: [...document.querySelectorAll('input[name="executionMode"]')],
   registryStatus: document.getElementById('registryStatus'),
   refreshRegistryButton: document.getElementById('refreshRegistryButton'),
   modelSelect: document.getElementById('modelSelect'),
@@ -77,9 +91,10 @@ const elements = {
 };
 
 const restoredWorkbench = loadWorkbenchState();
+const hasRestoredTestBinding = Boolean(restoredWorkbench.testAgentId && restoredWorkbench.testAgentRevision);
 const state = {
-  sessionId: loadSessionId(),
-  history: loadHistory(),
+  sessionId: hasRestoredTestBinding ? loadSessionId() : '',
+  history: hasRestoredTestBinding ? loadHistory() : [],
   firebaseClient: null,
   currentUser: null,
   runtimeClient: null,
@@ -88,6 +103,8 @@ const state = {
   isRunning: false,
   isFinalizing: false,
   registryState: 'idle',
+  outputSchemaRegistryState: 'idle',
+  toolProfileRegistryState: 'idle',
   modelRegistryState: 'idle',
   modelRegistryError: '',
   modelCatalog: null,
@@ -96,27 +113,31 @@ const state = {
   toolProfiles: [],
   outputSchemaDetail: null,
   toolProfileDetail: null,
-  selectedOutputSchemaId: restoredWorkbench.selectedOutputSchemaId,
-  selectedToolProfileId: restoredWorkbench.selectedToolProfileId,
-  persistedModelId: restoredWorkbench.selectedModelId,
-  persistedReasoningEffort: restoredWorkbench.selectedReasoningEffort,
-  selectedModelId: '',
-  selectedReasoningEffort: '',
+  agentsState: 'idle',
+  agentsError: '',
+  agents: [],
+  selectedAgentId: restoredWorkbench.selectedAgentId,
+  selectedAgent: null,
+  conflictServerAgent: null,
+  agentMode: 'none',
+  saveState: 'idle',
+  agentForm: { name: '', model: '', reasoningEffort: '', instructions: '', toolProfileId: '', outputSchemaId: '' },
+  testAgentId: restoredWorkbench.testAgentId,
+  testAgentRevision: restoredWorkbench.testAgentRevision,
   modelSelectionNotice: '',
   modelSelectionNoticeTone: 'warning',
-  executionMode: restoredWorkbench.executionMode,
   contractTab: restoredWorkbench.contractTab,
   resultTab: restoredWorkbench.resultTab,
-  activeRunId: restoredWorkbench.activeRunId,
-  runStatus: restoredWorkbench.runStatus,
+  activeRunId: hasRestoredTestBinding ? restoredWorkbench.activeRunId : '',
+  runStatus: hasRestoredTestBinding ? restoredWorkbench.runStatus : 'idle',
   streamStatus: 'idle',
   streamController: null,
   streamEpoch: 0,
   reconnectAttempt: 0,
-  lastEventId: restoredWorkbench.lastEventId,
-  events: restoredWorkbench.events,
-  result: restoredWorkbench.result,
-  validationStatus: restoredWorkbench.validationStatus,
+  lastEventId: hasRestoredTestBinding ? restoredWorkbench.lastEventId : '',
+  events: hasRestoredTestBinding ? restoredWorkbench.events : [],
+  result: hasRestoredTestBinding ? restoredWorkbench.result : null,
+  validationStatus: hasRestoredTestBinding ? restoredWorkbench.validationStatus : 'not_requested',
   draftText: restoredWorkbench.draftText
 };
 
@@ -176,7 +197,7 @@ function normalizeStoredEvent(value) {
 
 function loadWorkbenchState() {
   const fallback = {
-    selectedOutputSchemaId: '', selectedToolProfileId: '', selectedModelId: '', selectedReasoningEffort: '', executionMode: 'observable',
+    selectedAgentId: '', testAgentId: '', testAgentRevision: null,
     contractTab: 'capabilities', resultTab: 'tree', activeRunId: '', runStatus: 'idle',
     lastEventId: '', events: [], result: null, validationStatus: 'not_requested', draftText: ''
   };
@@ -184,11 +205,9 @@ function loadWorkbenchState() {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.workbench) || '{}');
     if (!parsed || typeof parsed !== 'object') return fallback;
     return {
-      selectedOutputSchemaId: String(parsed.selectedOutputSchemaId || '').slice(0, 256),
-      selectedToolProfileId: String(parsed.selectedToolProfileId || '').slice(0, 256),
-      selectedModelId: String(parsed.selectedModelId || '').slice(0, 256),
-      selectedReasoningEffort: String(parsed.selectedReasoningEffort || '').slice(0, 256),
-      executionMode: parsed.executionMode === 'quick' ? 'quick' : 'observable',
+      selectedAgentId: String(parsed.selectedAgentId || '').slice(0, 256),
+      testAgentId: String(parsed.testAgentId || '').slice(0, 256),
+      testAgentRevision: Number.isInteger(parsed.testAgentRevision) && parsed.testAgentRevision > 0 ? parsed.testAgentRevision : null,
       contractTab: ['capabilities', 'tool', 'schema'].includes(parsed.contractTab) ? parsed.contractTab : 'capabilities',
       resultTab: parsed.resultTab === 'json' ? 'json' : 'tree',
       activeRunId: String(parsed.activeRunId || '').slice(0, 500),
@@ -214,11 +233,9 @@ function saveConversationState() {
 
 function saveWorkbenchState() {
   const projected = {
-    selectedOutputSchemaId: state.selectedOutputSchemaId,
-    selectedToolProfileId: state.selectedToolProfileId,
-    selectedModelId: state.persistedModelId,
-    selectedReasoningEffort: state.persistedReasoningEffort,
-    executionMode: state.executionMode,
+    selectedAgentId: state.selectedAgentId,
+    testAgentId: state.testAgentId,
+    testAgentRevision: state.testAgentRevision,
     contractTab: state.contractTab,
     resultTab: state.resultTab,
     activeRunId: state.activeRunId,
@@ -344,38 +361,68 @@ function renderMetadata() {
   elements.lastLatency.textContent = formatLatency(latestLatency());
 }
 
-function currentExecutionMode() {
-  return elements.executionModes.find((input) => input.checked)?.value === 'quick' ? 'quick' : 'observable';
+function agentFormProjection() {
+  return {
+    name: state.agentForm.name.trim(),
+    model: state.agentForm.model,
+    reasoning: { effort: state.agentForm.reasoningEffort },
+    instructions: state.agentForm.instructions,
+    tool_profile_id: state.agentForm.toolProfileId || null,
+    output_schema_id: state.agentForm.outputSchemaId || null
+  };
 }
 
-function enforceExecutionMode() {
-  const quick = elements.executionModes.find((input) => input.value === 'quick');
-  const observable = elements.executionModes.find((input) => input.value === 'observable');
-  quick.disabled = Boolean(state.selectedToolProfileId) || state.isRunning;
-  if (state.selectedToolProfileId && quick.checked) observable.checked = true;
-  state.executionMode = currentExecutionMode();
-  elements.runButtonLabel.textContent = state.executionMode === 'observable' ? 'Start Observable Run' : 'Run Quick Turn';
+function agentFormIsDirty() {
+  if (state.agentMode === 'new') return Boolean(state.agentForm.name || state.agentForm.model || state.agentForm.reasoningEffort
+    || state.agentForm.instructions || state.agentForm.toolProfileId || state.agentForm.outputSchemaId);
+  if (!state.selectedAgent) return false;
+  const form = agentFormProjection();
+  return form.name !== state.selectedAgent.name || form.model !== state.selectedAgent.model
+    || form.reasoning.effort !== state.selectedAgent.reasoning.effort || form.instructions !== state.selectedAgent.instructions
+    || form.tool_profile_id !== state.selectedAgent.tool_profile_id || form.output_schema_id !== state.selectedAgent.output_schema_id;
+}
+
+function currentAgentRegistryValidation() {
+  return validateAgentDefinitionRegistries(state.agentForm, state.modelCatalog,
+    state.toolProfileRegistryState === 'ready' ? state.toolProfiles : null,
+    state.outputSchemaRegistryState === 'ready' ? state.outputSchemas : null);
 }
 
 function renderControls() {
-  enforceExecutionMode();
   const authenticated = state.authState === 'authenticated';
   const hasPrompt = Boolean(elements.promptInput.value.trim());
-  elements.runButton.disabled = !authenticated || !hasPrompt || state.isRunning;
+  const hasForm = state.agentMode !== 'none';
+  const registryValidation = currentAgentRegistryValidation();
+  const dirty = agentFormIsDirty();
+  const conflicted = state.saveState === 'conflict';
+  const canSave = authenticated && hasForm && !state.isRunning && state.saveState !== 'saving' && !conflicted
+    && Boolean(state.agentForm.name.trim()) && registryValidation.valid && (state.agentMode === 'new' || dirty);
+  const canTest = authenticated && hasPrompt && !state.isRunning && state.agentMode === 'existing'
+    && Boolean(state.selectedAgent) && !dirty && !conflicted && registryValidation.valid;
+  elements.runButton.disabled = !canTest;
   elements.runButton.classList.toggle('is-busy', state.isRunning);
-  elements.promptInput.disabled = state.isRunning;
-  elements.executionModes.forEach((input) => { if (input.value !== 'quick' || !state.selectedToolProfileId) input.disabled = state.isRunning; });
+  elements.promptInput.disabled = state.isRunning || state.agentMode !== 'existing';
+  elements.runButtonLabel.textContent = dirty ? 'Save Draft to Test' : 'Test Agent';
   elements.newSessionButton.disabled = state.isRunning || (!state.sessionId && !state.activeRunId && state.history.length === 0);
   elements.authButton.disabled = ['initializing', 'authenticating', 'unavailable'].includes(state.authState) || state.isRunning;
-  const registryReady = state.registryState === 'ready' || state.registryState === 'partial';
+  const toolRegistryReady = state.toolProfileRegistryState === 'ready';
+  const schemaRegistryReady = state.outputSchemaRegistryState === 'ready';
   const modelRegistryReady = state.modelRegistryState === 'ready' && Boolean(state.modelCatalog?.items?.length);
-  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.selectedModelId) || null;
-  elements.toolProfileSelect.disabled = !authenticated || !registryReady || state.isRunning;
-  elements.outputSchemaSelect.disabled = !authenticated || !registryReady || state.isRunning;
-  elements.modelSelect.disabled = !authenticated || !modelRegistryReady || state.isRunning;
-  elements.reasoningEffortSelect.disabled = !authenticated || !modelRegistryReady || !selectedModel || state.isRunning;
-  elements.refreshRegistryButton.disabled = !authenticated || state.registryState === 'loading' || state.modelRegistryState === 'loading' || state.isRunning;
-  elements.cancelRunButton.hidden = !state.isRunning || state.executionMode !== 'observable' || !state.activeRunId;
+  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.agentForm.model) || null;
+  const formLocked = !authenticated || !hasForm || state.isRunning || state.saveState === 'saving' || conflicted;
+  elements.agentNameInput.disabled = formLocked;
+  elements.agentInstructionsInput.disabled = formLocked;
+  elements.toolProfileSelect.disabled = formLocked || !toolRegistryReady;
+  elements.outputSchemaSelect.disabled = formLocked || !schemaRegistryReady;
+  elements.modelSelect.disabled = formLocked || !modelRegistryReady;
+  elements.reasoningEffortSelect.disabled = formLocked || !modelRegistryReady || !selectedModel;
+  elements.agentSelect.disabled = !authenticated || state.agentsState !== 'ready' || state.isRunning || state.saveState === 'saving' || conflicted;
+  elements.newAgentButton.disabled = !authenticated || state.agentsState !== 'ready' || state.isRunning || state.saveState === 'saving' || conflicted;
+  elements.saveAgentButton.disabled = !canSave;
+  elements.reloadAgentButton.hidden = !conflicted;
+  elements.reloadAgentButton.disabled = state.saveState === 'saving' || state.isRunning;
+  elements.refreshRegistryButton.disabled = !authenticated || state.registryState === 'loading' || state.modelRegistryState === 'loading' || state.isRunning || state.saveState === 'saving';
+  elements.cancelRunButton.hidden = !state.isRunning || !state.activeRunId;
   elements.cancelRunButton.disabled = state.runStatus === 'cancelling';
 }
 
@@ -406,6 +453,91 @@ function renderAuth() {
   renderControls();
 }
 
+function setAgentFormFromResource(agent) {
+  state.agentForm = {
+    name: agent.name,
+    model: agent.model,
+    reasoningEffort: agent.reasoning.effort,
+    instructions: agent.instructions,
+    toolProfileId: agent.tool_profile_id || '',
+    outputSchemaId: agent.output_schema_id || ''
+  };
+}
+
+function replaceAgentOptions() {
+  elements.agentSelect.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  if (state.agentsState === 'loading') placeholder.textContent = 'Loading Agents…';
+  else if (state.agentsState === 'error') placeholder.textContent = 'Agent list unavailable';
+  else if (state.agentsState === 'ready' && !state.agents.length) placeholder.textContent = 'No saved Agents';
+  else placeholder.textContent = 'Choose a saved Agent';
+  elements.agentSelect.append(placeholder);
+  state.agents.forEach((agent) => {
+    const option = document.createElement('option');
+    option.value = agent.agent_id;
+    option.textContent = `${agent.name} · r${agent.revision}`;
+    elements.agentSelect.append(option);
+  });
+  elements.agentSelect.value = state.agentMode === 'existing' && state.agents.some((agent) => agent.agent_id === state.selectedAgentId)
+    ? state.selectedAgentId : '';
+}
+
+function renderAgentDefinition() {
+  replaceAgentOptions();
+  elements.agentNameInput.value = state.agentForm.name;
+  elements.agentInstructionsInput.value = state.agentForm.instructions;
+  elements.agentResourceStatus.textContent = state.selectedAgent?.status || (state.agentMode === 'new' ? 'draft' : '—');
+  elements.agentRevision.textContent = state.selectedAgent ? String(state.selectedAgent.revision) : '—';
+  elements.agentId.textContent = state.selectedAgent?.agent_id || 'Unsaved';
+  elements.agentId.title = state.selectedAgent?.agent_id || 'This draft has not been saved';
+
+  const dirty = agentFormIsDirty();
+  const validation = currentAgentRegistryValidation();
+  if (state.agentsState === 'loading') {
+    elements.agentStatus.textContent = 'Loading Agents…';
+    elements.agentFormNotice.textContent = 'Loading server-backed Draft Agents.';
+  } else if (state.agentsState === 'error') {
+    elements.agentStatus.textContent = 'Agent discovery failed';
+    elements.agentFormNotice.textContent = state.agentsError || 'The Agent list could not be loaded.';
+  } else if (state.saveState === 'conflict') {
+    elements.agentStatus.textContent = 'Revision conflict';
+    elements.agentFormNotice.textContent = state.conflictServerAgent
+      ? `The server is at revision ${state.conflictServerAgent.revision}. Your local edits are preserved; reload the latest revision before continuing.`
+      : 'The server revision changed. Your local edits are preserved; reload the latest revision before continuing.';
+  } else if (state.saveState === 'saving') {
+    elements.agentStatus.textContent = 'Saving…';
+    elements.agentFormNotice.textContent = 'Saving this definition to the server.';
+  } else if (state.agentMode === 'none') {
+    elements.agentStatus.textContent = 'No Agent selected';
+    elements.agentFormNotice.textContent = state.agents.length ? 'Choose a saved Agent or start a new Draft.' : 'Choose or create a Draft Agent to begin.';
+  } else if (!validation.valid) {
+    elements.agentStatus.textContent = 'Configuration unavailable';
+    elements.agentFormNotice.textContent = registryValidationMessage(validation.errors);
+  } else if (state.agentMode === 'new') {
+    elements.agentStatus.textContent = dirty ? 'Unsaved Draft' : 'New Draft';
+    elements.agentFormNotice.textContent = 'Complete the definition and save it before testing.';
+  } else {
+    elements.agentStatus.textContent = dirty ? `Unsaved changes · r${state.selectedAgent.revision}` : `Saved · r${state.selectedAgent.revision}`;
+    elements.agentFormNotice.textContent = dirty ? 'Save these changes before testing the Agent.' : 'This saved revision is ready to test.';
+  }
+  elements.agentFormNotice.classList.toggle('is-error', state.saveState === 'conflict' || state.agentsState === 'error' || (state.agentMode !== 'none' && !validation.valid));
+  renderControls();
+}
+
+function registryValidationMessage(errors) {
+  const copy = {
+    model_catalog_unavailable: 'The live model registry is unavailable.',
+    model_unavailable: `Saved model “${state.agentForm.model || 'none'}” is not advertised by the runtime. Choose a supported model.`,
+    reasoning_effort_unavailable: `Reasoning effort “${state.agentForm.reasoningEffort || 'none'}” is not supported by the selected model. Choose an advertised effort.`,
+    tool_profile_registry_unavailable: 'The Tool Profile registry is unavailable.',
+    tool_profile_unavailable: `Saved Tool Profile “${state.agentForm.toolProfileId}” is no longer advertised. Choose an available profile or No tools.`,
+    output_schema_registry_unavailable: 'The Output Schema registry is unavailable.',
+    output_schema_unavailable: `Saved Output Schema “${state.agentForm.outputSchemaId}” is no longer advertised. Choose an available schema or Free text.`
+  };
+  return errors.map((code) => copy[code] || 'The Agent configuration is invalid.').join(' ');
+}
+
 function selectedSummary(items, id) {
   return items.find((item) => item.id === id) || null;
 }
@@ -422,7 +554,13 @@ function replaceOptions(select, leadingLabel, items, selectedId) {
     option.textContent = item.version ? `${item.id} · ${item.version}` : item.id;
     select.append(option);
   });
-  select.value = items.some((item) => item.id === selectedId) ? selectedId : '';
+  if (selectedId && !items.some((item) => item.id === selectedId)) {
+    const unavailable = document.createElement('option');
+    unavailable.value = selectedId;
+    unavailable.textContent = `${selectedId} · Unavailable`;
+    select.append(unavailable);
+  }
+  select.value = selectedId || '';
 }
 
 function overallRegistryState() {
@@ -451,14 +589,20 @@ function replaceModelOptions() {
     option.textContent = `${model.display_name}${model.is_default ? ' · Default' : ''}`;
     elements.modelSelect.append(option);
   }
-  elements.modelSelect.value = state.modelCatalog?.items?.some((item) => item.id === state.selectedModelId) ? state.selectedModelId : '';
+  if (state.agentForm.model && !state.modelCatalog?.items?.some((item) => item.id === state.agentForm.model)) {
+    const unavailable = document.createElement('option');
+    unavailable.value = state.agentForm.model;
+    unavailable.textContent = `${state.agentForm.model} · Unavailable`;
+    elements.modelSelect.append(unavailable);
+  }
+  elements.modelSelect.value = state.agentForm.model || '';
 }
 
 function replaceReasoningEffortOptions(selectedModel) {
   elements.reasoningEffortSelect.replaceChildren();
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.disabled = Boolean(selectedModel);
+  placeholder.disabled = false;
   placeholder.textContent = selectedModel ? 'Select reasoning effort' : 'Select a model first';
   elements.reasoningEffortSelect.append(placeholder);
 
@@ -468,16 +612,20 @@ function replaceReasoningEffortOptions(selectedModel) {
     option.textContent = `${effort.id}${effort.id === selectedModel.default_reasoning_effort ? ' · Default' : ''}`;
     elements.reasoningEffortSelect.append(option);
   }
-  elements.reasoningEffortSelect.value = selectedModel?.supported_reasoning_efforts.some((effort) => effort.id === state.selectedReasoningEffort)
-    ? state.selectedReasoningEffort
-    : '';
+  if (state.agentForm.reasoningEffort && !selectedModel?.supported_reasoning_efforts.some((effort) => effort.id === state.agentForm.reasoningEffort)) {
+    const unavailable = document.createElement('option');
+    unavailable.value = state.agentForm.reasoningEffort;
+    unavailable.textContent = `${state.agentForm.reasoningEffort} · Unavailable`;
+    elements.reasoningEffortSelect.append(unavailable);
+  }
+  elements.reasoningEffortSelect.value = state.agentForm.reasoningEffort || '';
 }
 
 function renderModelRegistry() {
   replaceModelOptions();
-  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.selectedModelId) || null;
+  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.agentForm.model) || null;
   replaceReasoningEffortOptions(selectedModel);
-  const selectedEffort = selectedModel?.supported_reasoning_efforts.find((effort) => effort.id === state.selectedReasoningEffort) || null;
+  const selectedEffort = selectedModel?.supported_reasoning_efforts.find((effort) => effort.id === state.agentForm.reasoningEffort) || null;
 
   if (state.modelRegistryState === 'loading') elements.modelDescription.textContent = 'Loading the live runtime model catalog…';
   else if (state.modelRegistryState === 'error') elements.modelDescription.textContent = 'The live model registry is unavailable.';
@@ -500,20 +648,18 @@ function renderRegistry() {
   const displayState = overallRegistryState();
   elements.registryStatus.textContent = statusCopy[displayState] || displayState;
   renderModelRegistry();
-  replaceOptions(elements.toolProfileSelect, 'No tools', state.toolProfiles, state.selectedToolProfileId);
-  replaceOptions(elements.outputSchemaSelect, 'Free text', state.outputSchemas, state.selectedOutputSchemaId);
-  if (['ready', 'partial', 'error'].includes(state.registryState)) {
-    state.selectedToolProfileId = elements.toolProfileSelect.value;
-    state.selectedOutputSchemaId = elements.outputSchemaSelect.value;
-  }
-  const tool = selectedSummary(state.toolProfiles, state.selectedToolProfileId);
-  const schema = selectedSummary(state.outputSchemas, state.selectedOutputSchemaId);
-  elements.toolProfileDescription.textContent = tool?.description || (state.toolProfiles.length ? 'No controlled tool profile will be attached.' : state.registryState === 'loading' ? 'Loading approved tool profiles…' : 'No approved tool profiles are available.');
-  elements.outputSchemaDescription.textContent = schema?.description || (state.outputSchemas.length ? 'The runtime will return its standard text response.' : state.registryState === 'loading' ? 'Loading registered output schemas…' : 'No registered output schemas are available.');
+  replaceOptions(elements.toolProfileSelect, 'No tools', state.toolProfiles, state.agentForm.toolProfileId);
+  replaceOptions(elements.outputSchemaSelect, 'Free text', state.outputSchemas, state.agentForm.outputSchemaId);
+  const tool = selectedSummary(state.toolProfiles, state.agentForm.toolProfileId);
+  const schema = selectedSummary(state.outputSchemas, state.agentForm.outputSchemaId);
+  elements.toolProfileDescription.textContent = tool?.description
+    || (state.toolProfileRegistryState === 'error' ? 'The live Tool Profile registry is unavailable.' : state.agentForm.toolProfileId ? 'This saved Tool Profile is unavailable.' : state.toolProfiles.length ? 'No controlled tool profile will be attached.' : state.registryState === 'loading' ? 'Loading approved tool profiles…' : 'No approved tool profiles are available.');
+  elements.outputSchemaDescription.textContent = schema?.description
+    || (state.outputSchemaRegistryState === 'error' ? 'The live Output Schema registry is unavailable.' : state.agentForm.outputSchemaId ? 'This saved Output Schema is unavailable.' : state.outputSchemas.length ? 'The runtime will return its standard text response.' : state.registryState === 'loading' ? 'Loading registered output schemas…' : 'No registered output schemas are available.');
   renderCapabilities();
   renderContractDetail();
+  renderAgentDefinition();
   renderControls();
-  saveWorkbenchState();
 }
 
 function humanizeFeature(value) {
@@ -559,83 +705,67 @@ function renderContractDetail() {
     emptyCopy = 'Authenticate to discover the public runtime capability contract.';
   } else if (state.contractTab === 'tool') {
     value = state.toolProfileDetail;
-    emptyCopy = state.selectedToolProfileId ? 'Loading selected tool profile…' : 'Select an approved tool profile to inspect its public tools and policy.';
+    emptyCopy = state.agentForm.toolProfileId ? 'Loading selected tool profile…' : 'Select an approved tool profile to inspect its public tools and policy.';
   } else {
     value = state.outputSchemaDetail;
-    emptyCopy = state.selectedOutputSchemaId ? 'Loading selected output schema…' : 'Select a registered output schema to inspect its public JSON Schema.';
+    emptyCopy = state.agentForm.outputSchemaId ? 'Loading selected output schema…' : 'Select a registered output schema to inspect its public JSON Schema.';
   }
   elements.contractDetail.textContent = value ? JSON.stringify(value, null, 2) : emptyCopy;
 }
 
 async function loadSelectedToolProfile() {
-  const id = state.selectedToolProfileId;
+  const id = state.agentForm.toolProfileId;
   state.toolProfileDetail = null;
   renderContractDetail();
-  if (!id || !state.runtimeClient) return;
+  if (!id || !state.runtimeClient || !state.toolProfiles.some((item) => item.id === id)) return;
   try {
     const detail = await state.runtimeClient.getToolProfile(id);
-    if (state.selectedToolProfileId === id) state.toolProfileDetail = detail;
+    if (state.agentForm.toolProfileId === id) state.toolProfileDetail = detail;
   } catch (error) {
-    if (state.selectedToolProfileId === id) showAlert('Tool profile unavailable', describeRuntimeError(error), 'error');
+    if (state.agentForm.toolProfileId === id) showAlert('Tool profile unavailable', describeRuntimeError(error), 'error');
   }
   renderContractDetail();
 }
 
 async function loadSelectedOutputSchema() {
-  const id = state.selectedOutputSchemaId;
+  const id = state.agentForm.outputSchemaId;
   state.outputSchemaDetail = null;
   renderContractDetail();
-  if (!id || !state.runtimeClient) return;
+  if (!id || !state.runtimeClient || !state.outputSchemas.some((item) => item.id === id)) return;
   try {
     const detail = await state.runtimeClient.getOutputSchema(id);
-    if (state.selectedOutputSchemaId === id) state.outputSchemaDetail = detail;
+    if (state.agentForm.outputSchemaId === id) state.outputSchemaDetail = detail;
   } catch (error) {
-    if (state.selectedOutputSchemaId === id) showAlert('Output schema unavailable', describeRuntimeError(error), 'error');
+    if (state.agentForm.outputSchemaId === id) showAlert('Output schema unavailable', describeRuntimeError(error), 'error');
   }
   renderContractDetail();
 }
 
-function reconcileModelSelection(preferredModelId, preferredReasoningEffort) {
-  const resolution = resolveModelRegistrySelection(state.modelCatalog, preferredModelId, preferredReasoningEffort);
-  state.selectedModelId = resolution.selectedModelId;
-  state.selectedReasoningEffort = resolution.selectedReasoningEffort;
-  state.modelSelectionNotice = '';
-  state.modelSelectionNoticeTone = resolution.errorCode ? 'error' : 'warning';
-
-  if (resolution.errorCode) {
-    state.persistedModelId = '';
-    state.persistedReasoningEffort = '';
-    const savedModelNotice = resolution.noticeCodes.includes('persisted_model_missing')
-      ? `Saved model “${String(preferredModelId)}” is no longer available. `
-      : '';
-    if (resolution.errorCode === 'empty_catalog') state.modelSelectionNotice = 'No models are advertised by the runtime.';
-    else if (resolution.errorCode === 'default_model_ambiguous') state.modelSelectionNotice = `${savedModelNotice}The model registry advertises multiple defaults. Select a model explicitly.`;
-    else state.modelSelectionNotice = `${savedModelNotice}No default model is advertised. Select a model explicitly.`;
-    return resolution;
+function seedNewAgentDefaults() {
+  if (state.agentMode !== 'new' || state.agentForm.model) return;
+  const resolution = resolveModelRegistrySelection(state.modelCatalog);
+  if (!resolution.errorCode) {
+    state.agentForm.model = resolution.selectedModelId;
+    state.agentForm.reasoningEffort = resolution.selectedReasoningEffort;
+    state.modelSelectionNotice = 'This new Draft uses the defaults advertised by the live model registry.';
+    state.modelSelectionNoticeTone = 'warning';
+  } else if (resolution.errorCode === 'empty_catalog') {
+    state.modelSelectionNotice = 'No models are advertised by the runtime.';
+    state.modelSelectionNoticeTone = 'error';
+  } else {
+    state.modelSelectionNotice = 'No unique default model is advertised. Choose a model explicitly.';
+    state.modelSelectionNoticeTone = 'error';
   }
-
-  const selectedModel = state.modelCatalog.items.find((item) => item.id === resolution.selectedModelId);
-  const notices = [];
-  if (resolution.noticeCodes.includes('persisted_model_missing')) {
-    notices.push(`Saved model “${String(preferredModelId)}” is no longer available. Using backend default “${selectedModel.display_name}”.`);
-  }
-  if (resolution.noticeCodes.includes('persisted_effort_unsupported')) {
-    notices.push(`Reasoning effort “${String(preferredReasoningEffort)}” is unsupported by “${selectedModel.display_name}”. Using backend default “${resolution.selectedReasoningEffort}”.`);
-  }
-  state.modelSelectionNotice = notices.join(' ');
-  state.persistedModelId = resolution.selectedModelId;
-  state.persistedReasoningEffort = resolution.selectedReasoningEffort;
-  return resolution;
 }
 
 async function loadRegistry() {
   if (!state.runtimeClient || !state.currentUser || state.registryState === 'loading' || state.modelRegistryState === 'loading') return;
   state.registryState = 'loading';
+  state.outputSchemaRegistryState = 'loading';
+  state.toolProfileRegistryState = 'loading';
   state.modelRegistryState = 'loading';
   state.modelRegistryError = '';
   state.modelCatalog = null;
-  state.selectedModelId = '';
-  state.selectedReasoningEffort = '';
   state.modelSelectionNotice = '';
   renderRegistry();
   hideAlert();
@@ -646,14 +776,26 @@ async function loadRegistry() {
     state.runtimeClient.getModelCatalog()
   ]);
   if (capabilities.status === 'fulfilled') state.capabilities = capabilities.value;
-  if (outputSchemas.status === 'fulfilled') state.outputSchemas = outputSchemas.value;
-  if (toolProfiles.status === 'fulfilled') state.toolProfiles = toolProfiles.value;
+  if (outputSchemas.status === 'fulfilled') {
+    state.outputSchemas = outputSchemas.value;
+    state.outputSchemaRegistryState = 'ready';
+  } else {
+    state.outputSchemas = [];
+    state.outputSchemaRegistryState = 'error';
+  }
+  if (toolProfiles.status === 'fulfilled') {
+    state.toolProfiles = toolProfiles.value;
+    state.toolProfileRegistryState = 'ready';
+  } else {
+    state.toolProfiles = [];
+    state.toolProfileRegistryState = 'error';
+  }
   const failures = [capabilities, outputSchemas, toolProfiles].filter((result) => result.status === 'rejected');
   state.registryState = failures.length === 0 ? 'ready' : failures.length === 3 ? 'error' : 'partial';
   if (modelCatalog.status === 'fulfilled') {
     state.modelCatalog = modelCatalog.value;
     state.modelRegistryState = 'ready';
-    reconcileModelSelection(state.persistedModelId, state.persistedReasoningEffort);
+    seedNewAgentDefaults();
   } else {
     state.modelRegistryState = 'error';
     state.modelRegistryError = describeRuntimeError(modelCatalog.reason);
@@ -670,6 +812,188 @@ async function loadRegistry() {
         : 'One or more runtime registries could not be loaded. Refresh discovery to retry.';
     showAlert(authFailure ? 'Runtime authorization failed' : 'Registry discovery incomplete', message, 'error');
   }
+  renderRegistry();
+  await Promise.all([loadSelectedToolProfile(), loadSelectedOutputSchema()]);
+}
+
+function clearAgentTestContext() {
+  state.sessionId = '';
+  state.history = [];
+  state.testAgentId = '';
+  state.testAgentRevision = null;
+  resetRunInspector();
+  try {
+    localStorage.removeItem(STORAGE_KEYS.sessionId);
+    localStorage.removeItem(STORAGE_KEYS.conversation);
+  } catch (_) {}
+  saveWorkbenchState();
+  renderConversation();
+  renderMetadata();
+}
+
+function updateAgentListItem(agent) {
+  const index = state.agents.findIndex((item) => item.agent_id === agent.agent_id);
+  if (index >= 0) state.agents.splice(index, 1, agent);
+  else state.agents.unshift(agent);
+}
+
+async function openAgent(agentId, { skipDirtyCheck = false } = {}) {
+  if (!state.runtimeClient || state.isRunning) return false;
+  if (!skipDirtyCheck && agentFormIsDirty() && !window.confirm('Discard unsaved Agent changes?')) {
+    renderAgentDefinition();
+    return false;
+  }
+  try {
+    const agent = await state.runtimeClient.getAgent(agentId);
+    const bindingMatches = isAgentTestContextCurrent({ agentId: state.testAgentId, revision: state.testAgentRevision }, agent);
+    state.selectedAgent = agent;
+    state.selectedAgentId = agent.agent_id;
+    state.agentMode = 'existing';
+    state.conflictServerAgent = null;
+    state.saveState = 'idle';
+    setAgentFormFromResource(agent);
+    updateAgentListItem(agent);
+    if (!bindingMatches && (state.sessionId || state.activeRunId || state.history.length)) clearAgentTestContext();
+    saveWorkbenchState();
+    renderRegistry();
+    await Promise.all([loadSelectedToolProfile(), loadSelectedOutputSchema()]);
+    return true;
+  } catch (error) {
+    showAlert('Agent unavailable', describeRuntimeError(error), 'error');
+    renderAgentDefinition();
+    return false;
+  }
+}
+
+function startNewAgent({ skipDirtyCheck = false } = {}) {
+  if (state.isRunning) return false;
+  if (!skipDirtyCheck && agentFormIsDirty() && !window.confirm('Discard unsaved Agent changes?')) {
+    renderAgentDefinition();
+    return false;
+  }
+  if (state.sessionId || state.activeRunId || state.history.length) clearAgentTestContext();
+  state.selectedAgent = null;
+  state.selectedAgentId = '';
+  state.agentMode = 'new';
+  state.conflictServerAgent = null;
+  state.saveState = 'idle';
+  state.agentForm = { name: '', model: '', reasoningEffort: '', instructions: '', toolProfileId: '', outputSchemaId: '' };
+  state.outputSchemaDetail = null;
+  state.toolProfileDetail = null;
+  state.modelSelectionNotice = '';
+  seedNewAgentDefaults();
+  saveWorkbenchState();
+  renderRegistry();
+  elements.agentNameInput.focus();
+  return true;
+}
+
+async function loadAgents({ initial = false } = {}) {
+  if (!state.runtimeClient || !state.currentUser || state.agentsState === 'loading') return;
+  state.agentsState = 'loading';
+  state.agentsError = '';
+  renderAgentDefinition();
+  try {
+    const result = await state.runtimeClient.listAgents();
+    state.agents = [...result.items];
+    state.agentsState = 'ready';
+    if (!initial) {
+      const current = state.selectedAgent && state.agents.find((agent) => agent.agent_id === state.selectedAgent.agent_id);
+      if (current && current.revision !== state.selectedAgent.revision) {
+        if (agentFormIsDirty()) {
+          state.conflictServerAgent = current;
+          state.saveState = 'conflict';
+        } else await openAgent(current.agent_id, { skipDirtyCheck: true });
+      }
+      renderRegistry();
+      return;
+    }
+    const remembered = state.agents.find((agent) => agent.agent_id === state.selectedAgentId);
+    if (remembered) {
+      const opened = await openAgent(remembered.agent_id, { skipDirtyCheck: true });
+      if (!opened && (state.sessionId || state.activeRunId || state.history.length)) clearAgentTestContext();
+    }
+    else if (!state.agents.length) startNewAgent({ skipDirtyCheck: true });
+    else {
+      state.selectedAgent = null;
+      state.selectedAgentId = '';
+      state.agentMode = 'none';
+      if (state.sessionId || state.activeRunId || state.history.length) clearAgentTestContext();
+      saveWorkbenchState();
+    }
+  } catch (error) {
+    state.agentsState = 'error';
+    state.agentsError = describeRuntimeError(error);
+    showAlert('Agent discovery failed', state.agentsError, 'error');
+  }
+  renderRegistry();
+}
+
+async function refreshDiscovery() {
+  await Promise.all([loadRegistry(), loadAgents()]);
+}
+
+async function saveAgentDefinition() {
+  if (!state.runtimeClient || !state.currentUser || state.isRunning || state.saveState === 'saving' || state.saveState === 'conflict') return;
+  if (!state.agentForm.name.trim()) {
+    showAlert('Name required', 'Enter a name before saving this Draft Agent.', 'error');
+    elements.agentNameInput.focus();
+    return;
+  }
+  const validation = currentAgentRegistryValidation();
+  if (!validation.valid) {
+    showAlert('Configuration unavailable', registryValidationMessage(validation.errors), 'error');
+    return;
+  }
+  state.saveState = 'saving';
+  renderAgentDefinition();
+  try {
+    const previousRevision = state.selectedAgent?.revision || null;
+    const saved = state.agentMode === 'new'
+      ? await state.runtimeClient.createAgent(state.agentForm)
+      : await state.runtimeClient.patchAgent(state.selectedAgent.agent_id, createAgentDefinitionPatchRequest(state.selectedAgent, state.agentForm));
+    state.selectedAgent = saved;
+    state.selectedAgentId = saved.agent_id;
+    state.agentMode = 'existing';
+    state.conflictServerAgent = null;
+    state.saveState = 'idle';
+    setAgentFormFromResource(saved);
+    updateAgentListItem(saved);
+    if (previousRevision !== null && saved.revision !== previousRevision) {
+      clearAgentTestContext();
+      showAlert('Draft saved', `Draft saved as revision ${saved.revision}. Configuration changed, so the next test will start a new session.`);
+    } else {
+      showAlert('Draft saved', `Draft saved as revision ${saved.revision}.`);
+    }
+    saveWorkbenchState();
+    renderRegistry();
+  } catch (error) {
+    if (error?.code === 'AGENT_DEFINITION_CONFLICT' && state.selectedAgent) {
+      state.saveState = 'conflict';
+      try { state.conflictServerAgent = await state.runtimeClient.getAgent(state.selectedAgent.agent_id); } catch (_) { state.conflictServerAgent = null; }
+      showAlert('Draft changed on the server', 'Your edits are preserved. Reload the latest revision before saving again.', 'error');
+    } else {
+      state.saveState = 'idle';
+      showAlert('Draft save failed', describeRuntimeError(error), 'error');
+    }
+    renderAgentDefinition();
+  }
+}
+
+async function reloadLatestAgent() {
+  if (!state.selectedAgent || state.isRunning) return;
+  if (agentFormIsDirty() && !window.confirm('Discard local edits and load the latest server revision?')) return;
+  const latest = await state.runtimeClient.getAgent(state.selectedAgent.agent_id);
+  const bindingMatches = isAgentTestContextCurrent({ agentId: state.testAgentId, revision: state.testAgentRevision }, latest);
+  state.selectedAgent = latest;
+  state.selectedAgentId = latest.agent_id;
+  state.conflictServerAgent = null;
+  state.saveState = 'idle';
+  setAgentFormFromResource(latest);
+  updateAgentListItem(latest);
+  if (!bindingMatches && (state.sessionId || state.activeRunId || state.history.length)) clearAgentTestContext();
+  saveWorkbenchState();
+  hideAlert();
   renderRegistry();
   await Promise.all([loadSelectedToolProfile(), loadSelectedOutputSchema()]);
 }
@@ -810,9 +1134,9 @@ function renderResultTabs() {
 
 function renderResult() {
   renderResultTabs();
-  elements.resultSchemaId.textContent = state.result?.schemaId || state.selectedOutputSchemaId || 'Not requested';
+  elements.resultSchemaId.textContent = state.result?.schemaId || state.selectedAgent?.output_schema_id || 'Not requested';
   const normalized = normalizedResultOutput();
-  const validation = normalized.malformed ? 'Malformed output' : state.result?.validationStatus || (state.selectedOutputSchemaId ? state.validationStatus : 'Not requested');
+  const validation = normalized.malformed ? 'Malformed output' : state.result?.validationStatus || (state.selectedAgent?.output_schema_id ? state.validationStatus : 'Not requested');
   elements.resultValidation.textContent = humanizeFeature(validation);
   elements.resultRunStatus.textContent = humanizeFeature(state.result?.runStatus || state.runStatus || 'idle');
   elements.resultDuration.textContent = formatLatency(state.result?.durationMs ?? null);
@@ -965,78 +1289,64 @@ function resetRunInspector() {
   state.lastEventId = '';
   state.events = [];
   state.result = null;
-  state.validationStatus = state.selectedOutputSchemaId ? 'pending' : 'not_requested';
+  state.validationStatus = state.selectedAgent?.output_schema_id ? 'pending' : 'not_requested';
   state.reconnectAttempt = 0;
   renderActivity();
   renderResult();
   renderMetadata();
 }
 
-async function runQuickTurn(input) {
-  state.isRunning = true;
-  state.runStatus = 'running';
-  state.streamStatus = 'idle';
-  elements.activityEmpty.textContent = 'Quick turns use POST /v1/agent/run and do not expose an SSE lifecycle.';
-  setRuntimeStatus('running', 'Quick turn running');
-  renderControls();
-  try {
-    const result = await state.runtimeClient.run({
-      input,
-      sessionId: state.sessionId,
-      outputSchemaId: state.selectedOutputSchemaId,
-      toolProfileId: state.selectedToolProfileId
-    });
-    state.sessionId = result.session_id;
-    state.runStatus = 'completed';
-    const validation = result.output_schema_id ? 'completed' : 'not_requested';
-    setResult({ output: result.output, schemaId: result.output_schema_id, runStatus: result.status, durationMs: result.duration_ms, validationStatus: validation });
-    addMessage({ role: 'agent', content: formatOutput(result.output), turnId: result.turn_id, schemaId: result.output_schema_id, durationMs: result.duration_ms });
-    setRuntimeStatus('completed', 'Completed');
-  } catch (error) {
-    const message = describeRuntimeError(error);
-    state.runStatus = 'failed';
-    addMessage({ role: 'notice', content: message });
-    showAlert('Execution failed', message, 'error');
-    setRuntimeStatus('error', error?.code === 'timeout' ? 'Timed out' : 'Runtime error');
-  } finally {
-    state.isRunning = false;
-    saveConversationState();
-    saveWorkbenchState();
-    renderMetadata();
-    renderResult();
-    renderControls();
-    elements.promptInput.focus();
-  }
-}
-
-async function runObservable(input) {
-  resetRunInspector();
+async function runAgentTest(input) {
+  if (!state.selectedAgent || agentFormIsDirty() || !currentAgentRegistryValidation().valid) return;
   state.isRunning = true;
   state.runStatus = 'submitting';
-  state.validationStatus = state.selectedOutputSchemaId ? 'pending' : 'not_requested';
-  setRuntimeStatus('running', 'Submitting run');
+  state.validationStatus = state.selectedAgent.output_schema_id ? 'pending' : 'not_requested';
+  setRuntimeStatus('running', 'Checking saved revision');
   renderControls();
   try {
-    const created = await state.runtimeClient.createObservableRun({
-      input,
-      sessionId: state.sessionId,
-      outputSchemaId: state.selectedOutputSchemaId,
-      toolProfileId: state.selectedToolProfileId
-    });
+    const latest = await state.runtimeClient.getAgent(state.selectedAgent.agent_id);
+    if (latest.revision !== state.selectedAgent.revision) {
+      state.conflictServerAgent = latest;
+      state.saveState = 'conflict';
+      state.isRunning = false;
+      state.runStatus = 'idle';
+      showAlert('Agent revision changed', `The server is at revision ${latest.revision}. Reload the latest Draft before testing.`, 'error');
+      renderAgentDefinition();
+      return;
+    }
+    const contextMatches = isAgentTestContextCurrent({ agentId: state.testAgentId, revision: state.testAgentRevision }, state.selectedAgent);
+    if (!contextMatches && (state.sessionId || state.activeRunId || state.history.length)) clearAgentTestContext();
+    resetRunInspector();
+    state.isRunning = true;
+    state.runStatus = 'submitting';
+    const created = await state.runtimeClient.createAgentTestRun(state.selectedAgent.agent_id, input, contextMatches ? state.sessionId : '');
     state.activeRunId = created.run_id;
     state.runStatus = created.status;
+    state.testAgentId = state.selectedAgent.agent_id;
+    state.testAgentRevision = state.selectedAgent.revision;
     state.streamEpoch += 1;
+    addMessage({ role: 'user', content: input });
+    elements.promptInput.value = '';
     saveWorkbenchState();
     renderMetadata();
-    setRuntimeStatus('running', 'Observable run active');
+    setRuntimeStatus('running', 'Agent test active');
     monitorObservableRun(created.run_id, state.streamEpoch);
   } catch (error) {
     const message = describeRuntimeError(error);
     state.isRunning = false;
     state.runStatus = 'failed';
-    addMessage({ role: 'notice', content: message });
-    showAlert('Run submission failed', message, 'error');
+    if (error?.code === 'AGENT_SESSION_DEFINITION_MISMATCH') {
+      clearAgentTestContext();
+      showAlert('New test session required', message, 'error');
+    } else if (error?.code === 'AGENT_DEFINITION_CONFLICT') {
+      state.saveState = 'conflict';
+      try { state.conflictServerAgent = await state.runtimeClient.getAgent(state.selectedAgent.agent_id); } catch (_) {}
+      showAlert('Agent revision changed', 'Reload the latest Draft before testing.', 'error');
+    } else {
+      showAlert('Test submission failed', message, 'error');
+    }
     setRuntimeStatus('error', 'Submission failed');
+    renderAgentDefinition();
     renderControls();
     saveWorkbenchState();
   }
@@ -1045,12 +1355,7 @@ async function runObservable(input) {
 async function executeMission(input) {
   if (state.isRunning || !state.currentUser || !state.runtimeClient) return;
   hideAlert();
-  state.executionMode = currentExecutionMode();
-  addMessage({ role: 'user', content: input });
-  elements.promptInput.value = '';
-  saveWorkbenchState();
-  if (state.executionMode === 'quick') await runQuickTurn(input);
-  else await runObservable(input);
+  await runAgentTest(input);
 }
 
 async function cancelActiveRun() {
@@ -1075,6 +1380,8 @@ function resetSession() {
   if (state.isRunning) return;
   state.sessionId = '';
   state.history = [];
+  state.testAgentId = '';
+  state.testAgentRevision = null;
   resetRunInspector();
   try {
     localStorage.removeItem(STORAGE_KEYS.sessionId);
@@ -1148,18 +1455,27 @@ async function initializeAuth() {
       if (user) {
         hideAlert();
         setRuntimeStatus('ready', state.sessionId ? 'Session ready' : 'Ready');
-        await loadRegistry();
-        if (state.activeRunId) await resumePersistedRun();
+        await Promise.all([loadRegistry(), loadAgents({ initial: true })]);
+        if (state.activeRunId && isAgentTestContextCurrent(
+          { agentId: state.testAgentId, revision: state.testAgentRevision }, state.selectedAgent
+        )) await resumePersistedRun();
       } else {
         state.streamEpoch += 1;
         state.streamController?.abort();
         state.isRunning = false;
         state.modelRegistryState = 'idle';
+        state.outputSchemaRegistryState = 'idle';
+        state.toolProfileRegistryState = 'idle';
         state.modelRegistryError = '';
         state.modelCatalog = null;
-        state.selectedModelId = '';
-        state.selectedReasoningEffort = '';
         state.modelSelectionNotice = '';
+        state.agentsState = 'idle';
+        state.agentsError = '';
+        state.agents = [];
+        state.selectedAgent = null;
+        state.agentMode = 'none';
+        state.conflictServerAgent = null;
+        state.agentForm = { name: '', model: '', reasoningEffort: '', instructions: '', toolProfileId: '', outputSchemaId: '' };
         renderRegistry();
         showAlert('Authentication required', 'Sign in with Google to authorize Agent Runtime requests with a Firebase ID token.');
         setRuntimeStatus('auth-required', 'Sign-in required');
@@ -1220,42 +1536,64 @@ elements.promptInput.addEventListener('keydown', (event) => {
     if (!elements.runButton.disabled) elements.promptForm.requestSubmit();
   }
 });
-elements.executionModes.forEach((input) => input.addEventListener('change', () => {
-  state.executionMode = currentExecutionMode();
-  saveWorkbenchState();
-  renderControls();
-}));
 elements.newSessionButton.addEventListener('click', resetSession);
 elements.authButton.addEventListener('click', handleAuthAction);
-elements.refreshRegistryButton.addEventListener('click', loadRegistry);
+elements.refreshRegistryButton.addEventListener('click', refreshDiscovery);
+elements.agentSelect.addEventListener('change', () => {
+  const agentId = elements.agentSelect.value;
+  if (!agentId) {
+    renderAgentDefinition();
+    return;
+  }
+  openAgent(agentId);
+});
+elements.newAgentButton.addEventListener('click', () => startNewAgent());
+elements.saveAgentButton.addEventListener('click', saveAgentDefinition);
+elements.agentForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!elements.saveAgentButton.disabled) saveAgentDefinition();
+});
+elements.reloadAgentButton.addEventListener('click', () => {
+  reloadLatestAgent().catch((error) => showAlert('Agent reload failed', describeRuntimeError(error), 'error'));
+});
+elements.agentNameInput.addEventListener('input', () => {
+  state.agentForm.name = elements.agentNameInput.value;
+  renderAgentDefinition();
+});
+elements.agentInstructionsInput.addEventListener('input', () => {
+  state.agentForm.instructions = elements.agentInstructionsInput.value;
+  renderAgentDefinition();
+});
 elements.modelSelect.addEventListener('change', () => {
   const modelId = elements.modelSelect.value;
   if (!state.modelCatalog?.items?.some((item) => item.id === modelId)) return;
-  reconcileModelSelection(modelId, state.selectedReasoningEffort);
-  saveWorkbenchState();
+  const model = state.modelCatalog.items.find((item) => item.id === modelId);
+  state.agentForm.model = modelId;
+  if (!model.supported_reasoning_efforts.some((effort) => effort.id === state.agentForm.reasoningEffort)) {
+    state.agentForm.reasoningEffort = '';
+    state.modelSelectionNotice = 'Choose a reasoning effort advertised for the selected model.';
+  } else state.modelSelectionNotice = '';
   renderRegistry();
 });
 elements.reasoningEffortSelect.addEventListener('change', () => {
   const effortId = elements.reasoningEffortSelect.value;
-  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.selectedModelId);
+  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.agentForm.model);
   if (!selectedModel?.supported_reasoning_efforts.some((effort) => effort.id === effortId)) return;
-  state.selectedReasoningEffort = effortId;
-  state.persistedReasoningEffort = effortId;
+  state.agentForm.reasoningEffort = effortId;
   state.modelSelectionNotice = '';
   state.modelSelectionNoticeTone = 'warning';
-  saveWorkbenchState();
   renderRegistry();
 });
 elements.toolProfileSelect.addEventListener('change', () => {
-  state.selectedToolProfileId = elements.toolProfileSelect.value;
+  state.agentForm.toolProfileId = elements.toolProfileSelect.value;
   state.contractTab = 'tool';
   saveWorkbenchState();
   renderRegistry();
   loadSelectedToolProfile();
 });
 elements.outputSchemaSelect.addEventListener('change', () => {
-  state.selectedOutputSchemaId = elements.outputSchemaSelect.value;
-  state.validationStatus = state.selectedOutputSchemaId ? 'pending' : 'not_requested';
+  state.agentForm.outputSchemaId = elements.outputSchemaSelect.value;
+  state.validationStatus = state.agentForm.outputSchemaId ? 'pending' : 'not_requested';
   state.contractTab = 'schema';
   saveWorkbenchState();
   renderRegistry();
@@ -1299,8 +1637,12 @@ elements.clearDraftButton.addEventListener('click', () => {
   elements.draftValidationStatus.className = '';
   saveWorkbenchState();
 });
+window.addEventListener('beforeunload', (event) => {
+  if (!agentFormIsDirty()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 
-elements.executionModes.forEach((input) => { input.checked = input.value === state.executionMode; });
 renderConversation();
 renderMetadata();
 renderAuth();
