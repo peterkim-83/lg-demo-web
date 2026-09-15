@@ -8,7 +8,8 @@ import {
   createAgentRuntimeClient,
   isTerminalRunStatus,
   parseAgentRunEventFrame,
-  projectPublicAgentRunEvent
+  projectPublicAgentRunEvent,
+  resolveModelRegistrySelection
 } from '../public/agent-playground/runtime-client.mjs';
 
 const API = 'https://api.example.test';
@@ -107,6 +108,110 @@ test('registry discovery and detail inspection use only IDs returned by API call
   assert.equal(calls.some((url) => url.includes('profile_from_registry')), true);
 });
 
+test('model discovery preserves the live model-specific contract and uses authenticated no-store requests', async () => {
+  const calls = [];
+  const catalogResponse = {
+    items: [
+      {
+        id: 'model_alpha',
+        display_name: 'Model Alpha',
+        description: 'Primary catalog model',
+        is_default: true,
+        default_reasoning_effort: 'effort_balanced',
+        supported_reasoning_efforts: [
+          { id: 'effort_fast', description: 'Lower latency' },
+          { id: 'effort_balanced', description: 'Balanced execution' }
+        ]
+      }
+    ],
+    source: 'runtime_catalog',
+    refreshed_at: '2026-09-14T00:00:00Z'
+  };
+  const client = createAgentRuntimeClient({
+    baseUrl: API,
+    getIdToken: async () => 'firebase-model-token',
+    fetchImpl: async (url, init) => { calls.push({ url, init }); return response(catalogResponse); }
+  });
+
+  const catalog = await client.getModelCatalog();
+  assert.deepEqual(catalog, catalogResponse);
+  assert.equal(new URL(calls[0].url).pathname, AGENT_RUNTIME_ENDPOINTS.models);
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer firebase-model-token');
+  assert.equal(calls[0].init.cache, 'no-store');
+  assert.equal(calls[0].init.credentials, 'omit');
+});
+
+test('model discovery rejects duplicate IDs, malformed efforts, and unsupported backend defaults', async () => {
+  const baseModel = {
+    id: 'model_alpha', display_name: 'Model Alpha', description: '', is_default: true,
+    default_reasoning_effort: 'effort_balanced',
+    supported_reasoning_efforts: [{ id: 'effort_balanced', description: 'Balanced execution' }]
+  };
+  const invalidCatalogs = [
+    { items: [baseModel, { ...baseModel }], source: 'runtime_catalog', refreshed_at: 'now' },
+    { items: [{ ...baseModel, supported_reasoning_efforts: [{ id: '', description: '' }] }], source: 'runtime_catalog', refreshed_at: 'now' },
+    { items: [{ ...baseModel, default_reasoning_effort: 'effort_missing' }], source: 'runtime_catalog', refreshed_at: 'now' }
+  ];
+
+  for (const body of invalidCatalogs) {
+    const client = createAgentRuntimeClient({ baseUrl: API, getIdToken: async () => 'token', fetchImpl: async () => response(body) });
+    await assert.rejects(client.getModelCatalog(), (error) => error instanceof AgentRuntimeError && error.code === 'invalid_response');
+  }
+});
+
+test('model selection prefers valid persisted values and otherwise uses backend defaults exactly', () => {
+  const catalog = {
+    items: [
+      {
+        id: 'model_alpha', display_name: 'Model Alpha', is_default: true, default_reasoning_effort: 'effort_balanced',
+        supported_reasoning_efforts: [{ id: 'effort_fast' }, { id: 'effort_balanced' }]
+      },
+      {
+        id: 'model_beta', display_name: 'Model Beta', is_default: false, default_reasoning_effort: 'effort_deep',
+        supported_reasoning_efforts: [{ id: 'effort_balanced' }, { id: 'effort_deep' }]
+      }
+    ]
+  };
+
+  assert.deepEqual(resolveModelRegistrySelection(catalog, 'model_beta', 'effort_balanced'), {
+    selectedModelId: 'model_beta', selectedReasoningEffort: 'effort_balanced', modelSource: 'persisted',
+    reasoningEffortSource: 'persisted', noticeCodes: [], errorCode: ''
+  });
+  assert.deepEqual(resolveModelRegistrySelection(catalog), {
+    selectedModelId: 'model_alpha', selectedReasoningEffort: 'effort_balanced', modelSource: 'backend_default',
+    reasoningEffortSource: 'backend_default', noticeCodes: [], errorCode: ''
+  });
+});
+
+test('model selection reports removed models and unsupported efforts without heuristic mapping', () => {
+  const catalog = {
+    items: [{
+      id: 'model_alpha', display_name: 'Model Alpha', is_default: true, default_reasoning_effort: 'effort_balanced',
+      supported_reasoning_efforts: [{ id: 'effort_fast' }, { id: 'effort_balanced' }]
+    }]
+  };
+  const removedModel = resolveModelRegistrySelection(catalog, 'model_retired', 'effort_fast');
+  assert.equal(removedModel.selectedModelId, 'model_alpha');
+  assert.equal(removedModel.selectedReasoningEffort, 'effort_fast');
+  assert.deepEqual(removedModel.noticeCodes, ['persisted_model_missing']);
+
+  const unsupportedEffort = resolveModelRegistrySelection(catalog, 'model_alpha', 'effort_unknown');
+  assert.equal(unsupportedEffort.selectedReasoningEffort, 'effort_balanced');
+  assert.equal(unsupportedEffort.reasoningEffortSource, 'backend_default');
+  assert.deepEqual(unsupportedEffort.noticeCodes, ['persisted_effort_unsupported']);
+});
+
+test('model selection fails visibly when a backend default cannot be chosen', () => {
+  const model = {
+    id: 'model_alpha', display_name: 'Model Alpha', is_default: false, default_reasoning_effort: 'effort_balanced',
+    supported_reasoning_efforts: [{ id: 'effort_balanced' }]
+  };
+  assert.equal(resolveModelRegistrySelection({ items: [] }).errorCode, 'empty_catalog');
+  assert.equal(resolveModelRegistrySelection({ items: [model] }).errorCode, 'default_model_missing');
+  assert.equal(resolveModelRegistrySelection({ items: [model, { ...model, id: 'model_beta', is_default: true }, { ...model, id: 'model_gamma', is_default: true }] }).errorCode, 'default_model_ambiguous');
+  assert.equal(resolveModelRegistrySelection({ items: [model] }, 'model_alpha').selectedModelId, 'model_alpha');
+});
+
 test('observable run create, snapshot, and cancellation routes remain exact', async () => {
   const calls = [];
   const client = createAgentRuntimeClient({
@@ -141,6 +246,26 @@ test('a 401 refreshes the Firebase token once for registry and execution request
   });
   await client.run({ input: 'Continue.', sessionId: 'session_123' });
   assert.deepEqual(tokenCalls, [false, true]);
+
+  const modelTokenCalls = [];
+  let modelCallCount = 0;
+  const modelClient = createAgentRuntimeClient({
+    baseUrl: API,
+    getIdToken: async (refresh) => { modelTokenCalls.push(refresh); return refresh ? 'fresh-model-token' : 'cached-model-token'; },
+    fetchImpl: async () => {
+      if (++modelCallCount === 1) return response({}, 401);
+      return response({
+        items: [{
+          id: 'model_alpha', display_name: 'Model Alpha', description: '', is_default: true,
+          default_reasoning_effort: 'effort_balanced',
+          supported_reasoning_efforts: [{ id: 'effort_balanced', description: '' }]
+        }],
+        source: 'runtime_catalog', refreshed_at: 'now'
+      });
+    }
+  });
+  await modelClient.getModelCatalog();
+  assert.deepEqual(modelTokenCalls, [false, true]);
 });
 
 test('SSE frame parsing allowlists lifecycle types and projects only public tool metadata', () => {
@@ -219,5 +344,10 @@ test('production Workbench source has no fixed registry IDs, EventSource, or bro
   assert.equal(source.includes('research_mcp_readonly_v1'), false);
   assert.equal(source.includes('x-agent-key'), false);
   assert.equal(source.includes('new eventsource'), false);
+  assert.equal(source.includes('gpt-5'), false);
+  assert.doesNotMatch(source, /\[(?:\s*['"](?:none|minimal|low|medium|high|xhigh|max)['"]\s*,?){2,}\s*\]/);
+  assert.match(source, /\/v1\/agent\/models/);
+  assert.match(source, /id="modelselect"/);
+  assert.match(source, /id="reasoningeffortselect"/);
   assert.match(source, /authorization: `bearer \$\{token\}`/);
 });
