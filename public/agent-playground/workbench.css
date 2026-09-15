@@ -306,6 +306,34 @@
   padding: 16px 18px;
 }
 
+.apg-model-guidance {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  padding: 9px 11px;
+  border: 1px solid var(--apg-border);
+  border-radius: 8px;
+  background: var(--apg-surface-soft);
+  color: var(--apg-text-muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.apg-model-guidance p {
+  margin: 0;
+}
+
+.apg-model-guidance p + p {
+  margin-top: 4px;
+}
+
+.apg-model-guidance #modelSelectionNotice {
+  color: #e6bd79;
+}
+
+.apg-model-guidance #modelSelectionNotice.is-error {
+  color: var(--apg-danger);
+}
+
 .apg-select-field {
   display: block;
   min-width: 0;

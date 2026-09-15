@@ -134,6 +134,20 @@
 
           <div class="apg-contract-selectors">
             <label class="apg-select-field">
+              <span>Model</span>
+              <select id="modelSelect" disabled><option value="">Authenticate to load models</option></select>
+              <small id="modelDescription">Models load from the live runtime registry.</small>
+            </label>
+            <label class="apg-select-field">
+              <span>Reasoning Effort</span>
+              <select id="reasoningEffortSelect" disabled><option value="">Select a model first</option></select>
+              <small id="reasoningEffortDescription">Reasoning efforts load from the selected model.</small>
+            </label>
+            <div class="apg-model-guidance">
+              <p id="modelSelectionNotice" role="status" aria-live="polite" hidden></p>
+              <p>Model configuration is saved for discovery preview and is not applied to runs in E1-B.</p>
+            </div>
+            <label class="apg-select-field">
               <span>Tool Profile</span>
               <select id="toolProfileSelect" disabled><option value="">No tools</option></select>
               <small id="toolProfileDescription">No controlled tool profile will be attached.</small>

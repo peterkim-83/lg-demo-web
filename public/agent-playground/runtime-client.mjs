@@ -3,6 +3,7 @@ export const AGENT_RUNTIME_TIMEOUT_MS = 90_000;
 
 export const AGENT_RUNTIME_ENDPOINTS = Object.freeze({
   capabilities: '/v1/agent/capabilities',
+  models: '/v1/agent/models',
   outputSchemas: '/v1/agent/output-schemas',
   outputSchema: (schemaId) => `/v1/agent/output-schemas/${encodeURIComponent(normalizeRegistryId(schemaId))}`,
   toolProfiles: '/v1/agent/tool-profiles',
@@ -139,6 +140,108 @@ function normalizeRegistryList(value, kind) {
     profile: String(item.profile || '').trim(),
     description: String(item.description || '').trim()
   })).filter((item) => item.id);
+}
+
+function normalizeModelCatalog(value) {
+  if (!isPlainObject(value) || !Array.isArray(value.items) || typeof value.source !== 'string' || typeof value.refreshed_at !== 'string') {
+    throw new AgentRuntimeError('invalid_response', 'The model registry returned an unreadable response.');
+  }
+
+  const modelIds = new Set();
+  const items = value.items.map((item) => {
+    if (!isPlainObject(item)
+      || typeof item.id !== 'string'
+      || typeof item.display_name !== 'string'
+      || typeof item.description !== 'string'
+      || typeof item.is_default !== 'boolean'
+      || typeof item.default_reasoning_effort !== 'string'
+      || !Array.isArray(item.supported_reasoning_efforts)) {
+      throw new AgentRuntimeError('invalid_response', 'The model registry contains an unreadable model.');
+    }
+
+    const id = item.id.trim();
+    const displayName = item.display_name.trim();
+    const defaultReasoningEffort = item.default_reasoning_effort.trim();
+    if (!id || id.length > 256 || !displayName || !defaultReasoningEffort || modelIds.has(id)) {
+      throw new AgentRuntimeError('invalid_response', 'The model registry contains an invalid or duplicate model identifier.');
+    }
+    modelIds.add(id);
+
+    const effortIds = new Set();
+    const supportedReasoningEfforts = item.supported_reasoning_efforts.map((effort) => {
+      if (!isPlainObject(effort) || typeof effort.id !== 'string' || typeof effort.description !== 'string') {
+        throw new AgentRuntimeError('invalid_response', 'The model registry contains an unreadable reasoning effort.');
+      }
+      const effortId = effort.id.trim();
+      if (!effortId || effortId.length > 256 || effortIds.has(effortId)) {
+        throw new AgentRuntimeError('invalid_response', 'The model registry contains an invalid or duplicate reasoning effort.');
+      }
+      effortIds.add(effortId);
+      return { id: effortId, description: effort.description.trim() };
+    });
+
+    if (!effortIds.has(defaultReasoningEffort)) {
+      throw new AgentRuntimeError('invalid_response', 'A model default reasoning effort is not included in its supported efforts.');
+    }
+
+    return {
+      id,
+      display_name: displayName,
+      description: item.description.trim(),
+      is_default: item.is_default,
+      default_reasoning_effort: defaultReasoningEffort,
+      supported_reasoning_efforts: supportedReasoningEfforts
+    };
+  });
+
+  return {
+    items,
+    source: value.source.trim(),
+    refreshed_at: value.refreshed_at.trim()
+  };
+}
+
+export function resolveModelRegistrySelection(catalog, persistedModelId = '', persistedReasoningEffort = '') {
+  const items = Array.isArray(catalog?.items) ? catalog.items : [];
+  const preferredModelId = String(persistedModelId || '').trim();
+  const preferredReasoningEffort = String(persistedReasoningEffort || '').trim();
+  const noticeCodes = [];
+
+  if (!items.length) {
+    return Object.freeze({
+      selectedModelId: '', selectedReasoningEffort: '', modelSource: 'none', reasoningEffortSource: 'none',
+      noticeCodes: Object.freeze(noticeCodes), errorCode: 'empty_catalog'
+    });
+  }
+
+  let model = items.find((item) => item.id === preferredModelId) || null;
+  let modelSource = 'persisted';
+  if (!model) {
+    if (preferredModelId) noticeCodes.push('persisted_model_missing');
+    const defaults = items.filter((item) => item.is_default === true);
+    if (defaults.length !== 1) {
+      return Object.freeze({
+        selectedModelId: '', selectedReasoningEffort: '', modelSource: 'none', reasoningEffortSource: 'none',
+        noticeCodes: Object.freeze(noticeCodes), errorCode: defaults.length ? 'default_model_ambiguous' : 'default_model_missing'
+      });
+    }
+    model = defaults[0];
+    modelSource = 'backend_default';
+  }
+
+  const supported = model.supported_reasoning_efforts || [];
+  const persistedEffortIsValid = supported.some((effort) => effort.id === preferredReasoningEffort);
+  const selectedReasoningEffort = persistedEffortIsValid ? preferredReasoningEffort : model.default_reasoning_effort;
+  if (preferredReasoningEffort && !persistedEffortIsValid) noticeCodes.push('persisted_effort_unsupported');
+
+  return Object.freeze({
+    selectedModelId: model.id,
+    selectedReasoningEffort,
+    modelSource,
+    reasoningEffortSource: persistedEffortIsValid ? 'persisted' : 'backend_default',
+    noticeCodes: Object.freeze(noticeCodes),
+    errorCode: ''
+  });
 }
 
 function normalizeRunSnapshot(value) {
@@ -353,6 +456,9 @@ export function createAgentRuntimeClient({
         throw new AgentRuntimeError('invalid_response', 'The capability contract is unreadable.');
       }
       return value;
+    },
+    async getModelCatalog() {
+      return normalizeModelCatalog(await request(AGENT_RUNTIME_ENDPOINTS.models));
     },
     async listOutputSchemas() {
       return normalizeRegistryList(await request(AGENT_RUNTIME_ENDPOINTS.outputSchemas), 'output schema');

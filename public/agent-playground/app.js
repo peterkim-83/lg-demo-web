@@ -3,7 +3,8 @@ import {
   AgentRuntimeError,
   PUBLIC_AGENT_EVENT_TYPES,
   createAgentRuntimeClient,
-  isTerminalRunStatus
+  isTerminalRunStatus,
+  resolveModelRegistrySelection
 } from './runtime-client.mjs';
 
 const STORAGE_KEYS = Object.freeze({
@@ -41,6 +42,11 @@ const elements = {
   executionModes: [...document.querySelectorAll('input[name="executionMode"]')],
   registryStatus: document.getElementById('registryStatus'),
   refreshRegistryButton: document.getElementById('refreshRegistryButton'),
+  modelSelect: document.getElementById('modelSelect'),
+  reasoningEffortSelect: document.getElementById('reasoningEffortSelect'),
+  modelDescription: document.getElementById('modelDescription'),
+  reasoningEffortDescription: document.getElementById('reasoningEffortDescription'),
+  modelSelectionNotice: document.getElementById('modelSelectionNotice'),
   toolProfileSelect: document.getElementById('toolProfileSelect'),
   outputSchemaSelect: document.getElementById('outputSchemaSelect'),
   toolProfileDescription: document.getElementById('toolProfileDescription'),
@@ -82,6 +88,9 @@ const state = {
   isRunning: false,
   isFinalizing: false,
   registryState: 'idle',
+  modelRegistryState: 'idle',
+  modelRegistryError: '',
+  modelCatalog: null,
   capabilities: null,
   outputSchemas: [],
   toolProfiles: [],
@@ -89,6 +98,12 @@ const state = {
   toolProfileDetail: null,
   selectedOutputSchemaId: restoredWorkbench.selectedOutputSchemaId,
   selectedToolProfileId: restoredWorkbench.selectedToolProfileId,
+  persistedModelId: restoredWorkbench.selectedModelId,
+  persistedReasoningEffort: restoredWorkbench.selectedReasoningEffort,
+  selectedModelId: '',
+  selectedReasoningEffort: '',
+  modelSelectionNotice: '',
+  modelSelectionNoticeTone: 'warning',
   executionMode: restoredWorkbench.executionMode,
   contractTab: restoredWorkbench.contractTab,
   resultTab: restoredWorkbench.resultTab,
@@ -161,7 +176,7 @@ function normalizeStoredEvent(value) {
 
 function loadWorkbenchState() {
   const fallback = {
-    selectedOutputSchemaId: '', selectedToolProfileId: '', executionMode: 'observable',
+    selectedOutputSchemaId: '', selectedToolProfileId: '', selectedModelId: '', selectedReasoningEffort: '', executionMode: 'observable',
     contractTab: 'capabilities', resultTab: 'tree', activeRunId: '', runStatus: 'idle',
     lastEventId: '', events: [], result: null, validationStatus: 'not_requested', draftText: ''
   };
@@ -171,6 +186,8 @@ function loadWorkbenchState() {
     return {
       selectedOutputSchemaId: String(parsed.selectedOutputSchemaId || '').slice(0, 256),
       selectedToolProfileId: String(parsed.selectedToolProfileId || '').slice(0, 256),
+      selectedModelId: String(parsed.selectedModelId || '').slice(0, 256),
+      selectedReasoningEffort: String(parsed.selectedReasoningEffort || '').slice(0, 256),
       executionMode: parsed.executionMode === 'quick' ? 'quick' : 'observable',
       contractTab: ['capabilities', 'tool', 'schema'].includes(parsed.contractTab) ? parsed.contractTab : 'capabilities',
       resultTab: parsed.resultTab === 'json' ? 'json' : 'tree',
@@ -199,6 +216,8 @@ function saveWorkbenchState() {
   const projected = {
     selectedOutputSchemaId: state.selectedOutputSchemaId,
     selectedToolProfileId: state.selectedToolProfileId,
+    selectedModelId: state.persistedModelId,
+    selectedReasoningEffort: state.persistedReasoningEffort,
     executionMode: state.executionMode,
     contractTab: state.contractTab,
     resultTab: state.resultTab,
@@ -349,9 +368,13 @@ function renderControls() {
   elements.newSessionButton.disabled = state.isRunning || (!state.sessionId && !state.activeRunId && state.history.length === 0);
   elements.authButton.disabled = ['initializing', 'authenticating', 'unavailable'].includes(state.authState) || state.isRunning;
   const registryReady = state.registryState === 'ready' || state.registryState === 'partial';
+  const modelRegistryReady = state.modelRegistryState === 'ready' && Boolean(state.modelCatalog?.items?.length);
+  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.selectedModelId) || null;
   elements.toolProfileSelect.disabled = !authenticated || !registryReady || state.isRunning;
   elements.outputSchemaSelect.disabled = !authenticated || !registryReady || state.isRunning;
-  elements.refreshRegistryButton.disabled = !authenticated || state.registryState === 'loading' || state.isRunning;
+  elements.modelSelect.disabled = !authenticated || !modelRegistryReady || state.isRunning;
+  elements.reasoningEffortSelect.disabled = !authenticated || !modelRegistryReady || !selectedModel || state.isRunning;
+  elements.refreshRegistryButton.disabled = !authenticated || state.registryState === 'loading' || state.modelRegistryState === 'loading' || state.isRunning;
   elements.cancelRunButton.hidden = !state.isRunning || state.executionMode !== 'observable' || !state.activeRunId;
   elements.cancelRunButton.disabled = state.runStatus === 'cancelling';
 }
@@ -402,9 +425,81 @@ function replaceOptions(select, leadingLabel, items, selectedId) {
   select.value = items.some((item) => item.id === selectedId) ? selectedId : '';
 }
 
+function overallRegistryState() {
+  if (state.authState !== 'authenticated') return 'idle';
+  if (state.registryState === 'loading' || state.modelRegistryState === 'loading') return 'loading';
+  if (state.registryState === 'ready' && state.modelRegistryState === 'ready') return 'ready';
+  if (state.registryState === 'error' && state.modelRegistryState === 'error') return 'error';
+  if (state.registryState === 'idle' && state.modelRegistryState === 'idle') return 'idle';
+  return 'partial';
+}
+
+function replaceModelOptions() {
+  elements.modelSelect.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.disabled = state.modelRegistryState === 'ready' && Boolean(state.modelCatalog?.items?.length);
+  if (state.modelRegistryState === 'loading') placeholder.textContent = 'Loading models…';
+  else if (state.modelRegistryState === 'error') placeholder.textContent = 'Model registry unavailable';
+  else if (state.modelRegistryState === 'ready') placeholder.textContent = state.modelCatalog?.items?.length ? 'Select a model' : 'No models advertised';
+  else placeholder.textContent = 'Authenticate to load models';
+  elements.modelSelect.append(placeholder);
+
+  for (const model of state.modelCatalog?.items || []) {
+    const option = document.createElement('option');
+    option.value = model.id;
+    option.textContent = `${model.display_name}${model.is_default ? ' · Default' : ''}`;
+    elements.modelSelect.append(option);
+  }
+  elements.modelSelect.value = state.modelCatalog?.items?.some((item) => item.id === state.selectedModelId) ? state.selectedModelId : '';
+}
+
+function replaceReasoningEffortOptions(selectedModel) {
+  elements.reasoningEffortSelect.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.disabled = Boolean(selectedModel);
+  placeholder.textContent = selectedModel ? 'Select reasoning effort' : 'Select a model first';
+  elements.reasoningEffortSelect.append(placeholder);
+
+  for (const effort of selectedModel?.supported_reasoning_efforts || []) {
+    const option = document.createElement('option');
+    option.value = effort.id;
+    option.textContent = `${effort.id}${effort.id === selectedModel.default_reasoning_effort ? ' · Default' : ''}`;
+    elements.reasoningEffortSelect.append(option);
+  }
+  elements.reasoningEffortSelect.value = selectedModel?.supported_reasoning_efforts.some((effort) => effort.id === state.selectedReasoningEffort)
+    ? state.selectedReasoningEffort
+    : '';
+}
+
+function renderModelRegistry() {
+  replaceModelOptions();
+  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.selectedModelId) || null;
+  replaceReasoningEffortOptions(selectedModel);
+  const selectedEffort = selectedModel?.supported_reasoning_efforts.find((effort) => effort.id === state.selectedReasoningEffort) || null;
+
+  if (state.modelRegistryState === 'loading') elements.modelDescription.textContent = 'Loading the live runtime model catalog…';
+  else if (state.modelRegistryState === 'error') elements.modelDescription.textContent = 'The live model registry is unavailable.';
+  else if (state.modelRegistryState === 'ready' && !state.modelCatalog?.items?.length) elements.modelDescription.textContent = 'No models are advertised by the runtime.';
+  else if (selectedModel) elements.modelDescription.textContent = selectedModel.description || selectedModel.id;
+  else if (state.modelRegistryState === 'ready') elements.modelDescription.textContent = 'Choose a model advertised by the live runtime registry.';
+  else elements.modelDescription.textContent = 'Models load from the live runtime registry after Firebase authentication.';
+
+  elements.reasoningEffortDescription.textContent = selectedEffort?.description
+    || (selectedModel ? 'Choose an effort supported by this model.' : 'Reasoning efforts load from the selected model.');
+
+  const notice = state.modelRegistryError || state.modelSelectionNotice;
+  elements.modelSelectionNotice.hidden = !notice;
+  elements.modelSelectionNotice.textContent = notice;
+  elements.modelSelectionNotice.classList.toggle('is-error', state.modelRegistryState === 'error' || state.modelSelectionNoticeTone === 'error');
+}
+
 function renderRegistry() {
   const statusCopy = { idle: 'Waiting for auth', loading: 'Discovering…', ready: 'Registry ready', partial: 'Partial registry', error: 'Discovery failed' };
-  elements.registryStatus.textContent = statusCopy[state.registryState] || state.registryState;
+  const displayState = overallRegistryState();
+  elements.registryStatus.textContent = statusCopy[displayState] || displayState;
+  renderModelRegistry();
   replaceOptions(elements.toolProfileSelect, 'No tools', state.toolProfiles, state.selectedToolProfileId);
   replaceOptions(elements.outputSchemaSelect, 'Free text', state.outputSchemas, state.selectedOutputSchemaId);
   if (['ready', 'partial', 'error'].includes(state.registryState)) {
@@ -500,24 +595,80 @@ async function loadSelectedOutputSchema() {
   renderContractDetail();
 }
 
+function reconcileModelSelection(preferredModelId, preferredReasoningEffort) {
+  const resolution = resolveModelRegistrySelection(state.modelCatalog, preferredModelId, preferredReasoningEffort);
+  state.selectedModelId = resolution.selectedModelId;
+  state.selectedReasoningEffort = resolution.selectedReasoningEffort;
+  state.modelSelectionNotice = '';
+  state.modelSelectionNoticeTone = resolution.errorCode ? 'error' : 'warning';
+
+  if (resolution.errorCode) {
+    state.persistedModelId = '';
+    state.persistedReasoningEffort = '';
+    const savedModelNotice = resolution.noticeCodes.includes('persisted_model_missing')
+      ? `Saved model “${String(preferredModelId)}” is no longer available. `
+      : '';
+    if (resolution.errorCode === 'empty_catalog') state.modelSelectionNotice = 'No models are advertised by the runtime.';
+    else if (resolution.errorCode === 'default_model_ambiguous') state.modelSelectionNotice = `${savedModelNotice}The model registry advertises multiple defaults. Select a model explicitly.`;
+    else state.modelSelectionNotice = `${savedModelNotice}No default model is advertised. Select a model explicitly.`;
+    return resolution;
+  }
+
+  const selectedModel = state.modelCatalog.items.find((item) => item.id === resolution.selectedModelId);
+  const notices = [];
+  if (resolution.noticeCodes.includes('persisted_model_missing')) {
+    notices.push(`Saved model “${String(preferredModelId)}” is no longer available. Using backend default “${selectedModel.display_name}”.`);
+  }
+  if (resolution.noticeCodes.includes('persisted_effort_unsupported')) {
+    notices.push(`Reasoning effort “${String(preferredReasoningEffort)}” is unsupported by “${selectedModel.display_name}”. Using backend default “${resolution.selectedReasoningEffort}”.`);
+  }
+  state.modelSelectionNotice = notices.join(' ');
+  state.persistedModelId = resolution.selectedModelId;
+  state.persistedReasoningEffort = resolution.selectedReasoningEffort;
+  return resolution;
+}
+
 async function loadRegistry() {
-  if (!state.runtimeClient || !state.currentUser || state.registryState === 'loading') return;
+  if (!state.runtimeClient || !state.currentUser || state.registryState === 'loading' || state.modelRegistryState === 'loading') return;
   state.registryState = 'loading';
+  state.modelRegistryState = 'loading';
+  state.modelRegistryError = '';
+  state.modelCatalog = null;
+  state.selectedModelId = '';
+  state.selectedReasoningEffort = '';
+  state.modelSelectionNotice = '';
   renderRegistry();
   hideAlert();
-  const [capabilities, outputSchemas, toolProfiles] = await Promise.allSettled([
+  const [capabilities, outputSchemas, toolProfiles, modelCatalog] = await Promise.allSettled([
     state.runtimeClient.getCapabilities(),
     state.runtimeClient.listOutputSchemas(),
-    state.runtimeClient.listToolProfiles()
+    state.runtimeClient.listToolProfiles(),
+    state.runtimeClient.getModelCatalog()
   ]);
   if (capabilities.status === 'fulfilled') state.capabilities = capabilities.value;
   if (outputSchemas.status === 'fulfilled') state.outputSchemas = outputSchemas.value;
   if (toolProfiles.status === 'fulfilled') state.toolProfiles = toolProfiles.value;
   const failures = [capabilities, outputSchemas, toolProfiles].filter((result) => result.status === 'rejected');
   state.registryState = failures.length === 0 ? 'ready' : failures.length === 3 ? 'error' : 'partial';
-  if (state.registryState !== 'ready') {
-    const authFailure = failures.find((result) => ['unauthorized', 'forbidden'].includes(result.reason?.code));
-    showAlert(authFailure ? 'Runtime authorization failed' : 'Registry discovery incomplete', authFailure ? describeRuntimeError(authFailure.reason) : 'One or more runtime registries could not be loaded. Refresh discovery to retry.', 'error');
+  if (modelCatalog.status === 'fulfilled') {
+    state.modelCatalog = modelCatalog.value;
+    state.modelRegistryState = 'ready';
+    reconcileModelSelection(state.persistedModelId, state.persistedReasoningEffort);
+  } else {
+    state.modelRegistryState = 'error';
+    state.modelRegistryError = describeRuntimeError(modelCatalog.reason);
+  }
+
+  const allFailures = [...failures, ...(modelCatalog.status === 'rejected' ? [modelCatalog] : [])];
+  if (allFailures.length) {
+    const authFailure = allFailures.find((result) => ['unauthorized', 'forbidden'].includes(result.reason?.code));
+    const onlyModelFailed = failures.length === 0 && modelCatalog.status === 'rejected';
+    const message = authFailure
+      ? describeRuntimeError(authFailure.reason)
+      : onlyModelFailed
+        ? 'The model registry could not be loaded. Model configuration is unavailable; other registries remain usable. Refresh discovery to retry.'
+        : 'One or more runtime registries could not be loaded. Refresh discovery to retry.';
+    showAlert(authFailure ? 'Runtime authorization failed' : 'Registry discovery incomplete', message, 'error');
   }
   renderRegistry();
   await Promise.all([loadSelectedToolProfile(), loadSelectedOutputSchema()]);
@@ -1003,6 +1154,13 @@ async function initializeAuth() {
         state.streamEpoch += 1;
         state.streamController?.abort();
         state.isRunning = false;
+        state.modelRegistryState = 'idle';
+        state.modelRegistryError = '';
+        state.modelCatalog = null;
+        state.selectedModelId = '';
+        state.selectedReasoningEffort = '';
+        state.modelSelectionNotice = '';
+        renderRegistry();
         showAlert('Authentication required', 'Sign in with Google to authorize Agent Runtime requests with a Firebase ID token.');
         setRuntimeStatus('auth-required', 'Sign-in required');
       }
@@ -1070,6 +1228,24 @@ elements.executionModes.forEach((input) => input.addEventListener('change', () =
 elements.newSessionButton.addEventListener('click', resetSession);
 elements.authButton.addEventListener('click', handleAuthAction);
 elements.refreshRegistryButton.addEventListener('click', loadRegistry);
+elements.modelSelect.addEventListener('change', () => {
+  const modelId = elements.modelSelect.value;
+  if (!state.modelCatalog?.items?.some((item) => item.id === modelId)) return;
+  reconcileModelSelection(modelId, state.selectedReasoningEffort);
+  saveWorkbenchState();
+  renderRegistry();
+});
+elements.reasoningEffortSelect.addEventListener('change', () => {
+  const effortId = elements.reasoningEffortSelect.value;
+  const selectedModel = state.modelCatalog?.items?.find((item) => item.id === state.selectedModelId);
+  if (!selectedModel?.supported_reasoning_efforts.some((effort) => effort.id === effortId)) return;
+  state.selectedReasoningEffort = effortId;
+  state.persistedReasoningEffort = effortId;
+  state.modelSelectionNotice = '';
+  state.modelSelectionNoticeTone = 'warning';
+  saveWorkbenchState();
+  renderRegistry();
+});
 elements.toolProfileSelect.addEventListener('change', () => {
   state.selectedToolProfileId = elements.toolProfileSelect.value;
   state.contractTab = 'tool';
