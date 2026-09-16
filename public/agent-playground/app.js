@@ -42,6 +42,7 @@ const elements = {
   agentResourceStatus: document.getElementById('agentResourceStatus'),
   agentRevision: document.getElementById('agentRevision'),
   agentId: document.getElementById('agentId'),
+  copyAgentIdButton: document.getElementById('copyAgentIdButton'),
   agentForm: document.getElementById('agentForm'),
   agentNameInput: document.getElementById('agentNameInput'),
   agentInstructionsInput: document.getElementById('agentInstructionsInput'),
@@ -424,6 +425,7 @@ function renderControls() {
   elements.refreshRegistryButton.disabled = !authenticated || state.registryState === 'loading' || state.modelRegistryState === 'loading' || state.isRunning || state.saveState === 'saving';
   elements.cancelRunButton.hidden = !state.isRunning || !state.activeRunId;
   elements.cancelRunButton.disabled = state.runStatus === 'cancelling';
+  elements.copyAgentIdButton.disabled = !state.selectedAgent?.agent_id || state.isRunning;
 }
 
 function renderAuth() {
@@ -1500,6 +1502,25 @@ async function copyResult() {
   } catch (_) { showAlert('Copy unavailable', 'The browser could not copy the final JSON result.', 'error'); }
 }
 
+async function copyAgentId() {
+  const agentId = state.selectedAgent?.agent_id;
+  if (!agentId) return;
+  try {
+    await navigator.clipboard.writeText(agentId);
+    const previousTitle = elements.copyAgentIdButton.title;
+    elements.copyAgentIdButton.title = 'Copied agent ID';
+    elements.copyAgentIdButton.setAttribute('aria-label', 'Copied agent ID');
+    elements.copyAgentIdButton.classList.add('is-copied');
+    setTimeout(() => {
+      elements.copyAgentIdButton.title = previousTitle;
+      elements.copyAgentIdButton.setAttribute('aria-label', 'Copy agent ID');
+      elements.copyAgentIdButton.classList.remove('is-copied');
+    }, 1400);
+  } catch (_) {
+    showAlert('Copy unavailable', 'The browser could not copy the Agent ID.', 'error');
+  }
+}
+
 function renderDraft() {
   elements.draftSchemaInput.value = state.draftText;
   elements.toggleDraftButton.textContent = elements.draftEditorRegion.hidden ? '+ Add Draft Schema' : 'Close Draft Editor';
@@ -1618,6 +1639,7 @@ elements.reconnectButton.addEventListener('click', () => {
   resumePersistedRun();
 });
 elements.copyResultButton.addEventListener('click', copyResult);
+elements.copyAgentIdButton.addEventListener('click', copyAgentId);
 elements.toggleDraftButton.addEventListener('click', () => {
   elements.draftEditorRegion.hidden = !elements.draftEditorRegion.hidden;
   renderDraft();

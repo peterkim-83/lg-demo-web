@@ -497,6 +497,8 @@ test('production Workbench source has no fixed registry IDs, EventSource, or bro
   assert.match(source, /id="modelselect"/);
   assert.match(source, /id="reasoningeffortselect"/);
   assert.match(source, /id="agentnameinput"/);
+  assert.match(source, /id="copyagentidbutton"/);
+  assert.match(source, /navigator\.clipboard\.writetext\(agentid\)/);
   assert.match(source, /\/v1\/agent\/agents/);
   assert.equal(source.includes('name="executionmode"'), false);
   const appSource = sources[0];
