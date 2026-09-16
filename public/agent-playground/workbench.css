@@ -298,6 +298,9 @@
 }
 
 .apg-agent-metadata dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   max-width: 190px;
   margin: 3px 0 0;
   overflow: hidden;
@@ -306,6 +309,48 @@
   font-size: 0.62rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.apg-agent-metadata dd > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apg-copy-agent-id {
+  display: grid;
+  flex: 0 0 auto;
+  width: 21px;
+  height: 21px;
+  padding: 3px;
+  border: 1px solid var(--apg-border-strong);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--apg-text-muted);
+  cursor: pointer;
+  place-items: center;
+}
+
+.apg-copy-agent-id svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.apg-copy-agent-id:hover:not(:disabled),
+.apg-copy-agent-id.is-copied {
+  border-color: #497ac0;
+  color: var(--apg-accent);
+}
+
+.apg-copy-agent-id:disabled {
+  cursor: not-allowed;
+  opacity: .42;
 }
 
 .apg-agent-form {
