@@ -462,7 +462,7 @@ Agent: Let me look into our direct view LED signage. To power a stunning LED men
 Customer: Yes, please set that up. And send me the details on that 22-inch kiosk.
 Agent: I will arrange that consultation and email you the kiosk quote right away. Thank you for calling LG!`
     },
-    'fe2f3a22-3831-4eef-8983-93dfcca5c444': {
+    '07b65fb0-3bfd-4ca8-a6c9-09d94ec5b3ca': {
       type: 'O/B Lead-intake',
       name: '호주 Marriott B2B',
       description: '디지털 사이니지 (영어)',
